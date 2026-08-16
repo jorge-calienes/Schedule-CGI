@@ -1,0 +1,123 @@
+// Frontend Supabase client. Uses the PUBLIC anon key only — safe to include
+// in browser code. All row access is governed by the RLS policies in
+// 0001_init.sql, not by anything in this file.
+//
+// Add to your HTML (or bundle if you move off a single-file app):
+//   <script type="module" src="/lib/supabaseClient.js"></script>
+//
+// Env vars (Vercel → Project Settings → Environment Variables, exposed to
+// the client because they're prefixed appropriately for your build tool —
+// if you're staying on a plain static HTML file with no build step, bake
+// these two values directly into this file at deploy time instead, since
+// there's no bundler to inject them):
+//   NEXT_PUBLIC_SUPABASE_URL / VITE_SUPABASE_URL / etc.
+//   NEXT_PUBLIC_SUPABASE_ANON_KEY / VITE_SUPABASE_ANON_KEY / etc.
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://glnbvbgvgijmpeyagnge.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_EfRzoLu4cNiCodR85M_o9g_6syxQeu8';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+export async function signInWithPin(name, pin) {
+  const res = await fetch('/api/auth/pin-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, pin }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Sign-in failed');
+
+  // Hand the minted session to the Supabase client so subsequent calls
+  // (and RLS's auth.uid()) are authenticated as this account.
+  const { error } = await supabase.auth.setSession({
+    access_token: body.session.access_token,
+    refresh_token: body.session.refresh_token,
+  });
+  if (error) throw error;
+
+  return body.account; // { id, name, role, assigned_area_id }
+}
+
+export async function requestAccess(name) {
+  const res = await fetch('/api/accounts/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
+export async function signOut() {
+  await supabase.auth.signOut();
+}
+
+// ---------------------------------------------------------------------------
+// Example queries — mirrors of the localStorage-era functions in the app.
+// Swap these in one at a time rather than all at once; see SETUP_GUIDE.md
+// "Migration order" for the recommended sequence.
+// ---------------------------------------------------------------------------
+
+export async function loadBoard() {
+  const [{ data: areas }, { data: staff }, { data: assignments }] = await Promise.all([
+    supabase.from('areas').select('*').order('sort_order'),
+    supabase.from('staff').select('*').eq('active', true),
+    supabase.from('assignments').select('*'),
+  ]);
+  return { areas, staff, assignments };
+}
+
+export async function moveStaff(staffId, areaId, actingAccountId) {
+  const { error } = await supabase
+    .from('assignments')
+    .upsert({ staff_id: staffId, area_id: areaId, updated_by: actingAccountId, updated_at: new Date().toISOString() });
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `moved staff ${staffId} to area ${areaId}`,
+    staff_id: staffId,
+    metadata: { areaId },
+  });
+}
+
+export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation }) {
+  const { error } = await supabase.from('evaluations').upsert({
+    staff_id: staffId,
+    period_id: periodId,
+    area_id: areaId,
+    evaluator_id: evaluatorId,
+    productivity, performance, reliability, note, recommendation,
+  }, { onConflict: 'staff_id,evaluator_id,period_id' });
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: evaluatorId,
+    action: 'evaluation',
+    description: `submitted an evaluation — recommended "${recommendation}"`,
+    staff_id: staffId,
+    metadata: { productivity, performance, reliability, recommendation },
+  });
+}
+
+export async function myEvaluationQueue() {
+  const { data, error } = await supabase.from('my_evaluation_queue').select('*');
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchAuditLog({ limit = 50 } = {}) {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('*, accounts:actor_id(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}

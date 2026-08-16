@@ -1,0 +1,9 @@
+{
+  "name": "rotation-control-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serverless API routes (Vercel) backing Rotation Control Phase 2 — PIN sign-in and account management on top of Supabase.",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
