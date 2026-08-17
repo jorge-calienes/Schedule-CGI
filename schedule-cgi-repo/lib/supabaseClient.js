@@ -13,7 +13,14 @@
 //   NEXT_PUBLIC_SUPABASE_URL / VITE_SUPABASE_URL / etc.
 //   NEXT_PUBLIC_SUPABASE_ANON_KEY / VITE_SUPABASE_ANON_KEY / etc.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Pinned to an exact version (matching the server-side dependency in
+// package.json) rather than floating on `@2` — a "The string did not match
+// the expected pattern" error surfaced on iOS Safari during sign-in, which
+// is Safari's own wording for a failed URL() parse inside the library
+// itself, not anything this app's code throws. Floating on `@2` means every
+// page load could silently pick up a newer patch release; pinning makes
+// behavior reproducible and rules out an upstream regression as the cause.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const SUPABASE_URL = 'https://glnbvbgvgijmpeyagnge.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_EfRzoLu4cNiCodR85M_o9g_6syxQeu8';

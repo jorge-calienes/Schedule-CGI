@@ -8252,6 +8252,25 @@ function signInPinBackspace(){
   render();
 }
 
+// Our own API already returns short, actionable messages for the cases
+// people actually hit (wrong name/PIN, account not active yet, etc.) — pass
+// those through as-is. Anything else is a technical/unexpected failure (a
+// network hiccup, a library error) that isn't helpful to show verbatim, so
+// give a plain, friendly fallback instead and log the real detail to the
+// console for debugging.
+const KNOWN_SIGNIN_MESSAGES = [
+  'Name and a 4-digit PIN are required.',
+  'Name or PIN not recognized.',
+  'This account is not active yet.',
+  'Account is not linked to a login. Contact an admin.',
+  'Could not start a session. Try again.',
+];
+function friendlySignInError(e){
+  const msg = e && e.message;
+  if(msg && KNOWN_SIGNIN_MESSAGES.includes(msg)) return msg;
+  return "Something went wrong signing in — give it another try.";
+}
+
 async function attemptSignIn(){
   if(authState.status==='submitting') return;
   const name = authState.name.trim();
@@ -8273,9 +8292,10 @@ async function attemptSignIn(){
     authState.error = '';
     await bootApp();
   }catch(e){
+    console.error('Sign-in failed:', e);
     authState.status = 'signed-out';
     authState.pin = '';
-    authState.error = (e && e.message) || 'Sign-in failed.';
+    authState.error = friendlySignInError(e);
     render();
   }
 }
