@@ -85,8 +85,10 @@ export default async function handler(req, res) {
 
     // Exchange the generated OTP for a real session server-side, so the
     // browser never sees the magic link itself — just the finished tokens.
+    // token_hash-based verification wants ONLY token_hash + type — passing
+    // email alongside it is rejected with "400: Only the token_hash and
+    // type should be provided" (confirmed via Supabase auth logs).
     const { data: sessionData, error: sessionErr } = await supabaseAdmin.auth.verifyOtp({
-      email: authUser.user.email,
       token_hash: linkData.properties.hashed_token,
       type: 'magiclink',
     });
