@@ -16,7 +16,8 @@ here should be built in one giant rewrite.
 |---|---|
 | Sign-in (`signInWithPin`, session restore) | **Done** — PR #1 |
 | Board data read (`state.areas`/`staff`/`assignments` ← `loadBoard()`) | **Done** — PR #1 |
-| Board data *writes* (move/swap/callout/staff/area edits) | Still localStorage only |
+| Move/swap/callout writes + audit_log (Step 3a) | **Done** |
+| Staff/area CRUD writes + audit_log (Step 3b) | **Done** |
 | Rotate Now / history | Still localStorage only |
 | Evaluation form, team-lead queue | Not built (client functions already exist, unused) |
 | Audit log screen | Not built (client function already exists, unused) |
@@ -28,28 +29,33 @@ to anything yet. This roadmap is how we get from "reference" to "real."
 
 ## Recommended order
 
-### 1. Step 3a — Move / swap / callout write path + audit_log
-The big one. Every board mutation (move, swap, mark someone out, clear
-callout) needs to write to the real `assignments`/`callouts` tables and
-insert an `audit_log` row, instead of only touching local `state`. This is
-the moment the board actually becomes live/shared between people.
+### ~~1. Step 3a — Move / swap / callout write path + audit_log~~ ✅ Done
+Every board mutation (move, swap, mark someone out, clear callout) now
+writes to the real `assignments`/`callouts` tables and inserts an
+`audit_log` row, via a fire-and-forget `syncBoardWrite()` helper (local
+state updates and renders immediately; a failed sync just shows a toast).
 
-Recommend an optimistic-write helper (fire the Supabase call in the
-background after the local `state` update, toast on failure) rather than
-converting each of the many call sites to `await` a network round trip —
-keeps the board feeling instant.
+**Still open:** `state.blocks`, `state.timeOff`, `state.calloutHistory`,
+etc. are still keyed by the *old* localStorage/demo staff ids in any
+deployment that had local data before Step 2 shipped. Time-off/coverage
+-driven assignment changes are explicitly NOT synced yet (flagged with code
+comments at each call site) — that needs the `time_off` feature migrated
+first so the ids involved are consistent.
 
-**Watch out for:** `state.blocks`, `state.timeOff`, `state.calloutHistory`,
-etc. are still keyed by the *old* localStorage/demo staff ids. Since Step 2
-already swapped `state.staff`/`state.areas` over to real Supabase UUIDs,
-those side-tables are already silently mismatched today. Step 3 is the
-right time to fix this — either migrate `time_off` to its Supabase table in
-the same pass (it already exists with RLS policies), or explicitly reset
-the local-only ones once real UUIDs are in play.
-
-### 2. Step 3b — Staff / area CRUD write path + audit_log
-Add/edit/archive staff, add/edit areas → `staff`/`areas` tables + audit_log.
-Split from 3a to keep each PR reviewable; same pattern.
+### ~~2. Step 3b — Staff / area CRUD write path + audit_log~~ ✅ Done
+Add/edit/archive staff, add/edit/delete areas → `staff`/`areas` tables +
+audit_log. Unlike Step 3a's fire-and-forget pattern, these **await** the
+Supabase write and show a definitive "Saved to database ✓" / "not saved to
+the database" toast before closing the modal — CRUD is a deliberate,
+infrequent action where confirmation matters more than instant feedback,
+and awaiting also solves a real correctness issue: a brand-new staff/area
+record needs the database's generated UUID as its id from the start (the
+old `uid('staff')`/`uid('area')` local-id format isn't a valid Postgres
+uuid), so creation can't be optimistic the way moves/swaps are. Falls back
+to a local-only id + warning toast if the sync fails, so people aren't
+blocked by a network hiccup. Department is a free-text field in the UI but
+a real FK in the schema — `ensureDepartment()` resolves-or-creates it by
+name on every staff/area save.
 
 ### 3. Step 4 — Rotate Now → `rotation_periods` / `rotation_period_assignments`
 Depends on Step 3 (needs live `assignments` to snapshot). Insert a period +
@@ -112,9 +118,8 @@ switcher like the mockup's dev toggle. Applies to every screen above.
 
 ## Suggested next step
 
-Step 3a (move/swap/callout writes + audit_log) is next in line per the
-original plan, but it's also the highest-risk item — dozens of call sites,
-real shared state, the local-id/Supabase-uuid mismatch to untangle. Worth
-explicitly confirming before starting, or alternatively pulling Step 5
-(evaluation form) forward first since it's lower-risk and delivers the
-headline new feature sooner. Your call.
+Steps 3a and 3b are done — the board and staff/area edits are now fully
+live against Supabase. Step 4 (Rotate Now) is next in line per the original
+plan, but Step 5 (evaluation form) remains the lower-risk option if you'd
+rather pull the headline new feature forward first, since it has no
+localStorage equivalent to migrate away from. Your call.

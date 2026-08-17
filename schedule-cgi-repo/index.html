@@ -11659,6 +11659,24 @@ function syncBoardWrite(fn, label){
   });
 }
 
+// Awaited version of syncBoardWrite for deliberate Save/Delete actions
+// (staff & area CRUD) where the user wants a definitive "did this actually
+// persist to the database?" answer, rather than a fire-and-forget
+// background sync. Local state should still be applied by the caller either
+// way — this just reports whether the database write also succeeded.
+async function syncCrudWrite(fn){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account){
+    return {ok:false, error:new Error('Not connected to the database.')};
+  }
+  try{
+    const result = await fn();
+    return {ok:true, result};
+  }catch(e){
+    console.warn('CRUD sync failed:', e && e.message);
+    return {ok:false, error:e};
+  }
+}
+
 // attempts to place staffId into areaId (or null for pool). If conflicts exist, opens modal instead of placing.
 function attemptPlace(staffId, areaId, force){
   // Counter Acceptance cert check — hard block regardless of force
@@ -13366,7 +13384,7 @@ function attachHandlers(){
     });
 
     // ── save: read from activeModal for fields not in current DOM ──
-    on('staff-save-btn',()=>{
+    on('staff-save-btn', async ()=>{
       const snap = snapshotStaffForm(); // grab whatever IS in the DOM right now
       // merge: DOM snapshot wins over stored, stored wins over original staff values
       const name         = snap.name        ?? activeModal.name        ?? editing?.name        ?? '';
@@ -13414,32 +13432,65 @@ function attachHandlers(){
       if(selectedShift){ const [h,m]=selectedShift.start.split(':').map(Number); breakStart=`${h+3}:${String(m).padStart(2,'0')}`; }
       const breakTimes=lunchVal?`${breakStart} / ${lunchVal}`:'';
 
+      const saveBtn = document.getElementById('staff-save-btn');
+      if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
+
       if(activeModal.editId){
         const s=getStaffById(activeModal.editId); const prevFlow=s.flowId;
+        const homeAreaId = (isTeamLead&&!s.homeAreaId) ? (state.assignments[s.id]||null) : s.homeAreaId;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
+          return window.RC.updateStaff({
+            staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
+            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
+          });
+        });
         Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
-          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart});
+          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
         if(flowId&&flowId!==prevFlow) showToast(`${s.name} enrolled in ${getFlowById(flowId)?.name||'flow'}`,'teal');
-        if(isTeamLead&&!s.homeAreaId) s.homeAreaId=state.assignments[s.id]||null;
-        saveState(); showToast('Saved','teal'); closeModal();
+        saveState();
+        showToast(sync.ok ? 'Saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       } else {
-        const newStaff={id:uid('staff'),name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
+        let createdId = null;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
+          const row = await window.RC.createStaff({
+            name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
+            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
+          });
+          createdId = row.id;
+          return row;
+        });
+        // Use the real Supabase-generated id when the sync succeeded, so the
+        // local record and the database row are the same entity from the
+        // start — falls back to a local-only id if the sync failed.
+        const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
           isTeamLead,homeAreaId:null,supervisorId,flowId,flowEnrolled:!!flowId,
           needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
-        saveState(); closeModal();
+        saveState();
+        showToast(sync.ok ? `${name} added — saved to database ✓` : `${name} added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
         const sugs=suggestAreasFor(newStaff.id);
         if(sugs.length>0){ if(isTeamLead) newStaff.homeAreaId=sugs[0].area.id;
           openModal({type:'placement-conflict',staffId:newStaff.id,targetAreaId:sugs[0].area.id,isNewStaffPrompt:true}); }
       }
     });
 
-    // NOTE: staff/area CRUD isn't synced to Supabase yet — that's Step 3b
-    // (PHASE2_ROADMAP.md), separate from the move/swap/callout sync in Step 3.
-    on('staff-delete-btn',()=>{
+    on('staff-delete-btn', async ()=>{
       const id=activeModal.editId;
+      const removedName = getStaffById(id)?.name || 'Staff';
+      const delBtn = document.getElementById('staff-delete-btn');
+      if(delBtn){ delBtn.disabled=true; delBtn.textContent='Removing…'; }
+      const sync = await syncCrudWrite(()=>window.RC.archiveStaff({staffId:id, staffName:removedName, actingAccountId:authState.account.id}));
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
-      saveState(); showToast('Staff removed','rust'); closeModal();
+      saveState();
+      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      closeModal();
     });
   }
 
@@ -13820,31 +13871,56 @@ function attachHandlers(){
       document.querySelectorAll('.swatch-pick').forEach(s=>s.classList.remove('selected'));
       el.classList.add('selected');
     }));
-    on('area-save-btn', ()=>{
+    on('area-save-btn', async ()=>{
       const name = document.getElementById('area-name-input').value.trim();
       const dept = document.getElementById('area-dept-input').value.trim() || 'Other';
       const capacity = parseInt(document.getElementById('area-capacity-input').value,10) || 4;
       const color = document.getElementById('area-color-input').value;
       const fixed = !!(document.getElementById('area-fixed-input')?.checked);
       if(!name){ showToast('Enter an area name', 'rust'); return; }
+
+      const saveBtn = document.getElementById('area-save-btn');
+      if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
+
       if(activeModal.editId){
-        const a = getAreaById(activeModal.editId);
+        const areaId = activeModal.editId;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = await window.RC.ensureDepartment(dept);
+          return window.RC.updateArea({areaId, name, color, capacity, departmentId, actingAccountId:authState.account.id});
+        });
+        const a = getAreaById(areaId);
         a.name=name; a.capacity=capacity; a.color=color; a.department=dept; a.fixed=fixed;
+        if(!state.departments) state.departments = [];
+        if(!state.departments.includes(dept)) state.departments.push(dept);
+        saveState();
+        showToast(sync.ok ? 'Saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       } else {
-        state.areas.push({id:uid('area'), name, capacity, color, department:dept, fixed});
+        let createdId = null;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = await window.RC.ensureDepartment(dept);
+          const row = await window.RC.createArea({name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          createdId = row.id;
+          return row;
+        });
+        state.areas.push({id: sync.ok ? createdId : uid('area'), name, capacity, color, department:dept, fixed});
+        if(!state.departments) state.departments = [];
+        if(!state.departments.includes(dept)) state.departments.push(dept);
+        saveState();
+        showToast(sync.ok ? `"${name}" added — saved to database ✓` : `"${name}" added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       }
-      if(!state.departments) state.departments = [];
-      if(!state.departments.includes(dept)) state.departments.push(dept);
-      saveState();
-      closeModal();
     });
-    // NOTE: not synced to Supabase yet — Step 3b (PHASE2_ROADMAP.md).
-    on('area-delete-btn', ()=>{
+    on('area-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const removedName = getAreaById(id)?.name || 'Area';
+      const delBtn = document.getElementById('area-delete-btn');
+      if(delBtn){ delBtn.disabled=true; delBtn.textContent='Deleting…'; }
+      const sync = await syncCrudWrite(()=>window.RC.deleteArea({areaId:id, areaName:removedName, actingAccountId:authState.account.id}));
       state.areas = state.areas.filter(a=>a.id!==id);
       Object.keys(state.assignments).forEach(sid=>{ if(state.assignments[sid]===id) state.assignments[sid]=null; });
       saveState();
-      showToast('Area deleted', 'rust');
+      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, 'rust');
       closeModal();
     });
   }

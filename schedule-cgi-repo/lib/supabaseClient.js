@@ -155,6 +155,117 @@ export async function clearCallout({ staffId, actingAccountId, staffName }) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Staff / area CRUD (Step 3b). Department is stored as a free-text field in
+// the app's UI but is a real FK in the schema — resolve-or-create it by name
+// so typing a new department name in the staff/area editor still works.
+// ---------------------------------------------------------------------------
+
+export async function ensureDepartment(name) {
+  if (!name) return null;
+  const { data: existing } = await supabase.from('departments').select('id, name').ilike('name', name).maybeSingle();
+  if (existing) return existing.id;
+
+  const { data, error } = await supabase.from('departments').insert({ name }).select().single();
+  if (error) throw error;
+  return data.id;
+}
+
+function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel }) {
+  return {
+    name,
+    tdis_number: tdisNumber || null,
+    department_id: departmentId || null,
+    home_area_id: homeAreaId || null,
+    is_team_lead: !!isTeamLead,
+    is_subcontractor: !!isSubcontractor,
+    needs_accommodations: !!needsAccommodations,
+    tags: tags || null,
+    shift_hours_label: shiftHoursLabel || null,
+    break_times_label: breakTimesLabel || null,
+  };
+}
+
+export async function createStaff(fields) {
+  const { data, error } = await supabase.from('staff').insert(staffRow(fields)).select().single();
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: fields.actingAccountId,
+    action: 'add_staff',
+    description: `added ${fields.name}`,
+    staff_id: data.id,
+  });
+  return data; // includes the Supabase-generated id
+}
+
+export async function updateStaff(fields) {
+  const { error } = await supabase.from('staff').update(staffRow(fields)).eq('id', fields.staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: fields.actingAccountId,
+    action: 'edit_staff',
+    description: `updated ${fields.name}'s profile`,
+    staff_id: fields.staffId,
+  });
+}
+
+export async function archiveStaff({ staffId, staffName, actingAccountId }) {
+  const { error } = await supabase.from('staff').update({ active: false }).eq('id', staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'archive_staff',
+    description: `removed ${staffName || staffId}`,
+    staff_id: staffId,
+  });
+}
+
+function areaRow({ name, color, capacity, departmentId }) {
+  return {
+    name,
+    color: color || '#2F5FA8',
+    capacity: capacity || 4,
+    department_id: departmentId || null,
+  };
+}
+
+export async function createArea(fields) {
+  const { data, error } = await supabase.from('areas').insert(areaRow(fields)).select().single();
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: fields.actingAccountId,
+    action: 'add_area',
+    description: `added work area "${fields.name}"`,
+  });
+  return data; // includes the Supabase-generated id
+}
+
+export async function updateArea(fields) {
+  const { error } = await supabase.from('areas').update(areaRow(fields)).eq('id', fields.areaId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: fields.actingAccountId,
+    action: 'edit_area',
+    description: `updated "${fields.name}"`,
+  });
+}
+
+export async function deleteArea({ areaId, areaName, actingAccountId }) {
+  const { error } = await supabase.from('areas').delete().eq('id', areaId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_area',
+    description: `deleted work area "${areaName || areaId}"`,
+  });
+}
+
 export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation }) {
   const { error } = await supabase.from('evaluations').upsert({
     staff_id: staffId,
@@ -207,6 +318,13 @@ window.RC = {
   swapStaff,
   setCallout,
   clearCallout,
+  ensureDepartment,
+  createStaff,
+  updateStaff,
+  archiveStaff,
+  createArea,
+  updateArea,
+  deleteArea,
   submitEvaluation,
   myEvaluationQueue,
   fetchAuditLog,
