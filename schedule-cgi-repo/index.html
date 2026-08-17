@@ -8309,8 +8309,11 @@ async function attemptSignIn(){
     authState.error = friendlySignInError(e);
     // Small, muted technical detail shown under the friendly message —
     // not for the average user, just so a screenshot is enough to diagnose
-    // an unexpected failure without needing browser devtools access.
-    authState.errorDetail = e ? `${e.name || 'Error'}: ${e.message || String(e)}` : '';
+    // an unexpected failure without needing browser devtools access. Includes
+    // the first couple stack frames (function/file:line) so we can tell
+    // exactly where in the library/call chain this is coming from.
+    const stackLines = (e && e.stack ? String(e.stack).split('\n').slice(0,3).join(' | ') : '');
+    authState.errorDetail = e ? `${e.name || 'Error'}: ${e.message || String(e)}${stackLines ? ' — '+stackLines : ''}` : '';
     render();
   }
 }

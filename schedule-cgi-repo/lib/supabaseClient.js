@@ -32,21 +32,42 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ---------------------------------------------------------------------------
 
 export async function signInWithPin(name, pin) {
-  const res = await fetch('/api/auth/pin-login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, pin }),
-  });
-  const body = await res.json();
+  // Each step below is wrapped separately and re-thrown with a phase label —
+  // an unexpected failure here (e.g. a "The string did not match the
+  // expected pattern" SyntaxError seen on iOS Safari, not something this
+  // app's own code throws) needs the phase to know whether it's the network
+  // call, the response parsing, or the local Supabase session creation.
+  let res;
+  try {
+    res = await fetch('/api/auth/pin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, pin }),
+    });
+  } catch (e) {
+    throw new Error(`[fetch] ${e && e.message || e}`);
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch (e) {
+    throw new Error(`[parse response, status ${res.status}] ${e && e.message || e}`);
+  }
+
   if (!res.ok) throw new Error(body.error || 'Sign-in failed');
 
   // Hand the minted session to the Supabase client so subsequent calls
   // (and RLS's auth.uid()) are authenticated as this account.
-  const { error } = await supabase.auth.setSession({
-    access_token: body.session.access_token,
-    refresh_token: body.session.refresh_token,
-  });
-  if (error) throw error;
+  try {
+    const { error } = await supabase.auth.setSession({
+      access_token: body.session.access_token,
+      refresh_token: body.session.refresh_token,
+    });
+    if (error) throw error;
+  } catch (e) {
+    throw new Error(`[setSession] ${e && e.message || e}`);
+  }
 
   return body.account; // { id, name, role, assigned_area_id }
 }
