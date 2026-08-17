@@ -4,7 +4,7 @@
   "private": true,
   "description": "Serverless API routes (Vercel) backing Rotation Control Phase 2 — PIN sign-in and account management on top of Supabase.",
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"
