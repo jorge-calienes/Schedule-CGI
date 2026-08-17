@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="module" src="/lib/supabaseClient.js"></script>
 <style>
   :root{
     /* ============ MATERIAL DESIGN 3 TOKENS ============ */
@@ -7232,6 +7233,113 @@
     .callout-banner{flex-wrap:wrap;}
 
   }
+
+  /* ---------- Sign-in screen (real Supabase auth gate) ---------- */
+  .rc-signin-screen{
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--c-bg);
+    padding:24px;
+    outline:none;
+  }
+  .rc-signin-checking{
+    color:var(--c-text-2,var(--ink-soft));
+    font-size:15px;
+  }
+  .rc-signin-card{
+    width:100%;max-width:340px;
+    background:var(--c-surface);
+    border:1px solid var(--c-border);
+    border-radius:20px;
+    padding:28px 24px 24px;
+    box-shadow:0 8px 32px rgba(0,0,0,.08);
+    text-align:center;
+  }
+  .rc-signin-brand{
+    font-size:22px;font-weight:700;color:var(--c-text);
+    margin-bottom:2px;
+  }
+  .rc-signin-sub{
+    font-size:13px;color:var(--ink-soft);
+    margin-bottom:20px;
+  }
+  .rc-signin-label{
+    text-align:left;
+    font-size:12px;font-weight:600;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.03em;
+    margin:0 0 6px;
+  }
+  .rc-signin-name-input{
+    width:100%;box-sizing:border-box;
+    font-family:inherit;font-size:16px;
+    color:var(--c-text);background:var(--c-surface-2,var(--c-bg));
+    border:1px solid var(--c-border);border-radius:12px;
+    padding:11px 14px;
+    outline:none;
+    margin-bottom:18px;
+    transition:border-color .15s;
+  }
+  .rc-signin-name-input:focus{border-color:var(--c-accent);}
+  .rc-pin-dots{
+    display:flex;justify-content:center;gap:14px;
+    margin-bottom:10px;
+  }
+  .rc-pin-dot{
+    width:14px;height:14px;border-radius:50%;
+    border:1.5px solid var(--ink-soft);
+    background:transparent;
+    transition:background .12s,border-color .12s,transform .12s;
+  }
+  .rc-pin-dot.filled{
+    background:var(--c-accent);border-color:var(--c-accent);
+    transform:scale(1.08);
+  }
+  .rc-signin-error{
+    color:var(--rust);font-size:13px;font-weight:600;
+    margin-bottom:10px;min-height:16px;
+  }
+  .rc-signin-error-detail{
+    color:var(--ink-soft);font-size:11px;font-family:var(--mono,monospace);
+    margin:-6px 0 10px;word-break:break-word;
+  }
+  .rc-keypad{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    gap:10px;
+    margin:14px 0 20px;
+  }
+  .rc-keypad-btn{
+    font-family:inherit;font-size:20px;font-weight:500;
+    color:var(--c-text);
+    background:var(--c-surface-2,var(--c-bg));
+    border:1px solid var(--c-border);
+    border-radius:14px;
+    aspect-ratio:1;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:background .1s,transform .08s;
+  }
+  .rc-keypad-btn:hover{background:var(--c-surface-3,#E5E5EA);}
+  .rc-keypad-btn:active{transform:scale(.94);}
+  .rc-keypad-btn:disabled{opacity:.5;cursor:default;}
+  .rc-keypad-btn.rc-keypad-backspace{font-size:17px;color:var(--ink-soft);border:none;background:transparent;}
+  .rc-keypad-blank{aspect-ratio:1;}
+  .rc-signin-submit-btn{
+    width:100%;
+    font-family:inherit;font-size:15px;font-weight:600;
+    color:#fff;background:var(--c-accent);
+    border:none;border-radius:12px;
+    padding:12px;
+    cursor:pointer;
+    transition:opacity .12s;
+  }
+  .rc-signin-submit-btn:hover{opacity:.9;}
+  .rc-signin-submit-btn:disabled{opacity:.6;cursor:default;}
+  .nav-account{
+    padding:10px 16px 4px;
+    font-size:12px;color:var(--ink-soft);
+  }
+  .nav-account b{color:var(--c-text);font-weight:600;}
 </style>
 </head>
 <body>
@@ -8074,6 +8182,178 @@ const STORAGE_KEY = 'rotation-app-state-v1';
 let toastTimer = null;
 let toastExitTimer = null;
 
+// ============ AUTH (Supabase sign-in gate) ============
+// status: 'checking' (session lookup in flight) | 'signed-out' | 'submitting' | 'signed-in'
+let authState = {
+  status: 'checking',
+  name: '',
+  pin: '',
+  error: '',
+  errorDetail: '', // muted technical detail shown under `error`, for diagnosing unexpected failures
+  account: null, // {id, name, role, assigned_area_id}
+};
+
+function waitForRC(){
+  return new Promise(resolve=>{
+    if(window.RC){ resolve(); return; }
+    window.addEventListener('rc:ready', ()=>resolve(), {once:true});
+    setTimeout(resolve, 5000); // don't hang forever if the module script fails to load
+  });
+}
+
+function renderSignInScreen(){
+  if(authState.status==='checking'){
+    return `<div class="rc-signin-screen"><div class="rc-signin-checking">Loading…</div></div>`;
+  }
+  const submitting = authState.status==='submitting';
+  const digitBtn = d => `<button type="button" class="rc-keypad-btn" data-digit="${d}" ${submitting?'disabled':''}>${d}</button>`;
+  return `
+  <div id="rc-signin-screen" class="rc-signin-screen" tabindex="-1">
+    <div class="rc-signin-card">
+      <div class="rc-signin-brand">Schedule</div>
+      <div class="rc-signin-sub">Sign in with your name and PIN</div>
+
+      <div class="rc-signin-label">Name</div>
+      <input id="rc-signin-name" class="rc-signin-name-input" type="text" autocomplete="name"
+        placeholder="Full name" value="${escapeHtml(authState.name)}" ${submitting?'disabled':''}/>
+
+      <div class="rc-signin-label">PIN</div>
+      <div class="rc-pin-dots" id="rc-pin-dots">
+        ${[0,1,2,3].map(i=>`<span class="rc-pin-dot${authState.pin.length>i?' filled':''}"></span>`).join('')}
+      </div>
+
+      <div class="rc-signin-error">${authState.error?escapeHtml(authState.error):''}</div>
+      ${authState.errorDetail ? `<div class="rc-signin-error-detail">${escapeHtml(authState.errorDetail)}</div>` : ''}
+
+      <div class="rc-keypad">
+        ${['1','2','3'].map(digitBtn).join('')}
+        ${['4','5','6'].map(digitBtn).join('')}
+        ${['7','8','9'].map(digitBtn).join('')}
+        <div class="rc-keypad-blank"></div>
+        ${digitBtn('0')}
+        <button type="button" id="rc-pin-backspace" class="rc-keypad-btn rc-keypad-backspace" aria-label="Backspace" ${submitting?'disabled':''}>⌫</button>
+      </div>
+
+      <button type="button" id="rc-signin-submit" class="rc-signin-submit-btn" ${submitting?'disabled':''}>
+        ${submitting ? 'Signing in…' : 'Sign in'}
+      </button>
+    </div>
+  </div>`;
+}
+
+function signInPinDigit(d){
+  if(authState.status==='submitting') return;
+  if(authState.pin.length>=4) return;
+  authState.pin += d;
+  authState.error = '';
+  authState.errorDetail = '';
+  render();
+  if(authState.pin.length===4) attemptSignIn();
+}
+
+function signInPinBackspace(){
+  if(authState.status==='submitting') return;
+  if(!authState.pin.length) return;
+  authState.pin = authState.pin.slice(0,-1);
+  authState.error = '';
+  authState.errorDetail = '';
+  render();
+}
+
+// Our own API already returns short, actionable messages for the cases
+// people actually hit (wrong name/PIN, account not active yet, etc.) — pass
+// those through as-is. Anything else is a technical/unexpected failure (a
+// network hiccup, a library error) that isn't helpful to show verbatim, so
+// give a plain, friendly fallback instead and log the real detail to the
+// console for debugging.
+const KNOWN_SIGNIN_MESSAGES = [
+  'Name and a 4-digit PIN are required.',
+  'Name or PIN not recognized.',
+  'This account is not active yet.',
+  'Account is not linked to a login. Contact an admin.',
+  'Could not start a session. Try again.',
+];
+function friendlySignInError(e){
+  const msg = e && e.message;
+  if(msg && KNOWN_SIGNIN_MESSAGES.includes(msg)) return msg;
+  return "Something went wrong signing in — give it another try.";
+}
+
+async function attemptSignIn(){
+  if(authState.status==='submitting') return;
+  const name = authState.name.trim();
+  if(!name){ authState.error = 'Enter your name.'; authState.errorDetail = ''; render(); return; }
+  if(authState.pin.length!==4){ authState.error = 'Enter your 4-digit PIN.'; authState.errorDetail = ''; render(); return; }
+  if(!window.RC || typeof window.RC.signInWithPin!=='function'){
+    authState.error = 'Sign-in is unavailable right now. Refresh and try again.';
+    authState.errorDetail = '';
+    render();
+    return;
+  }
+  authState.status = 'submitting';
+  authState.error = '';
+  authState.errorDetail = '';
+  render();
+  try{
+    const account = await window.RC.signInWithPin(name, authState.pin);
+    authState.account = account;
+    authState.status = 'signed-in';
+    authState.pin = '';
+    authState.error = '';
+    authState.errorDetail = '';
+    await bootApp();
+  }catch(e){
+    console.error('Sign-in failed:', e);
+    authState.status = 'signed-out';
+    authState.pin = '';
+    authState.error = friendlySignInError(e);
+    // Small, muted technical detail shown under the friendly message —
+    // not for the average user, just so a screenshot is enough to diagnose
+    // an unexpected failure without needing browser devtools access. Includes
+    // the first couple stack frames (function/file:line) so we can tell
+    // exactly where in the library/call chain this is coming from.
+    const stackLines = (e && e.stack ? String(e.stack).split('\n').slice(0,3).join(' | ') : '');
+    authState.errorDetail = e ? `${e.name || 'Error'}: ${e.message || String(e)}${stackLines ? ' — '+stackLines : ''}` : '';
+    render();
+  }
+}
+
+function attachSignInHandlers(){
+  const screen = document.getElementById('rc-signin-screen');
+  const nameInput = document.getElementById('rc-signin-name');
+
+  if(nameInput){
+    nameInput.addEventListener('input', e=>{
+      authState.name = e.target.value;
+      authState.error = '';
+      authState.errorDetail = '';
+      const pos = nameInput.selectionStart;
+      render();
+      const el = document.getElementById('rc-signin-name');
+      if(el){ el.focus(); el.setSelectionRange(pos, pos); }
+    });
+    nameInput.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); attemptSignIn(); }
+    });
+  }
+
+  document.querySelectorAll('#rc-signin-screen [data-digit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> signInPinDigit(btn.getAttribute('data-digit')));
+  });
+  on('rc-pin-backspace', signInPinBackspace);
+  on('rc-signin-submit', attemptSignIn);
+
+  if(screen){
+    screen.addEventListener('keydown', e=>{
+      if(document.activeElement===nameInput) return; // let the name field handle its own typing
+      if(/^[0-9]$/.test(e.key)){ e.preventDefault(); signInPinDigit(e.key); }
+      else if(e.key==='Backspace' || e.key==='Delete'){ e.preventDefault(); signInPinBackspace(); }
+      else if(e.key==='Enter'){ e.preventDefault(); attemptSignIn(); }
+    });
+    if(document.activeElement!==nameInput) screen.focus();
+  }
+}
+
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
 function todayLabel(){
@@ -8823,6 +9103,11 @@ let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 
 function render(){
   const root = document.getElementById('root');
+  if(authState.status!=='signed-in'){
+    root.innerHTML = renderSignInScreen();
+    attachSignInHandlers();
+    return;
+  }
   if(!state.loaded){
     root.innerHTML = `<div class="loading-screen">loading rotation data…</div>`;
     return;
@@ -9156,6 +9441,7 @@ function renderNavDrawer(){
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
       <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
+      ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       <div class="nav-drawer-section">Staff</div>
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
@@ -9177,6 +9463,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       <div class="nav-divider"></div>
+      <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
         <button class="nav-rotate-btn" id="btn-rotate">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -11399,6 +11686,36 @@ function renderRotatePreviewModal(m){
 
 // ============ PLACEMENT LOGIC ============
 
+// Fires a Supabase write in the background for a board action that's already
+// been applied to local state + rendered (Step 3: board writes go to
+// Supabase, but never block the UI on network latency). On failure the local
+// change stands — just tell the user it didn't sync.
+function syncBoardWrite(fn, label){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  Promise.resolve().then(fn).catch(e=>{
+    console.warn(label+' sync failed:', e && e.message);
+    showToast(`Saved here, but didn't sync to the server (${label})`, 'rust');
+  });
+}
+
+// Awaited version of syncBoardWrite for deliberate Save/Delete actions
+// (staff & area CRUD) where the user wants a definitive "did this actually
+// persist to the database?" answer, rather than a fire-and-forget
+// background sync. Local state should still be applied by the caller either
+// way — this just reports whether the database write also succeeded.
+async function syncCrudWrite(fn){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account){
+    return {ok:false, error:new Error('Not connected to the database.')};
+  }
+  try{
+    const result = await fn();
+    return {ok:true, result};
+  }catch(e){
+    console.warn('CRUD sync failed:', e && e.message);
+    return {ok:false, error:e};
+  }
+}
+
 // attempts to place staffId into areaId (or null for pool). If conflicts exist, opens modal instead of placing.
 function attemptPlace(staffId, areaId, force){
   // Counter Acceptance cert check — hard block regardless of force
@@ -11437,8 +11754,14 @@ function attemptPlace(staffId, areaId, force){
   }
   const staffMoved = getStaffById(staffId);
   const areaMoved  = areaId ? getAreaById(areaId) : null;
+  const fromAreaId = state.assignments[staffId];
+  const fromArea   = fromAreaId ? getAreaById(fromAreaId) : null;
   state.assignments[staffId] = areaId;
   saveState();
+  syncBoardWrite(()=>window.RC.moveStaff({
+    staffId, areaId, actingAccountId: authState.account.id,
+    staffName: staffMoved?.name, fromAreaName: fromArea?.name, toAreaName: areaMoved?.name,
+  }), 'move');
   if(staffMoved) showToast(areaMoved ? `${staffMoved.name.split(' ')[0]} moved to ${areaMoved.name}` : `${staffMoved.name.split(' ')[0]} unassigned`, 'teal');
   render();
 }
@@ -11711,6 +12034,7 @@ function attachHandlers(){
       }
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
       state.callouts[sid] = true;
@@ -11726,6 +12050,7 @@ function attachHandlers(){
           state.teamLeadCoverage[_aId]={outLeadId:sid,date:todayLabel(),coverLeadId:_alt[0]?.id||null,status:'pending'};
         }
       }
+      syncBoardWrite(()=>window.RC.setCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_stl?.name}), 'callout');
       showToast((getStaffById(sid)?.name?.split(' ')[0]||'?')+' called out','rust');
     }
     chipMenuOpen = null;
@@ -11758,13 +12083,28 @@ function attachHandlers(){
     e.stopPropagation();
     chipMenuOpen = null;
     const id = b.dataset.id;
-    if(state.callouts[id]) delete state.callouts[id]; else state.callouts[id] = true;
+    const _person = getStaffById(id);
+    if(state.callouts[id]){
+      delete state.callouts[id];
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+    } else {
+      state.callouts[id] = true;
+      syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+    }
     saveState(); render();
   }));
   document.querySelectorAll('.act-remove,.cia-btn.act-remove').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
     chipMenuOpen = null;
-    state.assignments[b.dataset.id] = null;
+    const id = b.dataset.id;
+    const _removed = getStaffById(id);
+    const _fromAreaId = state.assignments[id];
+    const _fromArea = _fromAreaId ? getAreaById(_fromAreaId) : null;
+    state.assignments[id] = null;
+    syncBoardWrite(()=>window.RC.moveStaff({
+      staffId:id, areaId:null, actingAccountId:authState.account.id,
+      staffName:_removed?.name, fromAreaName:_fromArea?.name, toAreaName:null,
+    }), 'move');
     saveState(); render();
   }));
   document.querySelectorAll('.act-edit,.cia-btn.act-edit').forEach(b=>b.addEventListener('click', e=>{
@@ -12737,6 +13077,9 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
+    // NOTE: time-off coverage moves aren't synced to Supabase yet — Step 3
+    // covers direct move/swap/callout only; time off is still fully local
+    // (PHASE2_ROADMAP.md).
     document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
@@ -12819,6 +13162,15 @@ function attachHandlers(){
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
+  on('nav-sign-out', async ()=>{
+    closeNav();
+    if(window.RC && typeof window.RC.signOut==='function'){
+      try{ await window.RC.signOut(); }catch(e){}
+    }
+    authState = { status:'signed-out', name:'', pin:'', error:'', account:null };
+    state.loaded = false;
+    render();
+  });
 
   // --- breaks view filters ---
   if(viewMode==='breaks'){
@@ -12934,7 +13286,16 @@ function attachHandlers(){
     if(!req) return;
     req.status='approved';
     // Move them to requested area
-    if(req.toArea){ state.assignments[s.id]=req.toArea; logDailyEvent('move',s.id,req.fromArea,req.toArea,'Position request approved'); }
+    if(req.toArea){
+      const _fromArea = req.fromArea ? getAreaById(req.fromArea) : null;
+      const _toArea = getAreaById(req.toArea);
+      state.assignments[s.id]=req.toArea;
+      logDailyEvent('move',s.id,req.fromArea,req.toArea,'Position request approved');
+      syncBoardWrite(()=>window.RC.moveStaff({
+        staffId:s.id, areaId:req.toArea, actingAccountId:authState.account.id,
+        staffName:s.name, fromAreaName:_fromArea?.name, toAreaName:_toArea?.name,
+      }), 'move');
+    }
     saveState(); openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
     showToast(`${s.name.split(' ')[0]}'s request approved`,'teal');
   }));
@@ -13062,7 +13423,7 @@ function attachHandlers(){
     });
 
     // ── save: read from activeModal for fields not in current DOM ──
-    on('staff-save-btn',()=>{
+    on('staff-save-btn', async ()=>{
       const snap = snapshotStaffForm(); // grab whatever IS in the DOM right now
       // merge: DOM snapshot wins over stored, stored wins over original staff values
       const name         = snap.name        ?? activeModal.name        ?? editing?.name        ?? '';
@@ -13110,30 +13471,65 @@ function attachHandlers(){
       if(selectedShift){ const [h,m]=selectedShift.start.split(':').map(Number); breakStart=`${h+3}:${String(m).padStart(2,'0')}`; }
       const breakTimes=lunchVal?`${breakStart} / ${lunchVal}`:'';
 
+      const saveBtn = document.getElementById('staff-save-btn');
+      if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
+
       if(activeModal.editId){
         const s=getStaffById(activeModal.editId); const prevFlow=s.flowId;
+        const homeAreaId = (isTeamLead&&!s.homeAreaId) ? (state.assignments[s.id]||null) : s.homeAreaId;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
+          return window.RC.updateStaff({
+            staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
+            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
+          });
+        });
         Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
-          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart});
+          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
         if(flowId&&flowId!==prevFlow) showToast(`${s.name} enrolled in ${getFlowById(flowId)?.name||'flow'}`,'teal');
-        if(isTeamLead&&!s.homeAreaId) s.homeAreaId=state.assignments[s.id]||null;
-        saveState(); showToast('Saved','teal'); closeModal();
+        saveState();
+        showToast(sync.ok ? 'Saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       } else {
-        const newStaff={id:uid('staff'),name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
+        let createdId = null;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
+          const row = await window.RC.createStaff({
+            name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
+            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
+          });
+          createdId = row.id;
+          return row;
+        });
+        // Use the real Supabase-generated id when the sync succeeded, so the
+        // local record and the database row are the same entity from the
+        // start — falls back to a local-only id if the sync failed.
+        const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
           isTeamLead,homeAreaId:null,supervisorId,flowId,flowEnrolled:!!flowId,
           needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
-        saveState(); closeModal();
+        saveState();
+        showToast(sync.ok ? `${name} added — saved to database ✓` : `${name} added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
         const sugs=suggestAreasFor(newStaff.id);
         if(sugs.length>0){ if(isTeamLead) newStaff.homeAreaId=sugs[0].area.id;
           openModal({type:'placement-conflict',staffId:newStaff.id,targetAreaId:sugs[0].area.id,isNewStaffPrompt:true}); }
       }
     });
 
-    on('staff-delete-btn',()=>{
+    on('staff-delete-btn', async ()=>{
       const id=activeModal.editId;
+      const removedName = getStaffById(id)?.name || 'Staff';
+      const delBtn = document.getElementById('staff-delete-btn');
+      if(delBtn){ delBtn.disabled=true; delBtn.textContent='Removing…'; }
+      const sync = await syncCrudWrite(()=>window.RC.archiveStaff({staffId:id, staffName:removedName, actingAccountId:authState.account.id}));
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
-      saveState(); showToast('Staff removed','rust'); closeModal();
+      saveState();
+      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      closeModal();
     });
   }
 
@@ -13165,7 +13561,10 @@ function attachHandlers(){
     }));
     // Mark someone back in
     document.querySelectorAll('[data-mark-in]').forEach(el=>el.addEventListener('click', ()=>{
-      delete state.callouts[el.dataset.markIn];
+      const _id = el.dataset.markIn;
+      const _person = getStaffById(_id);
+      delete state.callouts[_id];
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
       saveState();
       const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
       if(outIds.length===0){ closeModal(); return; }
@@ -13258,10 +13657,13 @@ function attachHandlers(){
   // --- mark callout modal ---
   if(activeModal.type==='mark-callout'){
     document.querySelectorAll('[data-do-callout]').forEach(el=>el.addEventListener('click', ()=>{
-      state.callouts[el.dataset.doCallout] = true;
+      const _id = el.dataset.doCallout;
+      const _person = getStaffById(_id);
+      state.callouts[_id] = true;
+      syncBoardWrite(()=>window.RC.setCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
       saveState();
       closeModal();
-      showToast(getStaffById(el.dataset.doCallout).name + ' marked out', 'rust');
+      showToast(_person.name + ' marked out', 'rust');
       setTimeout(()=>openModal({type:'callout-dash'}), 50);
     }));
   }
@@ -13414,6 +13816,7 @@ function attachHandlers(){
     }));
 
     // coverage assignment dropdown
+    // NOTE: not synced to Supabase yet — see NOTE on the .to-sug-card handler above.
     document.querySelectorAll('.to-assign-cov').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
@@ -13507,30 +13910,56 @@ function attachHandlers(){
       document.querySelectorAll('.swatch-pick').forEach(s=>s.classList.remove('selected'));
       el.classList.add('selected');
     }));
-    on('area-save-btn', ()=>{
+    on('area-save-btn', async ()=>{
       const name = document.getElementById('area-name-input').value.trim();
       const dept = document.getElementById('area-dept-input').value.trim() || 'Other';
       const capacity = parseInt(document.getElementById('area-capacity-input').value,10) || 4;
       const color = document.getElementById('area-color-input').value;
       const fixed = !!(document.getElementById('area-fixed-input')?.checked);
       if(!name){ showToast('Enter an area name', 'rust'); return; }
+
+      const saveBtn = document.getElementById('area-save-btn');
+      if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
+
       if(activeModal.editId){
-        const a = getAreaById(activeModal.editId);
+        const areaId = activeModal.editId;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = await window.RC.ensureDepartment(dept);
+          return window.RC.updateArea({areaId, name, color, capacity, departmentId, actingAccountId:authState.account.id});
+        });
+        const a = getAreaById(areaId);
         a.name=name; a.capacity=capacity; a.color=color; a.department=dept; a.fixed=fixed;
+        if(!state.departments) state.departments = [];
+        if(!state.departments.includes(dept)) state.departments.push(dept);
+        saveState();
+        showToast(sync.ok ? 'Saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       } else {
-        state.areas.push({id:uid('area'), name, capacity, color, department:dept, fixed});
+        let createdId = null;
+        const sync = await syncCrudWrite(async ()=>{
+          const departmentId = await window.RC.ensureDepartment(dept);
+          const row = await window.RC.createArea({name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          createdId = row.id;
+          return row;
+        });
+        state.areas.push({id: sync.ok ? createdId : uid('area'), name, capacity, color, department:dept, fixed});
+        if(!state.departments) state.departments = [];
+        if(!state.departments.includes(dept)) state.departments.push(dept);
+        saveState();
+        showToast(sync.ok ? `"${name}" added — saved to database ✓` : `"${name}" added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        closeModal();
       }
-      if(!state.departments) state.departments = [];
-      if(!state.departments.includes(dept)) state.departments.push(dept);
-      saveState();
-      closeModal();
     });
-    on('area-delete-btn', ()=>{
+    on('area-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const removedName = getAreaById(id)?.name || 'Area';
+      const delBtn = document.getElementById('area-delete-btn');
+      if(delBtn){ delBtn.disabled=true; delBtn.textContent='Deleting…'; }
+      const sync = await syncCrudWrite(()=>window.RC.deleteArea({areaId:id, areaName:removedName, actingAccountId:authState.account.id}));
       state.areas = state.areas.filter(a=>a.id!==id);
       Object.keys(state.assignments).forEach(sid=>{ if(state.assignments[sid]===id) state.assignments[sid]=null; });
       saveState();
-      showToast('Area deleted', 'rust');
+      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, 'rust');
       closeModal();
     });
   }
@@ -13967,6 +14396,9 @@ function attachHandlers(){
         endDate: todayLabel(),
         weeks: Number(state.rotationWeeks)||2,
       });
+      // NOTE: Rotate Now's assignment changes aren't synced to Supabase yet
+      // — that's Step 4 (PHASE2_ROADMAP.md), which snapshots into
+      // rotation_periods rather than reusing the plain move sync from Step 3.
       const suggestions = computeFlowAdvancement();
       let advCount=0, compCount=0, blockedCount=0;
       suggestions.forEach(sug=>{
@@ -14231,14 +14663,16 @@ function isUnderStaffed(areaId){
 function doSwap(idA, idB){
   const areaA = state.assignments[idA];
   const areaB = state.assignments[idB];
+  const nameA = getStaffById(idA)?.name||'?';
+  const nameB = getStaffById(idB)?.name||'?';
   state.assignments[idA] = areaB;
   state.assignments[idB] = areaA;
   logDailyEvent('swap', idA, areaA, areaB, `Swapped with ${getStaffById(idB)?.name||'?'}`);
   logDailyEvent('swap', idB, areaB, areaA, `Swapped with ${getStaffById(idA)?.name||'?'}`);
   swapMode = null;
-  saveState(); render();
-  const nameA = getStaffById(idA)?.name||'?';
-  const nameB = getStaffById(idB)?.name||'?';
+  saveState();
+  syncBoardWrite(()=>window.RC.swapStaff({idA, idB, areaA, areaB, actingAccountId:authState.account.id, nameA, nameB}), 'swap');
+  render();
   showToast(`Swapped ${nameA} ↔ ${nameB}`, 'teal');
 }
 
@@ -14268,6 +14702,11 @@ function logCallout(staffId, reason=''){
 
 
 // ── Coverage helpers ──
+// NOTE: coverage/time-off assignment moves are NOT synced to Supabase yet
+// (Step 3 covers direct move/swap/callout only) — `state.coverage` and
+// `state.timeOff` are still fully local, and syncing these would need that
+// feature migrated first so the ids involved are consistent. See
+// PHASE2_ROADMAP.md.
 function assignCoverage(staffId, coverAreaId){
   const returnTo = state.assignments[staffId];
   state.coverage[staffId] = {returnToAreaId: returnTo, date: todayLabel()};
@@ -14401,8 +14840,105 @@ function on(id, fn){
   if(el) el.addEventListener('click', fn);
 }
 
+// ============ BOARD DATA FROM SUPABASE (Phase 2, Step 2) ============
+// Maps the Supabase tables' snake_case/relational shape onto the app's
+// existing in-memory field names, so the rest of the app (which was written
+// against the localStorage shape) doesn't need to change.
+// NOTE: state.blocks/history/timeOff/etc. are still local-only (Step 3+),
+// so ids referenced there may not line up with these Supabase-sourced
+// staff/area ids until the rest of the migration lands — expected during a
+// one-slice-at-a-time migration, not a bug to chase now.
+function mapSupabaseBoard(board){
+  const deptById = {};
+  (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
+
+  const areas = (board.areas||[]).map(a=>({
+    id: a.id,
+    name: a.name,
+    color: a.color,
+    capacity: a.capacity,
+    department: deptById[a.department_id] || '',
+    fixed: false,
+  }));
+
+  const staff = (board.staff||[]).map(s=>({
+    id: s.id,
+    name: s.name,
+    tags: s.tags || '',
+    active: s.active !== false,
+    isTeamLead: !!s.is_team_lead,
+    homeAreaId: s.home_area_id || null,
+    supervisorId: s.supervisor_id || null,
+    shiftHours: s.shift_hours_label || '',
+    breakTimes: s.break_times_label || '',
+    department: deptById[s.department_id] || '',
+    flowId: s.flow_id || null,
+    flowEnrolled: !!s.flow_enrolled,
+    needsAccommodations: !!s.needs_accommodations,
+    isSubcontractor: !!s.is_subcontractor,
+    tdisNumber: s.tdis_number || '',
+    counterCert: false,
+    languageCerts: [],
+  }));
+
+  const assignments = {};
+  (board.assignments||[]).forEach(row=>{
+    assignments[row.staff_id] = row.area_id || null;
+  });
+
+  const callouts = {};
+  (board.callouts||[]).forEach(row=>{
+    callouts[row.staff_id] = true;
+  });
+
+  return { areas, staff, assignments, callouts };
+}
+
+// Runs the existing localStorage/seed boot path (for everything Step 3+
+// still owns), then — if a real Supabase board load succeeds — overwrites
+// state.areas/state.staff/state.assignments/state.callouts with the live
+// Supabase data. Callouts written via setCallout()/clearCallout() land in
+// the real `callouts` table (Step 3), so this read-back is what makes a
+// mark-out actually survive a page refresh — without it the write would
+// silently persist to the database while the UI kept showing whatever
+// loadState() produced locally.
+async function bootApp(){
+  await loadState(); // sets state.loaded=true, calls render() itself
+
+  try{
+    if(window.RC && typeof window.RC.loadBoard==='function'){
+      const board = await window.RC.loadBoard();
+      const mapped = mapSupabaseBoard(board);
+      state.areas = mapped.areas;
+      state.staff = mapped.staff;
+      state.assignments = mapped.assignments;
+      state.callouts = mapped.callouts;
+      render();
+    }
+  }catch(e){
+    console.warn('Could not load board data from Supabase — showing local data instead.', e && e.message);
+  }
+}
+
 // ============ INIT ============
-loadState();
+(async function initAuth(){
+  await waitForRC();
+  try{
+    if(window.RC && typeof window.RC.getCurrentAccount==='function'){
+      const account = await window.RC.getCurrentAccount();
+      if(account){
+        authState.account = account;
+        authState.status = 'signed-in';
+        await bootApp();
+        return;
+      }
+    }
+  }catch(e){
+    console.warn('Session check failed:', e && e.message);
+  }
+  authState.status = 'signed-out';
+  render();
+})();
 </script>
 </body>
 </html>
