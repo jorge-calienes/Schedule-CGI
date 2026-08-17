@@ -14,13 +14,17 @@
 //   NEXT_PUBLIC_SUPABASE_ANON_KEY / VITE_SUPABASE_ANON_KEY / etc.
 
 // Pinned to an exact version (matching the server-side dependency in
-// package.json) rather than floating on `@2` — a "The string did not match
-// the expected pattern" error surfaced on iOS Safari during sign-in, which
-// is Safari's own wording for a failed URL() parse inside the library
-// itself, not anything this app's code throws. Floating on `@2` means every
-// page load could silently pick up a newer patch release; pinning makes
-// behavior reproducible and rules out an upstream regression as the cause.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+// package.json) rather than floating on `@2`, so behavior is reproducible.
+//
+// Served from jsDelivr, not esm.sh: esm.sh's browser bundle injects a
+// CommonJS-interop `require` shim that tricks @supabase/realtime-js's
+// environment detection into thinking it's running under Node.js instead
+// of a browser — it then goes looking for Node's native WebSocket support
+// (Node 22+) and throws "Node.js 20 detected without native WebSocket
+// support..." the moment auth.setSession() touches the realtime subsystem,
+// even though the browser has WebSocket natively. jsDelivr's `+esm` build
+// doesn't have that shim.
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/+esm';
 
 const SUPABASE_URL = 'https://glnbvbgvgijmpeyagnge.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_EfRzoLu4cNiCodR85M_o9g_6syxQeu8';
