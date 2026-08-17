@@ -9452,6 +9452,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-manage-flows"><span class="nav-item-icon">🔀</span>Rotation Flows</button>
       <button class="nav-item" id="nav-history"><span class="nav-item-icon">📜</span>History</button>
+      ${authState.account?.role==='team_lead' ? `<button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>` : ''}
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Board</div>
       <button class="nav-item" id="nav-mark-callout"><span class="nav-item-icon">⚠️</span>Mark someone out</button>
@@ -10234,6 +10235,8 @@ function renderModal(){
   else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
+  else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
+  else if(m.type==='eval-form') inner = renderEvalFormModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -10639,7 +10642,7 @@ function renderStaffManagerModal(m){
       ${tab!=='stats'
         ?`<button class="btn btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
           ${editing?'<button class="btn btn-danger btn-sm" id="staff-delete-btn">Remove</button>':''}`
-        :`${editing?'<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>':''}`}
+        :`${editing?'<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="btn btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`}
     </div>
     ${tab==='profile'&&!editing?`
     <div style="border-top:1px solid var(--line);padding:16px;">
@@ -11053,6 +11056,97 @@ function renderMarkCalloutModal(m){
             </div>
           </div>`).join('')}
       </div>
+    </div>
+  </div>`;
+}
+
+// --- Evaluations: team-lead "my queue" ---
+function renderEvalQueueModal(m){
+  const items = m.items||[];
+  const pending = items.filter(i=>!i.existing_evaluation_id);
+  const done = items.filter(i=>i.existing_evaluation_id);
+  return `
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':pending.length+' need feedback this period')}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading your queue…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load your queue: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted">Nobody is currently assigned to your area.</div>`:''}
+      ${!m.loading && pending.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback</div>
+        <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
+          ${pending.map(i=>`
+            <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}">
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && done.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Already submitted</div>
+        <div class="option-list" style="max-height:200px;overflow-y:auto;">
+          ${done.map(i=>`
+            <div class="option-card" style="opacity:.65;">
+              <div class="oc-left">
+                <span class="oc-name">✓ ${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Evaluations: score form (1-5 productivity/performance/reliability + recommendation) ---
+function renderEvalFormModal(m){
+  const s = getStaffById(m.staffId);
+  const area = m.areaId ? getAreaById(m.areaId) : null;
+  const productivity = m.productivity||0;
+  const performance = m.performance||0;
+  const reliability = m.reliability||0;
+  const recOptions = [
+    {value:'stay', label:'Stay in current role'},
+    {value:'advance', label:'Ready to advance'},
+    {value:'training', label:'Needs more training'},
+  ];
+  const canSubmit = productivity>0 && performance>0 && reliability>0 && !m.saving;
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2><p>${area?escapeHtml(area.name):'No area'}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Productivity</label>
+        <div class="star-row">${renderStarRating(productivity,'eval-prod')}</div>
+      </div>
+      <div class="field">
+        <label>Performance</label>
+        <div class="star-row">${renderStarRating(performance,'eval-perf')}</div>
+      </div>
+      <div class="field">
+        <label>Reliability</label>
+        <div class="star-row">${renderStarRating(reliability,'eval-rel')}</div>
+      </div>
+      <div class="field">
+        <label>Recommendation</label>
+        <select id="eval-recommendation-input">
+          ${recOptions.map(o=>`<option value="${o.value}" ${(m.recommendation||'stay')===o.value?'selected':''}>${o.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Note (optional)</label>
+        <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="eval-form-cancel">Cancel</button>
+      <button class="btn btn-primary" id="eval-form-submit" ${canSubmit?'':'disabled'}>${m.saving?'Saving…':'Submit evaluation'}</button>
     </div>
   </div>`;
 }
@@ -11713,6 +11807,16 @@ async function syncCrudWrite(fn){
   }catch(e){
     console.warn('CRUD sync failed:', e && e.message);
     return {ok:false, error:e};
+  }
+}
+
+async function openEvalQueue(){
+  openModal({type:'eval-queue', loading:true, items:[]});
+  try{
+    const items = await window.RC.myEvaluationQueue();
+    openModal({type:'eval-queue', loading:false, items: items||[]});
+  }catch(e){
+    openModal({type:'eval-queue', loading:false, items:[], error: (e && e.message) || 'Could not load your queue.'});
   }
 }
 
@@ -13157,6 +13261,7 @@ function attachHandlers(){
   on('nav-manage-blocks',       ()=>{ closeNav(); openModal({type:'blocks-manager'}); });
   on('nav-manage-flows',        ()=>{ closeNav(); openModal({type:'flow-manager'}); });
   on('nav-history',             ()=>{ closeNav(); openModal({type:'history'}); });
+  on('nav-my-evaluations',      ()=>{ closeNav(); openEvalQueue(); });
   on('nav-mark-callout',        ()=>{ closeNav(); openModal({type:'mark-callout'}); });
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
@@ -13414,6 +13519,14 @@ function attachHandlers(){
 
     // ── stats → edit ──
     on('modal-edit-from-stats',()=>openModal({...activeModal, staffTab:'profile'}));
+
+    // ── stats → evaluate (manager entry point; periodId null = current in-progress period) ──
+    on('staff-evaluate-btn', ()=>{
+      const areaId = state.assignments[editing.id] || null;
+      openModal({type:'eval-form', staffId:editing.id, areaId, periodId:null,
+        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        _returnModal:{...activeModal}});
+    });
 
     // ── manage time off (rotation tab) ──
     on('btn-open-time-off', ()=>{
@@ -14519,6 +14632,61 @@ function attachHandlers(){
 
     // skip
     on('feedback-skip', ()=>openModal({type:'rotate-preview'}));
+  }
+
+  // --- evaluations: queue ---
+  if(activeModal.type==='eval-queue'){
+    document.querySelectorAll('[data-open-eval-form]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'eval-form',
+        staffId: el.dataset.openEvalForm,
+        areaId: el.dataset.evalArea || null,
+        periodId: el.dataset.evalPeriod || null,
+        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        _returnModal:{type:'eval-queue'}});
+    }));
+  }
+
+  // --- evaluations: score form ---
+  if(activeModal.type==='eval-form'){
+    const m = activeModal;
+    document.querySelectorAll('.star-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+      const val = parseInt(btn.dataset.star,10);
+      const prefix = btn.dataset.prefix;
+      if(prefix==='eval-prod') openModal({...m, productivity:val});
+      else if(prefix==='eval-perf') openModal({...m, performance:val});
+      else if(prefix==='eval-rel') openModal({...m, reliability:val});
+    }));
+    on('eval-form-cancel', ()=>{
+      if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
+      else if(m._returnModal) openModal(m._returnModal);
+      else closeModal();
+    });
+    on('eval-form-submit', async ()=>{
+      if(!(m.productivity>0 && m.performance>0 && m.reliability>0) || m.saving) return;
+      const note = document.getElementById('eval-note-input')?.value||'';
+      const recommendation = document.getElementById('eval-recommendation-input')?.value||'stay';
+      openModal({...m, saving:true});
+      const sync = await syncCrudWrite(()=>window.RC.submitEvaluation({
+        staffId: m.staffId,
+        periodId: m.periodId||null,
+        areaId: m.areaId||null,
+        evaluatorId: authState.account.id,
+        productivity: m.productivity,
+        performance: m.performance,
+        reliability: m.reliability,
+        note,
+        recommendation,
+      }));
+      if(sync.ok){
+        showToast('Evaluation saved to database ✓', 'teal');
+        if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
+        else if(m._returnModal) openModal(m._returnModal);
+        else closeModal();
+      } else {
+        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+        openModal({...m, saving:false, note});
+      }
+    });
   }
 
   // --- flow manager modal ---

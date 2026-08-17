@@ -19,7 +19,7 @@ here should be built in one giant rewrite.
 | Move/swap/callout writes + audit_log (Step 3a) | **Done** |
 | Staff/area CRUD writes + audit_log (Step 3b) | **Done** |
 | Rotate Now / history (Step 4) | **Done** |
-| Evaluation form, team-lead queue | Not built (client functions already exist, unused) |
+| Evaluation form, team-lead queue (Step 5) | **Done** |
 | Audit log screen | Not built (client function already exists, unused) |
 | Manage accounts (grant/request) | Not built (API routes exist, unused) |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
@@ -71,21 +71,26 @@ pattern as board data in Step 2.
 **Still local-only, unchanged:** `endAllCoverage()`'s bulk reassignment —
 still coupled to the not-yet-migrated `state.coverage`/`state.timeOff`.
 
-### 4. Step 5 — Evaluation form + "My evaluations" queue ⭐
-The actual new Phase 2 feature. No localStorage equivalent exists, so this
-can go straight to Supabase with no parallel-track risk — genuinely the
-lowest-risk substantial feature to build, and doesn't need to wait on Step
-3/4 at all if we want to pull it forward.
+### ~~4. Step 5 — Evaluation form + "My evaluations" queue~~ ✅ Done
+A "My evaluations" nav item (visible only when
+`authState.account.role === 'team_lead'`) opens a queue modal backed by
+`myEvaluationQueue()`, split into "needs feedback" vs "already submitted"
+(`existing_evaluation_id` from the view). Tapping a pending row opens the
+evaluation form — 1–5 star ratings for productivity/performance/reliability
+(reusing the existing `renderStarRating()`/`.star-row` pattern from the
+flow-advancement feedback modal) plus a recommendation
+(stay/advance/training) and an optional note — which awaits
+`submitEvaluation()` via the same `syncCrudWrite()` confirm-on-save pattern
+as Step 3b, then returns to a freshly reloaded queue.
 
-`submitEvaluation()` and `myEvaluationQueue()` already exist in
-`lib/supabaseClient.js` and are already on `window.RC`. New UI needed:
-- A "My evaluations" nav item visible only when
-  `authState.account.role === 'team_lead'`, listing `myEvaluationQueue()`.
-- The evaluation form itself (mockup screen 3), scored 1–5 on
-  productivity/performance/reliability + a recommendation.
-- Supervisors/admins need a *different* entry point — `eval_insert`'s RLS
-  lets managers evaluate anyone, not just a queue, so this probably hangs
-  off the Roster/staff profile rather than a queue view.
+Supervisors/admins get a separate entry point since `eval_insert`'s RLS
+lets managers evaluate anyone, not just a queue: an "📝 Evaluate" button on
+the Stats tab of the staff-manager modal, which returns to that same tab on
+submit. Managers always pass `periodId: null` (the in-progress period has
+no `rotation_periods` row until Rotate Now closes it — the schema's unique
+index already coalesces `period_id` for this), while the team-lead queue
+passes whatever `current_period_id` the view resolves (also nullable before
+the first Rotate Now).
 
 ### 5. Step 6 — Audit log screen
 `fetchAuditLog()` already exists and is bridged. Purely additive, read-only,
@@ -126,7 +131,8 @@ switcher like the mockup's dev toggle. Applies to every screen above.
 
 ## Suggested next step
 
-Steps 3a, 3b, and 4 are done — the board, staff/area edits, and Rotate Now
-are all fully live against Supabase. Step 5 (evaluation form) is next in
-line, and also the lowest-risk substantial feature left: no localStorage
-equivalent to migrate away from, and the client functions already exist.
+Steps 3a, 3b, 4, and 5 are done — the board, staff/area edits, Rotate Now,
+and evaluations are all fully live against Supabase. Step 6 (audit log
+screen) is next in line: `fetchAuditLog()` already exists and is bridged,
+it's purely additive/read-only, and there's now real activity (moves,
+CRUD, rotations, evaluations) for it to show.
