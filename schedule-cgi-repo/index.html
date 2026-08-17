@@ -11647,6 +11647,18 @@ function renderRotatePreviewModal(m){
 
 // ============ PLACEMENT LOGIC ============
 
+// Fires a Supabase write in the background for a board action that's already
+// been applied to local state + rendered (Step 3: board writes go to
+// Supabase, but never block the UI on network latency). On failure the local
+// change stands — just tell the user it didn't sync.
+function syncBoardWrite(fn, label){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  Promise.resolve().then(fn).catch(e=>{
+    console.warn(label+' sync failed:', e && e.message);
+    showToast(`Saved here, but didn't sync to the server (${label})`, 'rust');
+  });
+}
+
 // attempts to place staffId into areaId (or null for pool). If conflicts exist, opens modal instead of placing.
 function attemptPlace(staffId, areaId, force){
   // Counter Acceptance cert check — hard block regardless of force
@@ -11685,8 +11697,14 @@ function attemptPlace(staffId, areaId, force){
   }
   const staffMoved = getStaffById(staffId);
   const areaMoved  = areaId ? getAreaById(areaId) : null;
+  const fromAreaId = state.assignments[staffId];
+  const fromArea   = fromAreaId ? getAreaById(fromAreaId) : null;
   state.assignments[staffId] = areaId;
   saveState();
+  syncBoardWrite(()=>window.RC.moveStaff({
+    staffId, areaId, actingAccountId: authState.account.id,
+    staffName: staffMoved?.name, fromAreaName: fromArea?.name, toAreaName: areaMoved?.name,
+  }), 'move');
   if(staffMoved) showToast(areaMoved ? `${staffMoved.name.split(' ')[0]} moved to ${areaMoved.name}` : `${staffMoved.name.split(' ')[0]} unassigned`, 'teal');
   render();
 }
@@ -11959,6 +11977,7 @@ function attachHandlers(){
       }
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
       state.callouts[sid] = true;
@@ -11974,6 +11993,7 @@ function attachHandlers(){
           state.teamLeadCoverage[_aId]={outLeadId:sid,date:todayLabel(),coverLeadId:_alt[0]?.id||null,status:'pending'};
         }
       }
+      syncBoardWrite(()=>window.RC.setCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_stl?.name}), 'callout');
       showToast((getStaffById(sid)?.name?.split(' ')[0]||'?')+' called out','rust');
     }
     chipMenuOpen = null;
@@ -12006,13 +12026,28 @@ function attachHandlers(){
     e.stopPropagation();
     chipMenuOpen = null;
     const id = b.dataset.id;
-    if(state.callouts[id]) delete state.callouts[id]; else state.callouts[id] = true;
+    const _person = getStaffById(id);
+    if(state.callouts[id]){
+      delete state.callouts[id];
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+    } else {
+      state.callouts[id] = true;
+      syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+    }
     saveState(); render();
   }));
   document.querySelectorAll('.act-remove,.cia-btn.act-remove').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
     chipMenuOpen = null;
-    state.assignments[b.dataset.id] = null;
+    const id = b.dataset.id;
+    const _removed = getStaffById(id);
+    const _fromAreaId = state.assignments[id];
+    const _fromArea = _fromAreaId ? getAreaById(_fromAreaId) : null;
+    state.assignments[id] = null;
+    syncBoardWrite(()=>window.RC.moveStaff({
+      staffId:id, areaId:null, actingAccountId:authState.account.id,
+      staffName:_removed?.name, fromAreaName:_fromArea?.name, toAreaName:null,
+    }), 'move');
     saveState(); render();
   }));
   document.querySelectorAll('.act-edit,.cia-btn.act-edit').forEach(b=>b.addEventListener('click', e=>{
@@ -12985,6 +13020,9 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
+    // NOTE: time-off coverage moves aren't synced to Supabase yet — Step 3
+    // covers direct move/swap/callout only; time off is still fully local
+    // (PHASE2_ROADMAP.md).
     document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
@@ -13191,7 +13229,16 @@ function attachHandlers(){
     if(!req) return;
     req.status='approved';
     // Move them to requested area
-    if(req.toArea){ state.assignments[s.id]=req.toArea; logDailyEvent('move',s.id,req.fromArea,req.toArea,'Position request approved'); }
+    if(req.toArea){
+      const _fromArea = req.fromArea ? getAreaById(req.fromArea) : null;
+      const _toArea = getAreaById(req.toArea);
+      state.assignments[s.id]=req.toArea;
+      logDailyEvent('move',s.id,req.fromArea,req.toArea,'Position request approved');
+      syncBoardWrite(()=>window.RC.moveStaff({
+        staffId:s.id, areaId:req.toArea, actingAccountId:authState.account.id,
+        staffName:s.name, fromAreaName:_fromArea?.name, toAreaName:_toArea?.name,
+      }), 'move');
+    }
     saveState(); openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
     showToast(`${s.name.split(' ')[0]}'s request approved`,'teal');
   }));
@@ -13386,6 +13433,8 @@ function attachHandlers(){
       }
     });
 
+    // NOTE: staff/area CRUD isn't synced to Supabase yet — that's Step 3b
+    // (PHASE2_ROADMAP.md), separate from the move/swap/callout sync in Step 3.
     on('staff-delete-btn',()=>{
       const id=activeModal.editId;
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
@@ -13422,7 +13471,10 @@ function attachHandlers(){
     }));
     // Mark someone back in
     document.querySelectorAll('[data-mark-in]').forEach(el=>el.addEventListener('click', ()=>{
-      delete state.callouts[el.dataset.markIn];
+      const _id = el.dataset.markIn;
+      const _person = getStaffById(_id);
+      delete state.callouts[_id];
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
       saveState();
       const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
       if(outIds.length===0){ closeModal(); return; }
@@ -13515,10 +13567,13 @@ function attachHandlers(){
   // --- mark callout modal ---
   if(activeModal.type==='mark-callout'){
     document.querySelectorAll('[data-do-callout]').forEach(el=>el.addEventListener('click', ()=>{
-      state.callouts[el.dataset.doCallout] = true;
+      const _id = el.dataset.doCallout;
+      const _person = getStaffById(_id);
+      state.callouts[_id] = true;
+      syncBoardWrite(()=>window.RC.setCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
       saveState();
       closeModal();
-      showToast(getStaffById(el.dataset.doCallout).name + ' marked out', 'rust');
+      showToast(_person.name + ' marked out', 'rust');
       setTimeout(()=>openModal({type:'callout-dash'}), 50);
     }));
   }
@@ -13671,6 +13726,7 @@ function attachHandlers(){
     }));
 
     // coverage assignment dropdown
+    // NOTE: not synced to Supabase yet — see NOTE on the .to-sug-card handler above.
     document.querySelectorAll('.to-assign-cov').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
@@ -13782,6 +13838,7 @@ function attachHandlers(){
       saveState();
       closeModal();
     });
+    // NOTE: not synced to Supabase yet — Step 3b (PHASE2_ROADMAP.md).
     on('area-delete-btn', ()=>{
       const id = activeModal.editId;
       state.areas = state.areas.filter(a=>a.id!==id);
@@ -14224,6 +14281,9 @@ function attachHandlers(){
         endDate: todayLabel(),
         weeks: Number(state.rotationWeeks)||2,
       });
+      // NOTE: Rotate Now's assignment changes aren't synced to Supabase yet
+      // — that's Step 4 (PHASE2_ROADMAP.md), which snapshots into
+      // rotation_periods rather than reusing the plain move sync from Step 3.
       const suggestions = computeFlowAdvancement();
       let advCount=0, compCount=0, blockedCount=0;
       suggestions.forEach(sug=>{
@@ -14488,14 +14548,16 @@ function isUnderStaffed(areaId){
 function doSwap(idA, idB){
   const areaA = state.assignments[idA];
   const areaB = state.assignments[idB];
+  const nameA = getStaffById(idA)?.name||'?';
+  const nameB = getStaffById(idB)?.name||'?';
   state.assignments[idA] = areaB;
   state.assignments[idB] = areaA;
   logDailyEvent('swap', idA, areaA, areaB, `Swapped with ${getStaffById(idB)?.name||'?'}`);
   logDailyEvent('swap', idB, areaB, areaA, `Swapped with ${getStaffById(idA)?.name||'?'}`);
   swapMode = null;
-  saveState(); render();
-  const nameA = getStaffById(idA)?.name||'?';
-  const nameB = getStaffById(idB)?.name||'?';
+  saveState();
+  syncBoardWrite(()=>window.RC.swapStaff({idA, idB, areaA, areaB, actingAccountId:authState.account.id, nameA, nameB}), 'swap');
+  render();
   showToast(`Swapped ${nameA} ↔ ${nameB}`, 'teal');
 }
 
@@ -14525,6 +14587,11 @@ function logCallout(staffId, reason=''){
 
 
 // ── Coverage helpers ──
+// NOTE: coverage/time-off assignment moves are NOT synced to Supabase yet
+// (Step 3 covers direct move/swap/callout only) — `state.coverage` and
+// `state.timeOff` are still fully local, and syncing these would need that
+// feature migrated first so the ids involved are consistent. See
+// PHASE2_ROADMAP.md.
 function assignCoverage(staffId, coverAreaId){
   const returnTo = state.assignments[staffId];
   state.coverage[staffId] = {returnToAreaId: returnTo, date: todayLabel()};

@@ -89,18 +89,69 @@ export async function loadBoard() {
   return { areas, staff, assignments, departments };
 }
 
-export async function moveStaff(staffId, areaId, actingAccountId) {
+export async function moveStaff({ staffId, areaId, actingAccountId, staffName, fromAreaName, toAreaName }) {
   const { error } = await supabase
     .from('assignments')
     .upsert({ staff_id: staffId, area_id: areaId, updated_by: actingAccountId, updated_at: new Date().toISOString() });
   if (error) throw error;
 
+  const who = staffName || staffId;
+  const description = toAreaName
+    ? (fromAreaName ? `moved ${who} from ${fromAreaName} to ${toAreaName}` : `moved ${who} to ${toAreaName}`)
+    : `unassigned ${who}`;
+
   await supabase.from('audit_log').insert({
     actor_id: actingAccountId,
     action: 'move',
-    description: `moved staff ${staffId} to area ${areaId}`,
+    description,
     staff_id: staffId,
-    metadata: { areaId },
+    metadata: { areaId, fromAreaName, toAreaName },
+  });
+}
+
+export async function swapStaff({ idA, idB, areaA, areaB, actingAccountId, nameA, nameB }) {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('assignments').upsert([
+    { staff_id: idA, area_id: areaB, updated_by: actingAccountId, updated_at: now },
+    { staff_id: idB, area_id: areaA, updated_by: actingAccountId, updated_at: now },
+  ]);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'swap',
+    description: `swapped ${nameA || idA} ↔ ${nameB || idB}`,
+    staff_id: idA,
+    metadata: { idA, idB, areaA, areaB },
+  });
+}
+
+export async function setCallout({ staffId, actingAccountId, staffName, reason }) {
+  const { error } = await supabase.from('callouts').upsert({
+    staff_id: staffId,
+    reason: reason || null,
+    marked_by: actingAccountId,
+    marked_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'callout',
+    description: `marked ${staffName || staffId} as out${reason ? ' — ' + reason : ''}`,
+    staff_id: staffId,
+  });
+}
+
+export async function clearCallout({ staffId, actingAccountId, staffName }) {
+  const { error } = await supabase.from('callouts').delete().eq('staff_id', staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'clear_callout',
+    description: `marked ${staffName || staffId} back in`,
+    staff_id: staffId,
   });
 }
 
@@ -153,6 +204,9 @@ window.RC = {
   getCurrentAccount,
   loadBoard,
   moveStaff,
+  swapStaff,
+  setCallout,
+  clearCallout,
   submitEvaluation,
   myEvaluationQueue,
   fetchAuditLog,
