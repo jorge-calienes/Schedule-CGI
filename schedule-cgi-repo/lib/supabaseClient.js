@@ -299,6 +299,86 @@ export async function deleteArea({ areaId, areaName, actingAccountId }) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Rotate Now (Step 4). Snapshots the CLOSING period's assignments into
+// rotation_periods + rotation_period_assignments, mirroring the local
+// state.history.push() the app already does. This is deliberate/infrequent
+// like staff & area CRUD, so it's awaited by the caller for a definitive
+// "did this persist?" answer rather than fired-and-forgotten.
+// ---------------------------------------------------------------------------
+
+export async function createRotationPeriod({ periodLabel, startDate, endDate, weeks, notes, actingAccountId, assignments }) {
+  const { data: period, error: periodErr } = await supabase
+    .from('rotation_periods')
+    .insert({
+      period_label: periodLabel,
+      start_date: startDate,
+      end_date: endDate,
+      weeks,
+      notes: notes || null,
+      started_by: actingAccountId,
+    })
+    .select()
+    .single();
+  if (periodErr) throw periodErr;
+
+  const rows = Object.entries(assignments || {}).map(([staffId, areaId]) => ({
+    period_id: period.id,
+    staff_id: staffId,
+    area_id: areaId || null,
+  }));
+  if (rows.length) {
+    const { error: rowsErr } = await supabase.from('rotation_period_assignments').insert(rows);
+    if (rowsErr) throw rowsErr;
+  }
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'rotate_period',
+    description: `started period "${periodLabel}" (${weeks}wk rotation)`,
+    metadata: { periodId: period.id, weeks },
+  });
+
+  return period;
+}
+
+// Reads rotation_periods + their assignment snapshots back into the shape
+// state.history already uses locally: [{period, assignments, startDate,
+// endDate, weeks}], oldest..newest.
+export async function fetchRotationHistory({ limit = 24 } = {}) {
+  const { data: periods, error: periodsErr } = await supabase
+    .from('rotation_periods')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (periodsErr) throw periodsErr;
+  if (!periods || !periods.length) return [];
+
+  const periodIds = periods.map((p) => p.id);
+  const { data: assignmentRows, error: assignErr } = await supabase
+    .from('rotation_period_assignments')
+    .select('period_id, staff_id, area_id')
+    .in('period_id', periodIds);
+  if (assignErr) throw assignErr;
+
+  const byPeriod = {};
+  (assignmentRows || []).forEach((row) => {
+    if (!byPeriod[row.period_id]) byPeriod[row.period_id] = {};
+    byPeriod[row.period_id][row.staff_id] = row.area_id;
+  });
+
+  return periods
+    .slice()
+    .reverse() // oldest..newest, matching state.history's existing order
+    .map((p) => ({
+      period: p.period_label,
+      assignments: byPeriod[p.id] || {},
+      startDate: p.start_date,
+      endDate: p.end_date,
+      weeks: p.weeks,
+    }));
+}
+
 export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation }) {
   const { error } = await supabase.from('evaluations').upsert({
     staff_id: staffId,
@@ -358,6 +438,8 @@ window.RC = {
   createArea,
   updateArea,
   deleteArea,
+  createRotationPeriod,
+  fetchRotationHistory,
   submitEvaluation,
   myEvaluationQueue,
   fetchAuditLog,

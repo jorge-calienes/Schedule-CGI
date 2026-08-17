@@ -18,7 +18,7 @@ here should be built in one giant rewrite.
 | Board data read (`state.areas`/`staff`/`assignments` ← `loadBoard()`) | **Done** — PR #1 |
 | Move/swap/callout writes + audit_log (Step 3a) | **Done** |
 | Staff/area CRUD writes + audit_log (Step 3b) | **Done** |
-| Rotate Now / history | Still localStorage only |
+| Rotate Now / history (Step 4) | **Done** |
 | Evaluation form, team-lead queue | Not built (client functions already exist, unused) |
 | Audit log screen | Not built (client function already exists, unused) |
 | Manage accounts (grant/request) | Not built (API routes exist, unused) |
@@ -57,11 +57,19 @@ blocked by a network hiccup. Department is a free-text field in the UI but
 a real FK in the schema — `ensureDepartment()` resolves-or-creates it by
 name on every staff/area save.
 
-### 3. Step 4 — Rotate Now → `rotation_periods` / `rotation_period_assignments`
-Depends on Step 3 (needs live `assignments` to snapshot). Insert a period +
-snapshot rows when "Rotate Now" runs. Recommend loading `state.history` back
-from Supabase the same way Step 2 did for board data, so the History view
-reads real data too.
+### ~~3. Step 4 — Rotate Now → `rotation_periods` / `rotation_period_assignments`~~ ✅ Done
+"Apply & start new period" now awaits `createRotationPeriod()` (same
+await-and-confirm pattern as Step 3b) before closing the modal — it inserts
+one `rotation_periods` row plus a `rotation_period_assignments` row per
+staff, snapshotting the *closing* period's assignments exactly as they
+stood before any flow-advancement moves run. Those advancement moves
+(people getting bumped to their next area) now also sync individually via
+the same fire-and-forget `moveStaff()` path as Step 3a. `state.history`
+loads back from Supabase on boot via `fetchRotationHistory()`, same
+pattern as board data in Step 2.
+
+**Still local-only, unchanged:** `endAllCoverage()`'s bulk reassignment —
+still coupled to the not-yet-migrated `state.coverage`/`state.timeOff`.
 
 ### 4. Step 5 — Evaluation form + "My evaluations" queue ⭐
 The actual new Phase 2 feature. No localStorage equivalent exists, so this
@@ -118,8 +126,7 @@ switcher like the mockup's dev toggle. Applies to every screen above.
 
 ## Suggested next step
 
-Steps 3a and 3b are done — the board and staff/area edits are now fully
-live against Supabase. Step 4 (Rotate Now) is next in line per the original
-plan, but Step 5 (evaluation form) remains the lower-risk option if you'd
-rather pull the headline new feature forward first, since it has no
-localStorage equivalent to migrate away from. Your call.
+Steps 3a, 3b, and 4 are done — the board, staff/area edits, and Rotate Now
+are all fully live against Supabase. Step 5 (evaluation form) is next in
+line, and also the lowest-risk substantial feature left: no localStorage
+equivalent to migrate away from, and the client functions already exist.
