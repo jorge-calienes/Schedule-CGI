@@ -7298,6 +7298,10 @@
     color:var(--rust);font-size:13px;font-weight:600;
     margin-bottom:10px;min-height:16px;
   }
+  .rc-signin-error-detail{
+    color:var(--ink-soft);font-size:11px;font-family:var(--mono,monospace);
+    margin:-6px 0 10px;word-break:break-word;
+  }
   .rc-keypad{
     display:grid;grid-template-columns:repeat(3,1fr);
     gap:10px;
@@ -8185,6 +8189,7 @@ let authState = {
   name: '',
   pin: '',
   error: '',
+  errorDetail: '', // muted technical detail shown under `error`, for diagnosing unexpected failures
   account: null, // {id, name, role, assigned_area_id}
 };
 
@@ -8218,6 +8223,7 @@ function renderSignInScreen(){
       </div>
 
       <div class="rc-signin-error">${authState.error?escapeHtml(authState.error):''}</div>
+      ${authState.errorDetail ? `<div class="rc-signin-error-detail">${escapeHtml(authState.errorDetail)}</div>` : ''}
 
       <div class="rc-keypad">
         ${['1','2','3'].map(digitBtn).join('')}
@@ -8240,6 +8246,7 @@ function signInPinDigit(d){
   if(authState.pin.length>=4) return;
   authState.pin += d;
   authState.error = '';
+  authState.errorDetail = '';
   render();
   if(authState.pin.length===4) attemptSignIn();
 }
@@ -8249,6 +8256,7 @@ function signInPinBackspace(){
   if(!authState.pin.length) return;
   authState.pin = authState.pin.slice(0,-1);
   authState.error = '';
+  authState.errorDetail = '';
   render();
 }
 
@@ -8274,15 +8282,17 @@ function friendlySignInError(e){
 async function attemptSignIn(){
   if(authState.status==='submitting') return;
   const name = authState.name.trim();
-  if(!name){ authState.error = 'Enter your name.'; render(); return; }
-  if(authState.pin.length!==4){ authState.error = 'Enter your 4-digit PIN.'; render(); return; }
+  if(!name){ authState.error = 'Enter your name.'; authState.errorDetail = ''; render(); return; }
+  if(authState.pin.length!==4){ authState.error = 'Enter your 4-digit PIN.'; authState.errorDetail = ''; render(); return; }
   if(!window.RC || typeof window.RC.signInWithPin!=='function'){
     authState.error = 'Sign-in is unavailable right now. Refresh and try again.';
+    authState.errorDetail = '';
     render();
     return;
   }
   authState.status = 'submitting';
   authState.error = '';
+  authState.errorDetail = '';
   render();
   try{
     const account = await window.RC.signInWithPin(name, authState.pin);
@@ -8290,12 +8300,17 @@ async function attemptSignIn(){
     authState.status = 'signed-in';
     authState.pin = '';
     authState.error = '';
+    authState.errorDetail = '';
     await bootApp();
   }catch(e){
     console.error('Sign-in failed:', e);
     authState.status = 'signed-out';
     authState.pin = '';
     authState.error = friendlySignInError(e);
+    // Small, muted technical detail shown under the friendly message —
+    // not for the average user, just so a screenshot is enough to diagnose
+    // an unexpected failure without needing browser devtools access.
+    authState.errorDetail = e ? `${e.name || 'Error'}: ${e.message || String(e)}` : '';
     render();
   }
 }
@@ -8308,6 +8323,7 @@ function attachSignInHandlers(){
     nameInput.addEventListener('input', e=>{
       authState.name = e.target.value;
       authState.error = '';
+      authState.errorDetail = '';
       const pos = nameInput.selectionStart;
       render();
       const el = document.getElementById('rc-signin-name');
