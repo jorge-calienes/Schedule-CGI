@@ -14384,21 +14384,35 @@ function attachHandlers(){
       openModal({...activeModal, type:'rotate-preview', startDate: val, weeks: weeksVal});
     });
 
-    on('confirm-rotate-preview-btn', ()=>{
+    on('confirm-rotate-preview-btn', async ()=>{
       const startDate = document.getElementById('new-period-input').value.trim() || nextPeriodLabel();
       const weeks = Number(document.getElementById('rotation-weeks-input')?.value) || (Number(state.rotationWeeks)||2);
       const newLabel = startDate;
       const prevStart = state.rotationStartDate || state.currentPeriod;
+      const notesVal = document.getElementById('rotation-notes-input')?.value?.trim();
+      // Snapshot the CLOSING period exactly as it stands right now — this is
+      // what gets sent to Supabase (rotation_periods + a
+      // rotation_period_assignments row per staff) AND pushed into local
+      // state.history, before any of the advancement moves below change it.
+      const closingLabel = state.currentPeriod;
+      const closingWeeks = Number(state.rotationWeeks)||2;
+      const closingSnapshot = Object.assign({}, state.assignments);
+
+      const btn = document.getElementById('confirm-rotate-preview-btn');
+      if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+
+      const sync = await syncCrudWrite(()=>window.RC.createRotationPeriod({
+        periodLabel: closingLabel, startDate: prevStart, endDate: todayLabel(), weeks: closingWeeks,
+        notes: notesVal || null, actingAccountId: authState.account.id, assignments: closingSnapshot,
+      }));
+
       state.history.push({
-        period: state.currentPeriod,
-        assignments: Object.assign({}, state.assignments),
+        period: closingLabel,
+        assignments: closingSnapshot,
         startDate: prevStart,
         endDate: todayLabel(),
-        weeks: Number(state.rotationWeeks)||2,
+        weeks: closingWeeks,
       });
-      // NOTE: Rotate Now's assignment changes aren't synced to Supabase yet
-      // — that's Step 4 (PHASE2_ROADMAP.md), which snapshots into
-      // rotation_periods rather than reusing the plain move sync from Step 3.
       const suggestions = computeFlowAdvancement();
       let advCount=0, compCount=0, blockedCount=0;
       suggestions.forEach(sug=>{
@@ -14419,7 +14433,12 @@ function attachHandlers(){
           const area = getAreaById(sug.toAreaId);
           const already = staffInArea(sug.toAreaId, sug.staff.id).length;
           if(!area || already < area.capacity){
+            const fromArea = getAreaById(sug.fromAreaId);
             state.assignments[sug.staff.id] = sug.toAreaId;
+            syncBoardWrite(()=>window.RC.moveStaff({
+              staffId: sug.staff.id, areaId: sug.toAreaId, actingAccountId: authState.account.id,
+              staffName: sug.staff.name, fromAreaName: fromArea?.name, toAreaName: area.name,
+            }), 'move');
             advCount++;
           }
         }
@@ -14430,7 +14449,6 @@ function attachHandlers(){
       });
       // clear pending feedback
       // save supervisor notes for this period
-      const notesVal = document.getElementById('rotation-notes-input')?.value?.trim();
       if(notesVal) state.rotationNotes[state.currentPeriod] = notesVal;
       endAllCoverage(); // return all coverage staff before snapshotting
       state.pendingFeedback = [];
@@ -14441,7 +14459,8 @@ function attachHandlers(){
       applyScheduledTimeOff(); // auto-callout anyone with scheduled time off today
       saveState();
       closeModal();
-      showToast(`Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`, 'teal');
+      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`;
+      showToast(sync.ok ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
     });
   }
 
@@ -14917,6 +14936,16 @@ async function bootApp(){
     }
   }catch(e){
     console.warn('Could not load board data from Supabase — showing local data instead.', e && e.message);
+  }
+
+  // Step 4: rotation history — same pattern as the board load above.
+  try{
+    if(window.RC && typeof window.RC.fetchRotationHistory==='function'){
+      state.history = await window.RC.fetchRotationHistory();
+      render();
+    }
+  }catch(e){
+    console.warn('Could not load rotation history from Supabase — showing local data instead.', e && e.message);
   }
 }
 
