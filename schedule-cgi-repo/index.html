@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="module" src="/lib/supabaseClient.js"></script>
 <style>
   :root{
     /* ============ MATERIAL DESIGN 3 TOKENS ============ */
@@ -7232,6 +7233,109 @@
     .callout-banner{flex-wrap:wrap;}
 
   }
+
+  /* ---------- Sign-in screen (real Supabase auth gate) ---------- */
+  .rc-signin-screen{
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--c-bg);
+    padding:24px;
+    outline:none;
+  }
+  .rc-signin-checking{
+    color:var(--c-text-2,var(--ink-soft));
+    font-size:15px;
+  }
+  .rc-signin-card{
+    width:100%;max-width:340px;
+    background:var(--c-surface);
+    border:1px solid var(--c-border);
+    border-radius:20px;
+    padding:28px 24px 24px;
+    box-shadow:0 8px 32px rgba(0,0,0,.08);
+    text-align:center;
+  }
+  .rc-signin-brand{
+    font-size:22px;font-weight:700;color:var(--c-text);
+    margin-bottom:2px;
+  }
+  .rc-signin-sub{
+    font-size:13px;color:var(--ink-soft);
+    margin-bottom:20px;
+  }
+  .rc-signin-label{
+    text-align:left;
+    font-size:12px;font-weight:600;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.03em;
+    margin:0 0 6px;
+  }
+  .rc-signin-name-input{
+    width:100%;box-sizing:border-box;
+    font-family:inherit;font-size:16px;
+    color:var(--c-text);background:var(--c-surface-2,var(--c-bg));
+    border:1px solid var(--c-border);border-radius:12px;
+    padding:11px 14px;
+    outline:none;
+    margin-bottom:18px;
+    transition:border-color .15s;
+  }
+  .rc-signin-name-input:focus{border-color:var(--c-accent);}
+  .rc-pin-dots{
+    display:flex;justify-content:center;gap:14px;
+    margin-bottom:10px;
+  }
+  .rc-pin-dot{
+    width:14px;height:14px;border-radius:50%;
+    border:1.5px solid var(--ink-soft);
+    background:transparent;
+    transition:background .12s,border-color .12s,transform .12s;
+  }
+  .rc-pin-dot.filled{
+    background:var(--c-accent);border-color:var(--c-accent);
+    transform:scale(1.08);
+  }
+  .rc-signin-error{
+    color:var(--rust);font-size:13px;font-weight:600;
+    margin-bottom:10px;min-height:16px;
+  }
+  .rc-keypad{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    gap:10px;
+    margin:14px 0 20px;
+  }
+  .rc-keypad-btn{
+    font-family:inherit;font-size:20px;font-weight:500;
+    color:var(--c-text);
+    background:var(--c-surface-2,var(--c-bg));
+    border:1px solid var(--c-border);
+    border-radius:14px;
+    aspect-ratio:1;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:background .1s,transform .08s;
+  }
+  .rc-keypad-btn:hover{background:var(--c-surface-3,#E5E5EA);}
+  .rc-keypad-btn:active{transform:scale(.94);}
+  .rc-keypad-btn:disabled{opacity:.5;cursor:default;}
+  .rc-keypad-btn.rc-keypad-backspace{font-size:17px;color:var(--ink-soft);border:none;background:transparent;}
+  .rc-keypad-blank{aspect-ratio:1;}
+  .rc-signin-submit-btn{
+    width:100%;
+    font-family:inherit;font-size:15px;font-weight:600;
+    color:#fff;background:var(--c-accent);
+    border:none;border-radius:12px;
+    padding:12px;
+    cursor:pointer;
+    transition:opacity .12s;
+  }
+  .rc-signin-submit-btn:hover{opacity:.9;}
+  .rc-signin-submit-btn:disabled{opacity:.6;cursor:default;}
+  .nav-account{
+    padding:10px 16px 4px;
+    font-size:12px;color:var(--ink-soft);
+  }
+  .nav-account b{color:var(--c-text);font-weight:600;}
 </style>
 </head>
 <body>
@@ -8074,6 +8178,143 @@ const STORAGE_KEY = 'rotation-app-state-v1';
 let toastTimer = null;
 let toastExitTimer = null;
 
+// ============ AUTH (Supabase sign-in gate) ============
+// status: 'checking' (session lookup in flight) | 'signed-out' | 'submitting' | 'signed-in'
+let authState = {
+  status: 'checking',
+  name: '',
+  pin: '',
+  error: '',
+  account: null, // {id, name, role, assigned_area_id}
+};
+
+function waitForRC(){
+  return new Promise(resolve=>{
+    if(window.RC){ resolve(); return; }
+    window.addEventListener('rc:ready', ()=>resolve(), {once:true});
+    setTimeout(resolve, 5000); // don't hang forever if the module script fails to load
+  });
+}
+
+function renderSignInScreen(){
+  if(authState.status==='checking'){
+    return `<div class="rc-signin-screen"><div class="rc-signin-checking">Loading…</div></div>`;
+  }
+  const submitting = authState.status==='submitting';
+  const digitBtn = d => `<button type="button" class="rc-keypad-btn" data-digit="${d}" ${submitting?'disabled':''}>${d}</button>`;
+  return `
+  <div id="rc-signin-screen" class="rc-signin-screen" tabindex="-1">
+    <div class="rc-signin-card">
+      <div class="rc-signin-brand">Schedule</div>
+      <div class="rc-signin-sub">Sign in with your name and PIN</div>
+
+      <div class="rc-signin-label">Name</div>
+      <input id="rc-signin-name" class="rc-signin-name-input" type="text" autocomplete="name"
+        placeholder="Full name" value="${escapeHtml(authState.name)}" ${submitting?'disabled':''}/>
+
+      <div class="rc-signin-label">PIN</div>
+      <div class="rc-pin-dots" id="rc-pin-dots">
+        ${[0,1,2,3].map(i=>`<span class="rc-pin-dot${authState.pin.length>i?' filled':''}"></span>`).join('')}
+      </div>
+
+      <div class="rc-signin-error">${authState.error?escapeHtml(authState.error):''}</div>
+
+      <div class="rc-keypad">
+        ${['1','2','3'].map(digitBtn).join('')}
+        ${['4','5','6'].map(digitBtn).join('')}
+        ${['7','8','9'].map(digitBtn).join('')}
+        <div class="rc-keypad-blank"></div>
+        ${digitBtn('0')}
+        <button type="button" id="rc-pin-backspace" class="rc-keypad-btn rc-keypad-backspace" aria-label="Backspace" ${submitting?'disabled':''}>⌫</button>
+      </div>
+
+      <button type="button" id="rc-signin-submit" class="rc-signin-submit-btn" ${submitting?'disabled':''}>
+        ${submitting ? 'Signing in…' : 'Sign in'}
+      </button>
+    </div>
+  </div>`;
+}
+
+function signInPinDigit(d){
+  if(authState.status==='submitting') return;
+  if(authState.pin.length>=4) return;
+  authState.pin += d;
+  authState.error = '';
+  render();
+  if(authState.pin.length===4) attemptSignIn();
+}
+
+function signInPinBackspace(){
+  if(authState.status==='submitting') return;
+  if(!authState.pin.length) return;
+  authState.pin = authState.pin.slice(0,-1);
+  authState.error = '';
+  render();
+}
+
+async function attemptSignIn(){
+  if(authState.status==='submitting') return;
+  const name = authState.name.trim();
+  if(!name){ authState.error = 'Enter your name.'; render(); return; }
+  if(authState.pin.length!==4){ authState.error = 'Enter your 4-digit PIN.'; render(); return; }
+  if(!window.RC || typeof window.RC.signInWithPin!=='function'){
+    authState.error = 'Sign-in is unavailable right now. Refresh and try again.';
+    render();
+    return;
+  }
+  authState.status = 'submitting';
+  authState.error = '';
+  render();
+  try{
+    const account = await window.RC.signInWithPin(name, authState.pin);
+    authState.account = account;
+    authState.status = 'signed-in';
+    authState.pin = '';
+    authState.error = '';
+    await bootApp();
+  }catch(e){
+    authState.status = 'signed-out';
+    authState.pin = '';
+    authState.error = (e && e.message) || 'Sign-in failed.';
+    render();
+  }
+}
+
+function attachSignInHandlers(){
+  const screen = document.getElementById('rc-signin-screen');
+  const nameInput = document.getElementById('rc-signin-name');
+
+  if(nameInput){
+    nameInput.addEventListener('input', e=>{
+      authState.name = e.target.value;
+      authState.error = '';
+      const pos = nameInput.selectionStart;
+      render();
+      const el = document.getElementById('rc-signin-name');
+      if(el){ el.focus(); el.setSelectionRange(pos, pos); }
+    });
+    nameInput.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); attemptSignIn(); }
+    });
+  }
+
+  document.querySelectorAll('#rc-signin-screen [data-digit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> signInPinDigit(btn.getAttribute('data-digit')));
+  });
+  on('rc-pin-backspace', signInPinBackspace);
+  on('rc-signin-submit', attemptSignIn);
+
+  if(screen){
+    screen.addEventListener('keydown', e=>{
+      if(document.activeElement===nameInput) return; // let the name field handle its own typing
+      if(/^[0-9]$/.test(e.key)){ e.preventDefault(); signInPinDigit(e.key); }
+      else if(e.key==='Backspace' || e.key==='Delete'){ e.preventDefault(); signInPinBackspace(); }
+      else if(e.key==='Enter'){ e.preventDefault(); attemptSignIn(); }
+    });
+    if(document.activeElement!==nameInput) screen.focus();
+  }
+}
+
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
 function todayLabel(){
@@ -8823,6 +9064,11 @@ let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 
 function render(){
   const root = document.getElementById('root');
+  if(authState.status!=='signed-in'){
+    root.innerHTML = renderSignInScreen();
+    attachSignInHandlers();
+    return;
+  }
   if(!state.loaded){
     root.innerHTML = `<div class="loading-screen">loading rotation data…</div>`;
     return;
@@ -9156,6 +9402,7 @@ function renderNavDrawer(){
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
       <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
+      ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       <div class="nav-drawer-section">Staff</div>
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
@@ -9177,6 +9424,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       <div class="nav-divider"></div>
+      <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
         <button class="nav-rotate-btn" id="btn-rotate">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -12819,6 +13067,15 @@ function attachHandlers(){
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
+  on('nav-sign-out', async ()=>{
+    closeNav();
+    if(window.RC && typeof window.RC.signOut==='function'){
+      try{ await window.RC.signOut(); }catch(e){}
+    }
+    authState = { status:'signed-out', name:'', pin:'', error:'', account:null };
+    state.loaded = false;
+    render();
+  });
 
   // --- breaks view filters ---
   if(viewMode==='breaks'){
@@ -14401,8 +14658,96 @@ function on(id, fn){
   if(el) el.addEventListener('click', fn);
 }
 
+// ============ BOARD DATA FROM SUPABASE (Phase 2, Step 2) ============
+// Maps the Supabase tables' snake_case/relational shape onto the app's
+// existing in-memory field names, so the rest of the app (which was written
+// against the localStorage shape) doesn't need to change.
+// NOTE: state.blocks/history/callouts/timeOff/etc. are still local-only
+// (Step 3+), so ids referenced there may not line up with these
+// Supabase-sourced staff/area ids until the rest of the migration lands —
+// expected during a one-slice-at-a-time migration, not a bug to chase now.
+function mapSupabaseBoard(board){
+  const deptById = {};
+  (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
+
+  const areas = (board.areas||[]).map(a=>({
+    id: a.id,
+    name: a.name,
+    color: a.color,
+    capacity: a.capacity,
+    department: deptById[a.department_id] || '',
+    fixed: false,
+  }));
+
+  const staff = (board.staff||[]).map(s=>({
+    id: s.id,
+    name: s.name,
+    tags: s.tags || '',
+    active: s.active !== false,
+    isTeamLead: !!s.is_team_lead,
+    homeAreaId: s.home_area_id || null,
+    supervisorId: s.supervisor_id || null,
+    shiftHours: s.shift_hours_label || '',
+    breakTimes: s.break_times_label || '',
+    department: deptById[s.department_id] || '',
+    flowId: s.flow_id || null,
+    flowEnrolled: !!s.flow_enrolled,
+    needsAccommodations: !!s.needs_accommodations,
+    isSubcontractor: !!s.is_subcontractor,
+    tdisNumber: s.tdis_number || '',
+    counterCert: false,
+    languageCerts: [],
+  }));
+
+  const assignments = {};
+  (board.assignments||[]).forEach(row=>{
+    assignments[row.staff_id] = row.area_id || null;
+  });
+
+  return { areas, staff, assignments };
+}
+
+// Runs the existing localStorage/seed boot path (for everything Step 3+
+// still owns), then — if a real Supabase board load succeeds — overwrites
+// state.areas/state.staff/state.assignments with the live Supabase data,
+// per the migration plan (board data is the first slice moved off
+// localStorage; writes stay on localStorage until Step 3).
+async function bootApp(){
+  await loadState(); // sets state.loaded=true, calls render() itself
+
+  try{
+    if(window.RC && typeof window.RC.loadBoard==='function'){
+      const board = await window.RC.loadBoard();
+      const mapped = mapSupabaseBoard(board);
+      state.areas = mapped.areas;
+      state.staff = mapped.staff;
+      state.assignments = mapped.assignments;
+      render();
+    }
+  }catch(e){
+    console.warn('Could not load board data from Supabase — showing local data instead.', e && e.message);
+  }
+}
+
 // ============ INIT ============
-loadState();
+(async function initAuth(){
+  await waitForRC();
+  try{
+    if(window.RC && typeof window.RC.getCurrentAccount==='function'){
+      const account = await window.RC.getCurrentAccount();
+      if(account){
+        authState.account = account;
+        authState.status = 'signed-in';
+        await bootApp();
+        return;
+      }
+    }
+  }catch(e){
+    console.warn('Session check failed:', e && e.message);
+  }
+  authState.status = 'signed-out';
+  render();
+})();
 </script>
 </body>
 </html>

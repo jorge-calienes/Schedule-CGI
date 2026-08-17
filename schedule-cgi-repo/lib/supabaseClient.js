@@ -57,6 +57,22 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+// Restores "who's signed in" across page reloads: supabase-js persists the
+// session itself (localStorage, under its own key), so this just resolves
+// that session back to an `accounts` row.
+export async function getCurrentAccount() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id, name, role, assigned_area_id')
+    .eq('user_id', session.user.id)
+    .single();
+  if (error || !data) return null;
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Example queries — mirrors of the localStorage-era functions in the app.
 // Swap these in one at a time rather than all at once; see SETUP_GUIDE.md
@@ -64,12 +80,13 @@ export async function signOut() {
 // ---------------------------------------------------------------------------
 
 export async function loadBoard() {
-  const [{ data: areas }, { data: staff }, { data: assignments }] = await Promise.all([
+  const [{ data: areas }, { data: staff }, { data: assignments }, { data: departments }] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
     supabase.from('assignments').select('*'),
+    supabase.from('departments').select('*').order('sort_order'),
   ]);
-  return { areas, staff, assignments };
+  return { areas, staff, assignments, departments };
 }
 
 export async function moveStaff(staffId, areaId, actingAccountId) {
@@ -121,3 +138,23 @@ export async function fetchAuditLog({ limit = 50 } = {}) {
   if (error) throw error;
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// index.html is a classic (non-module) script, so it can't `import` this
+// file directly. Bridge everything through window.RC instead, and fire
+// 'rc:ready' once it's populated so the classic script knows it's safe to
+// call in.
+// ---------------------------------------------------------------------------
+window.RC = {
+  supabase,
+  signInWithPin,
+  requestAccess,
+  signOut,
+  getCurrentAccount,
+  loadBoard,
+  moveStaff,
+  submitEvaluation,
+  myEvaluationQueue,
+  fetchAuditLog,
+};
+window.dispatchEvent(new CustomEvent('rc:ready'));
