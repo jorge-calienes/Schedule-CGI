@@ -80,13 +80,14 @@ export async function getCurrentAccount() {
 // ---------------------------------------------------------------------------
 
 export async function loadBoard() {
-  const [{ data: areas }, { data: staff }, { data: assignments }, { data: departments }] = await Promise.all([
+  const [{ data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts }] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
     supabase.from('assignments').select('*'),
     supabase.from('departments').select('*').order('sort_order'),
+    supabase.from('callouts').select('*'),
   ]);
-  return { areas, staff, assignments, departments };
+  return { areas, staff, assignments, departments, callouts };
 }
 
 export async function moveStaff({ staffId, areaId, actingAccountId, staffName, fromAreaName, toAreaName }) {

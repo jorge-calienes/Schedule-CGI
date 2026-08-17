@@ -14805,10 +14805,10 @@ function on(id, fn){
 // Maps the Supabase tables' snake_case/relational shape onto the app's
 // existing in-memory field names, so the rest of the app (which was written
 // against the localStorage shape) doesn't need to change.
-// NOTE: state.blocks/history/callouts/timeOff/etc. are still local-only
-// (Step 3+), so ids referenced there may not line up with these
-// Supabase-sourced staff/area ids until the rest of the migration lands —
-// expected during a one-slice-at-a-time migration, not a bug to chase now.
+// NOTE: state.blocks/history/timeOff/etc. are still local-only (Step 3+),
+// so ids referenced there may not line up with these Supabase-sourced
+// staff/area ids until the rest of the migration lands — expected during a
+// one-slice-at-a-time migration, not a bug to chase now.
 function mapSupabaseBoard(board){
   const deptById = {};
   (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
@@ -14847,14 +14847,22 @@ function mapSupabaseBoard(board){
     assignments[row.staff_id] = row.area_id || null;
   });
 
-  return { areas, staff, assignments };
+  const callouts = {};
+  (board.callouts||[]).forEach(row=>{
+    callouts[row.staff_id] = true;
+  });
+
+  return { areas, staff, assignments, callouts };
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
 // still owns), then — if a real Supabase board load succeeds — overwrites
-// state.areas/state.staff/state.assignments with the live Supabase data,
-// per the migration plan (board data is the first slice moved off
-// localStorage; writes stay on localStorage until Step 3).
+// state.areas/state.staff/state.assignments/state.callouts with the live
+// Supabase data. Callouts written via setCallout()/clearCallout() land in
+// the real `callouts` table (Step 3), so this read-back is what makes a
+// mark-out actually survive a page refresh — without it the write would
+// silently persist to the database while the UI kept showing whatever
+// loadState() produced locally.
 async function bootApp(){
   await loadState(); // sets state.loaded=true, calls render() itself
 
@@ -14865,6 +14873,7 @@ async function bootApp(){
       state.areas = mapped.areas;
       state.staff = mapped.staff;
       state.assignments = mapped.assignments;
+      state.callouts = mapped.callouts;
       render();
     }
   }catch(e){
