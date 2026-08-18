@@ -22,7 +22,7 @@ here should be built in one giant rewrite.
 | Evaluation form, team-lead queue (Step 5) | **Done** |
 | Staff import from Excel/CSV | **Done** |
 | Team lead access lock (evaluations + read-only board) | **Done** |
-| Audit log screen | Not built (client function already exists, unused) |
+| Audit log screen | **Done** |
 | Manage accounts (grant/request) | **Done** |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
 
@@ -127,12 +127,15 @@ reached the database. Added both columns (migration
 `createStaff()`/`updateStaff()`, and `mapSupabaseBoard()`'s read-back, so
 the manual form now actually persists them too, not just the importer.
 
-### 6. Step 6 — Audit log screen
-`fetchAuditLog()` already exists and is bridged. Purely additive, read-only,
-supervisor/admin only. **Caveat:** until Step 3 ships, this will only show
-evaluation submissions and account grants — no moves/swaps/rotations yet.
-Worth an empty-state hint rather than looking broken. Low risk enough that
-it could go before Step 5 instead, if preferred.
+### ~~6. Step 6 — Audit log screen~~ ✅ Done
+Admin/supervisor-only "Audit log" nav item, backed by the already-bridged
+`fetchAuditLog({limit:100})`. Each row shows an icon keyed by `action`,
+the human-readable `description` the writing code already composed (moves,
+CRUD, rotations, evaluations, account grants all write one), who did it,
+and when. A search box filters client-side by description/actor name —
+no server-side filtering needed at this scale. Empty state hints that
+activity will show up as people use the app, for a fresh deployment with
+no history yet.
 
 ### ~~7. Manage accounts (mockup screen "accounts")~~ ✅ Done
 Was the actual bottleneck to "fully functional" — previously there was
@@ -204,10 +207,11 @@ click opens read-only stats) and an admin session (fully unaffected).
 
 ## Suggested next step
 
-Steps 3a, 3b, 4, and 5 are done, plus staff import, the team-lead access
-lock, and Manage accounts — the board, staff/area edits, Rotate Now,
-evaluations, bulk onboarding, and account provisioning are all fully live
-against Supabase. Step 6 (audit log screen) is next in line:
-`fetchAuditLog()` already exists and is bridged, it's purely
-additive/read-only, and there's now real activity (moves, CRUD, rotations,
-evaluations, account grants) for it to show.
+Every numbered step (3a through 6) is done, plus staff import, the
+team-lead access lock, and Manage accounts — the board, staff/area edits,
+Rotate Now, evaluations, bulk onboarding, account provisioning, and the
+audit trail are all fully live against Supabase. What's left from the
+original mockup reference is Staff performance profile and Team dashboard
+(step 8 above) — read-only aggregations over `evaluations` that are only
+useful once there's real evaluation history to show, so worth waiting
+until Step 5 has been live for at least one rotation period.

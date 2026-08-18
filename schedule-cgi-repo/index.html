@@ -9561,6 +9561,7 @@ function renderNavDrawer(){
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Administration</div>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
@@ -10348,6 +10349,7 @@ function renderModal(){
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
+  else if(m.type==='audit-log') inner = renderAuditLogModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -11556,6 +11558,50 @@ function renderAccountGrantFormModal(m){
   </div>`;
 }
 
+// --- Audit log (supervisor/admin, read-only) ---
+const AUDIT_ACTION_ICONS = {
+  move:'🔀', swap:'⇄', callout:'⚠️', clear_callout:'✅', edit_staff:'👤', add_staff:'➕',
+  archive_staff:'🗑', edit_area:'🏷', add_area:'➕', rotate_period:'🔁', evaluation:'📝',
+  account_request:'🔑', account_grant:'🔓', account_revoke:'🔒', time_off:'📅',
+};
+function renderAuditLogModal(m){
+  const q = (m.search||'').trim().toLowerCase();
+  const entries = q
+    ? (m.entries||[]).filter(e=>
+        (e.description||'').toLowerCase().includes(q) ||
+        (e.accounts?.name||'').toLowerCase().includes(q))
+    : (m.entries||[]);
+  return `
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div><h2>Audit log</h2><p>Most recent ${(m.entries||[]).length} actions across the app.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${!m.loading?`
+      <div class="roster-search-wrap" style="margin-bottom:12px;">
+        <span class="roster-search-icon">🔍</span>
+        <input type="text" id="audit-search" class="roster-search" placeholder="Search by action or who did it…" value="${escapeHtml(m.search||'')}"/>
+        ${m.search?'<button class="roster-search-clear" id="audit-search-clear">✕</button>':''}
+      </div>`:''}
+      ${m.loading?`<div class="small-muted">Loading audit log…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load the audit log: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && (m.entries||[]).length===0?`<div class="small-muted" style="line-height:1.6;">No activity recorded yet. Moves, edits, rotations, and evaluations will show up here as people use the app.</div>`:''}
+      ${!m.loading && !m.error && (m.entries||[]).length>0 && entries.length===0?`<div class="small-muted">No entries match "${escapeHtml(m.search)}".</div>`:''}
+      ${entries.length>0?`
+      <div class="option-list" style="max-height:420px;overflow-y:auto;">
+        ${entries.map(e=>`
+          <div class="option-card" style="cursor:default;">
+            <div class="oc-left">
+              <span class="oc-name">${AUDIT_ACTION_ICONS[e.action]||'•'} ${escapeHtml(e.description||e.action)}</span>
+              <span class="oc-sub">${escapeHtml(e.accounts?.name||'Unknown')} · ${e.created_at?new Date(e.created_at).toLocaleString():''}</span>
+            </div>
+          </div>`).join('')}
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
 
 // --- Department order (board layout) ---
 function renderDeptReorderModal(m){
@@ -12212,6 +12258,16 @@ async function syncCrudWrite(fn){
   }catch(e){
     console.warn('CRUD sync failed:', e && e.message);
     return {ok:false, error:e};
+  }
+}
+
+async function openAuditLog(){
+  openModal({type:'audit-log', loading:true, entries:[], search:''});
+  try{
+    const entries = await window.RC.fetchAuditLog({limit:100});
+    openModal({type:'audit-log', loading:false, entries: entries||[], search:''});
+  }catch(e){
+    openModal({type:'audit-log', loading:false, entries:[], search:'', error: (e && e.message) || 'Could not load the audit log.'});
   }
 }
 
@@ -13683,6 +13739,7 @@ function attachHandlers(){
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
+  on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -15200,6 +15257,24 @@ function attachHandlers(){
     document.querySelectorAll('[data-grant-account]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'account-grant-form', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
     }));
+  }
+
+  // --- audit log ---
+  if(activeModal.type==='audit-log'){
+    const m = activeModal;
+    const searchInput = document.getElementById('audit-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('audit-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    on('audit-search-clear', ()=>{ openModal({...m, search:''}); });
   }
 
   // --- account grant / add form ---
