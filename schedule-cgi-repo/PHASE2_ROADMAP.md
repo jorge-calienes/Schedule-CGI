@@ -19,7 +19,8 @@ here should be built in one giant rewrite.
 | Move/swap/callout writes + audit_log (Step 3a) | **Done** |
 | Staff/area CRUD writes + audit_log (Step 3b) | **Done** |
 | Rotate Now / history (Step 4) | **Done** |
-| Evaluation form, team-lead queue | Not built (client functions already exist, unused) |
+| Evaluation form, team-lead queue (Step 5) | **Done** |
+| Staff import from Excel/CSV | **Done** |
 | Audit log screen | Not built (client function already exists, unused) |
 | Manage accounts (grant/request) | Not built (API routes exist, unused) |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
@@ -71,30 +72,68 @@ pattern as board data in Step 2.
 **Still local-only, unchanged:** `endAllCoverage()`'s bulk reassignment —
 still coupled to the not-yet-migrated `state.coverage`/`state.timeOff`.
 
-### 4. Step 5 — Evaluation form + "My evaluations" queue ⭐
-The actual new Phase 2 feature. No localStorage equivalent exists, so this
-can go straight to Supabase with no parallel-track risk — genuinely the
-lowest-risk substantial feature to build, and doesn't need to wait on Step
-3/4 at all if we want to pull it forward.
+### ~~4. Step 5 — Evaluation form + "My evaluations" queue~~ ✅ Done
+A "My evaluations" nav item (visible only when
+`authState.account.role === 'team_lead'`) opens a queue modal backed by
+`myEvaluationQueue()`, split into "needs feedback" vs "already submitted"
+(`existing_evaluation_id` from the view). Tapping a pending row opens the
+evaluation form — 1–5 star ratings for productivity/performance/reliability
+(reusing the existing `renderStarRating()`/`.star-row` pattern from the
+flow-advancement feedback modal) plus a recommendation
+(stay/advance/training) and an optional note — which awaits
+`submitEvaluation()` via the same `syncCrudWrite()` confirm-on-save pattern
+as Step 3b, then returns to a freshly reloaded queue.
 
-`submitEvaluation()` and `myEvaluationQueue()` already exist in
-`lib/supabaseClient.js` and are already on `window.RC`. New UI needed:
-- A "My evaluations" nav item visible only when
-  `authState.account.role === 'team_lead'`, listing `myEvaluationQueue()`.
-- The evaluation form itself (mockup screen 3), scored 1–5 on
-  productivity/performance/reliability + a recommendation.
-- Supervisors/admins need a *different* entry point — `eval_insert`'s RLS
-  lets managers evaluate anyone, not just a queue, so this probably hangs
-  off the Roster/staff profile rather than a queue view.
+Supervisors/admins get a separate entry point since `eval_insert`'s RLS
+lets managers evaluate anyone, not just a queue: an "📝 Evaluate" button on
+the Stats tab of the staff-manager modal, which returns to that same tab on
+submit. Managers always pass `periodId: null` (the in-progress period has
+no `rotation_periods` row until Rotate Now closes it — the schema's unique
+index already coalesces `period_id` for this), while the team-lead queue
+passes whatever `current_period_id` the view resolves (also nullable before
+the first Rotate Now).
 
-### 5. Step 6 — Audit log screen
+### ~~5. Staff import from Excel/CSV~~ ✅ Done (pulled forward, ahead of Manage accounts)
+Not in the original list — added because onboarding a whole roster by hand
+in the Add Staff form doesn't scale. "Import staff (Excel)" (admin/supervisor
+nav item) includes a "Download blank template" button (generated client-side
+with SheetJS) covering every profile field that's actually wired to
+Supabase: Name, TDIS #, Department, Shift, Hire date, Team Lead, AGS/
+Subcontractor, Needs Accommodations, Counter Acceptance, Tags. Deliberately
+excludes Supervisor, Language certifications, and Rotation flow — those
+aren't synced to Supabase anywhere yet, even from the manual form (no
+`loadBoard()` fetch, no write path), so importing them would silently not
+persist, the same trap `counter_cert` was in below.
+
+Uploading parses the spreadsheet client-side with SheetJS (loaded from
+jsDelivr, same CDN as `supabase-js`), auto-detects columns by header name
+(stripping "(Y/N)"-style hints before matching) with a manual-remap
+fallback, and shows a row-by-row validation preview (missing name,
+malformed or duplicate-within-file TDIS). Rows are upserted, not just
+created: a row whose TDIS # matches an existing staff member calls
+`updateStaff()` instead of `createStaff()`, so re-uploading the same file
+after editing it is a real "keep the roster in sync" workflow, not just a
+one-time seed. Every row still goes through the same `createStaff()`/
+`updateStaff()` path the manual form uses — real Supabase UUIDs and
+`audit_log` entries, no separate bulk-write code path to keep in sync.
+
+Building this exposed a real gap: `counter_cert` and `hire_date` were UI
+fields (`state.staff[].counterCert`/`.hireDate`, the "✅ Counter Acceptance
+certified" toggle and hire-date input in the staff-manager form) that had
+**no column in the `staff` table at all** — edits to them silently never
+reached the database. Added both columns (migration
+`0003_staff_cert_hiredate.sql`) and wired them into `staffRow()`,
+`createStaff()`/`updateStaff()`, and `mapSupabaseBoard()`'s read-back, so
+the manual form now actually persists them too, not just the importer.
+
+### 6. Step 6 — Audit log screen
 `fetchAuditLog()` already exists and is bridged. Purely additive, read-only,
 supervisor/admin only. **Caveat:** until Step 3 ships, this will only show
 evaluation submissions and account grants — no moves/swaps/rotations yet.
 Worth an empty-state hint rather than looking broken. Low risk enough that
 it could go before Step 5 instead, if preferred.
 
-### 6. Manage accounts (mockup screen "accounts")
+### 7. Manage accounts (mockup screen "accounts")
 Not in the original 6-step list, but the actual bottleneck to "fully
 functional" — right now there's exactly one admin account (the manually
 seeded one from `SETUP_GUIDE.md`), and nobody else can get in. Admin-only.
@@ -110,7 +149,7 @@ Two parts:
   in this whole roadmap that talks to a custom API route instead of
   querying Supabase tables directly.
 
-### 7. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
+### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
 Read-only aggregations over `evaluations` (avg scores, trend over time,
 latest recommendation per person). No client functions exist yet — will
 need something like `fetchStaffEvaluationHistory(staffId)` and
@@ -126,7 +165,8 @@ switcher like the mockup's dev toggle. Applies to every screen above.
 
 ## Suggested next step
 
-Steps 3a, 3b, and 4 are done — the board, staff/area edits, and Rotate Now
-are all fully live against Supabase. Step 5 (evaluation form) is next in
-line, and also the lowest-risk substantial feature left: no localStorage
-equivalent to migrate away from, and the client functions already exist.
+Steps 3a, 3b, 4, and 5 are done — the board, staff/area edits, Rotate Now,
+and evaluations are all fully live against Supabase. Step 6 (audit log
+screen) is next in line: `fetchAuditLog()` already exists and is bridged,
+it's purely additive/read-only, and there's now real activity (moves,
+CRUD, rotations, evaluations) for it to show.

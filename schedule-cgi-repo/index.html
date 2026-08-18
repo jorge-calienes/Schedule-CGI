@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script type="module" src="/lib/supabaseClient.js"></script>
+<!-- SheetJS (xlsx) — reads .xlsx/.csv files client-side for the staff Import screen. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     /* ============ MATERIAL DESIGN 3 TOKENS ============ */
@@ -9445,6 +9447,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Staff</div>
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-staff"><span class="nav-item-icon">📥</span>Import staff (Excel)</button>` : ''}
       <button class="nav-item" id="nav-manage-supervisors"><span class="nav-item-icon">🏅</span>Supervisors</button>
       <button class="nav-item" id="nav-org-diagram"><span class="nav-item-icon">🗂</span>Org diagram</button>
       <button class="nav-item" id="nav-manage-blocks"><span class="nav-item-icon">🚫</span>Blocked Pairs</button>
@@ -9452,6 +9455,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-manage-flows"><span class="nav-item-icon">🔀</span>Rotation Flows</button>
       <button class="nav-item" id="nav-history"><span class="nav-item-icon">📜</span>History</button>
+      ${authState.account?.role==='team_lead' ? `<button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>` : ''}
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Board</div>
       <button class="nav-item" id="nav-mark-callout"><span class="nav-item-icon">⚠️</span>Mark someone out</button>
@@ -10234,6 +10238,9 @@ function renderModal(){
   else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
+  else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
+  else if(m.type==='eval-form') inner = renderEvalFormModal(m);
+  else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -10639,7 +10646,7 @@ function renderStaffManagerModal(m){
       ${tab!=='stats'
         ?`<button class="btn btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
           ${editing?'<button class="btn btn-danger btn-sm" id="staff-delete-btn">Remove</button>':''}`
-        :`${editing?'<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>':''}`}
+        :`${editing?'<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="btn btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`}
     </div>
     ${tab==='profile'&&!editing?`
     <div style="border-top:1px solid var(--line);padding:16px;">
@@ -11053,6 +11060,283 @@ function renderMarkCalloutModal(m){
             </div>
           </div>`).join('')}
       </div>
+    </div>
+  </div>`;
+}
+
+// --- Evaluations: team-lead "my queue" ---
+function renderEvalQueueModal(m){
+  const items = m.items||[];
+  const pending = items.filter(i=>!i.existing_evaluation_id);
+  const done = items.filter(i=>i.existing_evaluation_id);
+  return `
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':pending.length+' need feedback this period')}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading your queue…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load your queue: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted">Nobody is currently assigned to your area.</div>`:''}
+      ${!m.loading && pending.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback</div>
+        <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
+          ${pending.map(i=>`
+            <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}">
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && done.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Already submitted</div>
+        <div class="option-list" style="max-height:200px;overflow-y:auto;">
+          ${done.map(i=>`
+            <div class="option-card" style="opacity:.65;">
+              <div class="oc-left">
+                <span class="oc-name">✓ ${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Evaluations: score form (1-5 productivity/performance/reliability + recommendation) ---
+function renderEvalFormModal(m){
+  const s = getStaffById(m.staffId);
+  const area = m.areaId ? getAreaById(m.areaId) : null;
+  const productivity = m.productivity||0;
+  const performance = m.performance||0;
+  const reliability = m.reliability||0;
+  const recOptions = [
+    {value:'stay', label:'Stay in current role'},
+    {value:'advance', label:'Ready to advance'},
+    {value:'training', label:'Needs more training'},
+  ];
+  const canSubmit = productivity>0 && performance>0 && reliability>0 && !m.saving;
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2><p>${area?escapeHtml(area.name):'No area'}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Productivity</label>
+        <div class="star-row">${renderStarRating(productivity,'eval-prod')}</div>
+      </div>
+      <div class="field">
+        <label>Performance</label>
+        <div class="star-row">${renderStarRating(performance,'eval-perf')}</div>
+      </div>
+      <div class="field">
+        <label>Reliability</label>
+        <div class="star-row">${renderStarRating(reliability,'eval-rel')}</div>
+      </div>
+      <div class="field">
+        <label>Recommendation</label>
+        <select id="eval-recommendation-input">
+          ${recOptions.map(o=>`<option value="${o.value}" ${(m.recommendation||'stay')===o.value?'selected':''}>${o.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Note (optional)</label>
+        <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="eval-form-cancel">Cancel</button>
+      <button class="btn btn-primary" id="eval-form-submit" ${canSubmit?'':'disabled'}>${m.saving?'Saving…':'Submit evaluation'}</button>
+    </div>
+  </div>`;
+}
+
+// --- Staff import (Excel/CSV) ---
+// Fields NOT included here (Supervisor, Language certifications, Rotation
+// flow) aren't wired to Supabase anywhere yet, even from the manual staff
+// form — those tables are never loaded by loadBoard() and there's no sync
+// function for them. Importing them would silently not persist, the same
+// trap counter_cert/hire_date were in before this feature surfaced it.
+const STAFF_IMPORT_FIELDS = ['name','tdis','department','shift','hireDate','teamLead','subcontractor','accommodations','counterCert','tags'];
+const STAFF_IMPORT_ALIASES = {
+  name: ['name','fullname','staffname','employeename'],
+  tdis: ['tdis','tdisnumber','tdisno','tdis#'],
+  department: ['department','dept'],
+  shift: ['shift','shifthours','hours','shifttime'],
+  hireDate: ['hiredate','datehired','startdate'],
+  teamLead: ['teamlead','isteamlead','tl'],
+  subcontractor: ['agssubcontractor','subcontractor','ags','issubcontractor'],
+  accommodations: ['needsaccommodations','accommodations','accommodation'],
+  counterCert: ['counteracceptance','counteracceptancecertified','countercert','cacertified','ca','counteracceptancecert'],
+  tags: ['tags','roletags','role'],
+};
+const STAFF_IMPORT_LABELS = {
+  name:'Name', tdis:'TDIS #', department:'Department', shift:'Shift', hireDate:'Hire date',
+  teamLead:'Team Lead (Y/N)', subcontractor:'AGS/Subcontractor (Y/N)', accommodations:'Needs Accommodations (Y/N)',
+  counterCert:'Counter Acceptance Certified (Y/N)', tags:'Tags',
+};
+function autoDetectStaffImportMapping(headers){
+  const norm = h => String(h).toLowerCase().replace(/\([^)]*\)/g,'').replace(/[^a-z0-9]/g,'');
+  const find = aliases => headers.find(h => aliases.includes(norm(h))) || '';
+  const mapping = {};
+  STAFF_IMPORT_FIELDS.forEach(key => { mapping[key] = find(STAFF_IMPORT_ALIASES[key]); });
+  return mapping;
+}
+const STAFF_IMPORT_TRUTHY = ['yes','y','true','1','x','✓','certified','cert'];
+function normalizeDateForImport(raw){
+  const s = String(raw||'').trim();
+  if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+}
+function buildStaffImportPreview(rawRows, mapping){
+  const seenTdis = new Set();
+  const g = (row, key) => String(row[mapping[key]] ?? '').trim();
+  const truthy = (row, key) => STAFF_IMPORT_TRUTHY.includes(g(row,key).toLowerCase());
+  return rawRows.map(row=>{
+    const name = g(row,'name');
+    const tdisNumber = g(row,'tdis').toUpperCase();
+    const department = g(row,'department');
+    const shiftHours = g(row,'shift');
+    const hireDate = normalizeDateForImport(g(row,'hireDate'));
+    const tags = g(row,'tags');
+    const isTeamLead = truthy(row,'teamLead');
+    const isSubcontractor = truthy(row,'subcontractor');
+    const needsAccommodations = truthy(row,'accommodations');
+    const counterCert = truthy(row,'counterCert');
+
+    const existing = tdisNumber ? state.staff.find(s=>s.tdisNumber===tdisNumber) : null;
+
+    let error = '';
+    if(!name) error = 'Missing name';
+    else if(tdisNumber && !/^[A-Z0-9]{3}$/.test(tdisNumber)) error = 'TDIS must be 3 letters/numbers';
+    else if(tdisNumber && seenTdis.has(tdisNumber)) error = `TDIS ${tdisNumber} appears twice in this file`;
+    if(!error && tdisNumber) seenTdis.add(tdisNumber);
+
+    return { name, tdisNumber, department, shiftHours, hireDate, tags, isTeamLead, isSubcontractor, needsAccommodations, counterCert,
+      error, existingId: existing ? existing.id : null };
+  });
+}
+function downloadStaffImportTemplate(){
+  const headers = STAFF_IMPORT_FIELDS.map(k=>STAFF_IMPORT_LABELS[k]);
+  const example = ['Jane Doe','JD1','Fixed Positions','7:30 - 4:15','2024-03-01','No','No','No','Yes','Bilingual'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Staff');
+  XLSX.writeFile(wb, 'staff-import-template.xlsx');
+}
+
+function renderStaffImportModal(m){
+  if(m.step==='preview'){
+    const preview = buildStaffImportPreview(m.rawRows, m.mapping);
+    const validRows = preview.filter(r=>!r.error);
+    const updateCount = validRows.filter(r=>r.existingId).length;
+    const createCount = validRows.length - updateCount;
+    const errorCount = preview.length - validRows.length;
+    const headerOptions = selected => `<option value="">— None —</option>` + m.headers.map(h=>`<option value="${escapeHtml(h)}" ${h===selected?'selected':''}>${escapeHtml(h)}</option>`).join('');
+    const yn = v => v?'✅':'—';
+    return `
+    <div class="modal" style="max-width:900px;">
+      <div class="modal-head">
+        <div><h2>Review import</h2><p>${escapeHtml(m.fileName)} · ${preview.length} row${preview.length===1?'':'s'} found</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="sm-grid-2" style="margin-bottom:16px;">
+          ${STAFF_IMPORT_FIELDS.map(key=>`<div class="field"><label>${STAFF_IMPORT_LABELS[key]} column</label><select id="map-${key}">${headerOptions(m.mapping[key])}</select></div>`).join('')}
+        </div>
+        <div style="max-height:320px;overflow:auto;border:1px solid var(--c-border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;">
+            <thead><tr style="position:sticky;top:0;background:var(--md-sys-color-surface-container-low);">
+              <th style="text-align:left;padding:6px 8px;">Name</th>
+              <th style="text-align:left;padding:6px 8px;">TDIS</th>
+              <th style="text-align:left;padding:6px 8px;">Department</th>
+              <th style="text-align:left;padding:6px 8px;">Shift</th>
+              <th style="text-align:left;padding:6px 8px;">Hire date</th>
+              <th style="text-align:left;padding:6px 8px;">TL</th>
+              <th style="text-align:left;padding:6px 8px;">AGS</th>
+              <th style="text-align:left;padding:6px 8px;">Accom.</th>
+              <th style="text-align:left;padding:6px 8px;">CA Cert.</th>
+              <th style="text-align:left;padding:6px 8px;">Tags</th>
+              <th style="text-align:left;padding:6px 8px;">Status</th>
+            </tr></thead>
+            <tbody>
+              ${preview.map(r=>`<tr style="border-top:1px solid var(--c-border);${r.error?'opacity:.6;':''}">
+                <td style="padding:6px 8px;">${escapeHtml(r.name||'—')}</td>
+                <td style="padding:6px 8px;font-family:var(--mono);">${escapeHtml(r.tdisNumber||'—')}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.department||'—')}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.shiftHours||'—')}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.hireDate||'—')}</td>
+                <td style="padding:6px 8px;">${yn(r.isTeamLead)}</td>
+                <td style="padding:6px 8px;">${yn(r.isSubcontractor)}</td>
+                <td style="padding:6px 8px;">${yn(r.needsAccommodations)}</td>
+                <td style="padding:6px 8px;">${yn(r.counterCert)}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.tags||'—')}</td>
+                <td style="padding:6px 8px;">${r.error?`<span style="color:var(--c-red);">⚠ ${escapeHtml(r.error)}</span>`:(r.existingId?`<span style="color:var(--c-green);">Will update</span>`:`<span style="color:var(--c-green);">Will add</span>`)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="small-muted" style="margin-top:8px;">${createCount} new · ${updateCount} updates to existing staff (matched by TDIS #)${errorCount?` · ${errorCount} will be skipped (see Status column)`:''}</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" id="import-back-btn">← Back</button>
+        <button class="btn btn-primary" id="import-confirm-btn" ${validRows.length===0?'disabled':''} style="margin-left:auto;">Import ${validRows.length} row${validRows.length===1?'':'s'}</button>
+      </div>
+    </div>`;
+  }
+
+  if(m.step==='importing' || m.step==='done'){
+    const progress = m.progress || {done:0,total:0};
+    const pct = progress.total ? Math.round(progress.done/progress.total*100) : 0;
+    const results = m.results || {created:[], updated:[], failed:[]};
+    const totalOk = results.created.length + results.updated.length;
+    return `
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-head">
+        <div><h2>${m.step==='importing'?'Importing…':'Import complete'}</h2><p>${m.step==='importing'?`${progress.done} of ${progress.total}`:''}</p></div>
+        ${m.step==='done'?'<button class="modal-close" id="modal-close-x">✕</button>':''}
+      </div>
+      <div class="modal-body">
+        ${m.step==='importing'?`
+          <div class="stats-overall-track"><div class="stats-overall-fill" style="width:${pct}%"></div></div>
+          <div class="small-muted" style="margin-top:8px;">Don't close this window…</div>
+        `:`
+          <div class="alert-box ${results.failed.length?'rust':'teal'}">${results.created.length} added, ${results.updated.length} updated — saved to database ✓${results.failed.length?` · ${results.failed.length} failed`:''}</div>
+          ${results.failed.length?`
+            <div class="small-muted" style="font-weight:700;margin:12px 0 6px;">Failed rows</div>
+            <div class="option-list" style="max-height:200px;overflow-y:auto;">
+              ${results.failed.map(f=>`<div class="option-card"><div class="oc-left"><span class="oc-name">${escapeHtml(f.name||'—')}</span><span class="oc-sub">${escapeHtml(f.error)}</span></div></div>`).join('')}
+            </div>
+          `:''}
+        `}
+      </div>
+      ${m.step==='done'?`<div class="modal-foot"><button class="btn btn-primary" id="import-done-btn" style="margin-left:auto;">Done</button></div>`:''}
+    </div>`;
+  }
+
+  // step === 'pick' (default)
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h2>Import staff from Excel</h2><p>Upload a spreadsheet to add new staff and update existing profiles.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <button class="btn btn-light" id="import-download-template" type="button" style="width:100%;margin-bottom:16px;">⬇ Download blank template (.xlsx)</button>
+      <div class="field">
+        <label>Spreadsheet file (.xlsx, .xls, .csv)</label>
+        <input type="file" id="staff-import-file" accept=".xlsx,.xls,.csv"/>
+      </div>
+      <div class="small-muted" style="line-height:1.6;">
+        First row should be column headers. We'll try to auto-detect the Name, TDIS #, Department, Shift, Hire date, Team Lead, AGS/Subcontractor, Needs Accommodations, Counter Acceptance, and Tags columns — you can fix the mapping on the next screen if we get it wrong. Rows without a name are skipped. A row whose TDIS # matches someone already in the app <b>updates</b> their profile instead of creating a duplicate — so editing this same file and re-uploading it keeps the board in sync. Supervisor and language certifications aren't part of this import yet — those aren't saved to the database anywhere in the app currently, so we're not pretending they are here.
+      </div>
+      ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
     </div>
   </div>`;
 }
@@ -11713,6 +11997,16 @@ async function syncCrudWrite(fn){
   }catch(e){
     console.warn('CRUD sync failed:', e && e.message);
     return {ok:false, error:e};
+  }
+}
+
+async function openEvalQueue(){
+  openModal({type:'eval-queue', loading:true, items:[]});
+  try{
+    const items = await window.RC.myEvaluationQueue();
+    openModal({type:'eval-queue', loading:false, items: items||[]});
+  }catch(e){
+    openModal({type:'eval-queue', loading:false, items:[], error: (e && e.message) || 'Could not load your queue.'});
   }
 }
 
@@ -13152,11 +13446,13 @@ function attachHandlers(){
   const closeNav = () => { navDrawerOpen=false; };
   on('nav-roster', ()=>{ viewMode='roster'; closeNav(); render(); });
   on('nav-manage-staff',        ()=>{ closeNav(); openModal({type:'staff-manager'}); });
+  on('nav-import-staff',        ()=>{ closeNav(); openModal({type:'staff-import', step:'pick'}); });
   on('nav-manage-supervisors',  ()=>{ closeNav(); openModal({type:'supervisor-manager'}); });
   on('nav-org-diagram',         ()=>{ closeNav(); openModal({type:'org-diagram'}); });
   on('nav-manage-blocks',       ()=>{ closeNav(); openModal({type:'blocks-manager'}); });
   on('nav-manage-flows',        ()=>{ closeNav(); openModal({type:'flow-manager'}); });
   on('nav-history',             ()=>{ closeNav(); openModal({type:'history'}); });
+  on('nav-my-evaluations',      ()=>{ closeNav(); openEvalQueue(); });
   on('nav-mark-callout',        ()=>{ closeNav(); openModal({type:'mark-callout'}); });
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
@@ -13415,6 +13711,14 @@ function attachHandlers(){
     // ── stats → edit ──
     on('modal-edit-from-stats',()=>openModal({...activeModal, staffTab:'profile'}));
 
+    // ── stats → evaluate (manager entry point; periodId null = current in-progress period) ──
+    on('staff-evaluate-btn', ()=>{
+      const areaId = state.assignments[editing.id] || null;
+      openModal({type:'eval-form', staffId:editing.id, areaId, periodId:null,
+        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        _returnModal:{...activeModal}});
+    });
+
     // ── manage time off (rotation tab) ──
     on('btn-open-time-off', ()=>{
       const snap = snapshotStaffForm();
@@ -13435,6 +13739,7 @@ function attachHandlers(){
       const lateStart    = lateStartSwOn ? (snap.lateStart ?? activeModal.lateStart ?? editing?.lateStart ?? '') : '';
       const dept         = editing?.department ?? '';  // department no longer editable in profile
       const shiftHours   = snap.shiftHours  ?? activeModal.shiftHours  ?? editing?.shiftHours  ?? '';
+      const hireDate     = snap.hireDate    ?? activeModal.hireDate    ?? editing?.hireDate    ?? '';
       const lunchVal     = snap.lunchVal    ?? activeModal.lunchVal    ?? '';
       const supervisorId = snap.supervisorId!==undefined ? snap.supervisorId : (activeModal.supervisorId!==undefined ? activeModal.supervisorId : editing?.supervisorId ?? null);
       const flowId       = snap.flowId      !== undefined ? snap.flowId      : (activeModal.flowId      !== undefined ? activeModal.flowId      : editing?.flowId      ?? null);
@@ -13481,12 +13786,12 @@ function attachHandlers(){
           const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
           return window.RC.updateStaff({
             staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
-            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
         });
         Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
-          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
+          needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
         if(flowId&&flowId!==prevFlow) showToast(`${s.name} enrolled in ${getFlowById(flowId)?.name||'flow'}`,'teal');
         saveState();
         showToast(sync.ok ? 'Saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
@@ -13497,7 +13802,7 @@ function attachHandlers(){
           const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
-            isTeamLead, isSubcontractor, needsAccommodations, tags,
+            isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           createdId = row.id;
@@ -13508,7 +13813,7 @@ function attachHandlers(){
         // start — falls back to a local-only id if the sync failed.
         const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
           isTeamLead,homeAreaId:null,supervisorId,flowId,flowEnrolled:!!flowId,
-          needsAccommodations,counterCert,isSubcontractor,languageCerts:finalLangCerts,lateStart};
+          needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
         saveState();
         showToast(sync.ok ? `${name} added — saved to database ✓` : `${name} added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
@@ -14521,6 +14826,145 @@ function attachHandlers(){
     on('feedback-skip', ()=>openModal({type:'rotate-preview'}));
   }
 
+  // --- evaluations: queue ---
+  if(activeModal.type==='eval-queue'){
+    document.querySelectorAll('[data-open-eval-form]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'eval-form',
+        staffId: el.dataset.openEvalForm,
+        areaId: el.dataset.evalArea || null,
+        periodId: el.dataset.evalPeriod || null,
+        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        _returnModal:{type:'eval-queue'}});
+    }));
+  }
+
+  // --- evaluations: score form ---
+  if(activeModal.type==='eval-form'){
+    const m = activeModal;
+    document.querySelectorAll('.star-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+      const val = parseInt(btn.dataset.star,10);
+      const prefix = btn.dataset.prefix;
+      if(prefix==='eval-prod') openModal({...m, productivity:val});
+      else if(prefix==='eval-perf') openModal({...m, performance:val});
+      else if(prefix==='eval-rel') openModal({...m, reliability:val});
+    }));
+    on('eval-form-cancel', ()=>{
+      if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
+      else if(m._returnModal) openModal(m._returnModal);
+      else closeModal();
+    });
+    on('eval-form-submit', async ()=>{
+      if(!(m.productivity>0 && m.performance>0 && m.reliability>0) || m.saving) return;
+      const note = document.getElementById('eval-note-input')?.value||'';
+      const recommendation = document.getElementById('eval-recommendation-input')?.value||'stay';
+      openModal({...m, saving:true});
+      const sync = await syncCrudWrite(()=>window.RC.submitEvaluation({
+        staffId: m.staffId,
+        periodId: m.periodId||null,
+        areaId: m.areaId||null,
+        evaluatorId: authState.account.id,
+        productivity: m.productivity,
+        performance: m.performance,
+        reliability: m.reliability,
+        note,
+        recommendation,
+      }));
+      if(sync.ok){
+        showToast('Evaluation saved to database ✓', 'teal');
+        if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
+        else if(m._returnModal) openModal(m._returnModal);
+        else closeModal();
+      } else {
+        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+        openModal({...m, saving:false, note});
+      }
+    });
+  }
+
+  // --- staff import (Excel/CSV) ---
+  if(activeModal.type==='staff-import'){
+    const m = activeModal;
+
+    if(m.step==='pick' || !m.step){
+      on('import-download-template', downloadStaffImportTemplate);
+      const fileInput = document.getElementById('staff-import-file');
+      if(fileInput) fileInput.addEventListener('change', async ()=>{
+        const file = fileInput.files[0];
+        if(!file) return;
+        try{
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array'});
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:false});
+          if(rows.length===0){ openModal({...m, error:'No rows found in that file.'}); return; }
+          const headers = Object.keys(rows[0]);
+          const mapping = autoDetectStaffImportMapping(headers);
+          openModal({type:'staff-import', step:'preview', fileName:file.name, headers, rawRows:rows, mapping});
+        }catch(e){
+          openModal({...m, error:'Could not read that file: '+((e&&e.message)||'unknown error')});
+        }
+      });
+    }
+
+    if(m.step==='preview'){
+      STAFF_IMPORT_FIELDS.forEach(key=>{
+        const sel = document.getElementById('map-'+key);
+        if(sel) sel.addEventListener('change', ()=>{
+          openModal({...m, mapping:{...m.mapping, [key]:sel.value}});
+        });
+      });
+      on('import-back-btn', ()=>openModal({type:'staff-import', step:'pick'}));
+      on('import-confirm-btn', async ()=>{
+        const toImport = buildStaffImportPreview(m.rawRows, m.mapping).filter(r=>!r.error);
+        openModal({type:'staff-import', step:'importing', progress:{done:0, total:toImport.length}});
+        const created = [], updated = [], failed = [];
+        for(const row of toImport){
+          const isUpdate = !!row.existingId;
+          const existing = isUpdate ? getStaffById(row.existingId) : null;
+          const sync = await syncCrudWrite(async ()=>{
+            const departmentId = row.department ? await window.RC.ensureDepartment(row.department) : null;
+            if(isUpdate){
+              return window.RC.updateStaff({
+                staffId: existing.id, name: row.name, tdisNumber: row.tdisNumber, departmentId, homeAreaId: existing.homeAreaId||null,
+                isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor, needsAccommodations: row.needsAccommodations, tags: row.tags,
+                shiftHoursLabel: row.shiftHours, breakTimesLabel:'', counterCert: row.counterCert, hireDate: row.hireDate,
+                actingAccountId: authState.account.id,
+              });
+            }
+            return window.RC.createStaff({
+              name: row.name, tdisNumber: row.tdisNumber, departmentId, homeAreaId:null,
+              isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor, needsAccommodations: row.needsAccommodations, tags: row.tags,
+              shiftHoursLabel: row.shiftHours, breakTimesLabel:'', counterCert: row.counterCert, hireDate: row.hireDate,
+              actingAccountId: authState.account.id,
+            });
+          });
+          if(sync.ok){
+            if(isUpdate){
+              Object.assign(existing, {name: row.name, tdisNumber: row.tdisNumber, department: row.department||existing.department,
+                shiftHours: row.shiftHours||existing.shiftHours, isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor,
+                needsAccommodations: row.needsAccommodations, tags: row.tags||existing.tags, counterCert: row.counterCert,
+                hireDate: row.hireDate||existing.hireDate});
+              updated.push(existing);
+            } else {
+              const newStaff = {id: sync.result.id, name: row.name, tdisNumber: row.tdisNumber, tags: row.tags, department: row.department, active:true,
+                shiftHours: row.shiftHours, breakTimes:'', isTeamLead: row.isTeamLead, homeAreaId:null, supervisorId:null, flowId:null, flowEnrolled:false,
+                needsAccommodations: row.needsAccommodations, counterCert: row.counterCert, hireDate: row.hireDate, isSubcontractor: row.isSubcontractor, languageCerts:[]};
+              state.staff.push(newStaff); state.assignments[newStaff.id]=null;
+              created.push(newStaff);
+            }
+          } else {
+            failed.push({name: row.name, error: (sync.error&&sync.error.message)||'Save failed'});
+          }
+          openModal({type:'staff-import', step:'importing', progress:{done:created.length+updated.length+failed.length, total:toImport.length}});
+        }
+        saveState();
+        openModal({type:'staff-import', step:'done', results:{created, updated, failed}});
+      });
+    }
+
+    on('import-done-btn', ()=>{ closeModal(); openModal({type:'staff-manager'}); });
+  }
+
   // --- flow manager modal ---
   if(activeModal.type==='flow-manager'){
     on('btn-new-flow', ()=>openModal({type:'flow-editor', stages:[]}));
@@ -14896,7 +15340,8 @@ function mapSupabaseBoard(board){
     needsAccommodations: !!s.needs_accommodations,
     isSubcontractor: !!s.is_subcontractor,
     tdisNumber: s.tdis_number || '',
-    counterCert: false,
+    counterCert: !!s.counter_cert,
+    hireDate: s.hire_date || '',
     languageCerts: [],
   }));
 

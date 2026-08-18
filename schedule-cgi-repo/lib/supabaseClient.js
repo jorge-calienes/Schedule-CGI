@@ -204,7 +204,7 @@ export async function ensureDepartment(name) {
   return data.id;
 }
 
-function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel }) {
+function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate }) {
   return {
     name,
     tdis_number: tdisNumber || null,
@@ -216,6 +216,8 @@ function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSu
     tags: tags || null,
     shift_hours_label: shiftHoursLabel || null,
     break_times_label: breakTimesLabel || null,
+    counter_cert: !!counterCert,
+    hire_date: hireDate || null,
   };
 }
 
