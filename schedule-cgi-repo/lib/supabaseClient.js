@@ -576,23 +576,61 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
     }));
 }
 
-export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation }) {
+// `isManager` decides the row's landing status — a manager's own
+// evaluation is final immediately ('approved'), a team_lead's needs a
+// supervisor to accept it ('pending'). This mirrors the eval_insert/
+// eval_update_own RLS check in 0006_evaluation_review_workflow.sql, which
+// enforces the same rule server-side — the client value is what the RLS
+// check validates against, not what grants the access.
+export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation, isManager }) {
   const { error } = await supabase.from('evaluations').upsert({
     staff_id: staffId,
     period_id: periodId,
     area_id: areaId,
     evaluator_id: evaluatorId,
     productivity, performance, reliability, note, recommendation,
+    status: isManager ? 'approved' : 'pending',
+    review_note: null, reviewed_by: null, reviewed_at: null,
   }, { onConflict: 'staff_id,evaluator_id,period_id' });
   if (error) throw error;
 
   await supabase.from('audit_log').insert({
     actor_id: evaluatorId,
     action: 'evaluation',
-    description: `submitted an evaluation — recommended "${recommendation}"`,
+    description: isManager
+      ? `submitted an evaluation — recommended "${recommendation}"`
+      : `submitted an evaluation for review — recommended "${recommendation}"`,
     staff_id: staffId,
-    metadata: { productivity, performance, reliability, recommendation },
+    metadata: { productivity, performance, reliability, recommendation, status: isManager ? 'approved' : 'pending' },
   });
+}
+
+// The supervisor/admin review action on a team_lead's pending evaluation —
+// approve it as-is, or send it back with a note for the team lead to
+// revise and resubmit (which returns it to 'pending', see submitEvaluation).
+export async function reviewEvaluation({ evaluationId, staffId, status, reviewNote, reviewerId }) {
+  const { error } = await supabase.from('evaluations').update({
+    status, review_note: reviewNote || null, reviewed_by: reviewerId, reviewed_at: new Date().toISOString(),
+  }).eq('id', evaluationId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: reviewerId,
+    action: 'evaluation',
+    description: status === 'approved' ? 'approved an evaluation' : 'sent an evaluation back for revision',
+    staff_id: staffId,
+    metadata: { evaluationId, status, reviewNote: reviewNote || null },
+  });
+}
+
+export async function fetchPendingEvaluations() {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('*, staff:staff_id(name), evaluator:evaluator_id(name), area:area_id(name), period:period_id(period_label)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
 export async function myEvaluationQueue() {
@@ -622,7 +660,7 @@ export async function fetchStaffEvaluationHistory(staffId) {
 export async function fetchTeamPerformanceOverview() {
   const { data, error } = await supabase
     .from('evaluations')
-    .select('staff_id, productivity, performance, reliability, recommendation, created_at, staff:staff_id(name)')
+    .select('staff_id, productivity, performance, reliability, recommendation, status, created_at, staff:staff_id(name)')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -665,6 +703,8 @@ window.RC = {
   createRotationPeriod,
   fetchRotationHistory,
   submitEvaluation,
+  reviewEvaluation,
+  fetchPendingEvaluations,
   myEvaluationQueue,
   fetchAuditLog,
   grantAccess,

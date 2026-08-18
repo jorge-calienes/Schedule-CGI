@@ -9593,6 +9593,7 @@ function renderNavDrawer(){
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
@@ -10382,6 +10383,7 @@ function renderModal(){
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
+  else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -10686,34 +10688,49 @@ function renderStaffManagerModal(m){
       } else if(hist.length===0){
         body = '<div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
       } else {
-        const avg = key => hist.reduce((sum,r)=>sum+r[key],0)/hist.length;
-        const latest = hist[0];
-        const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
-        body =
-          '<div class="eval-summary-grid">'+
-            '<div class="eval-summary-stat"><span class="eval-summary-label">Productivity</span>'+stars(avg('productivity'))+'</div>'+
-            '<div class="eval-summary-stat"><span class="eval-summary-label">Performance</span>'+stars(avg('performance'))+'</div>'+
-            '<div class="eval-summary-stat"><span class="eval-summary-label">Reliability</span>'+stars(avg('reliability'))+'</div>'+
-          '</div>'+
-          '<div class="eval-summary-meta">'+
-            '<span class="eval-rec-badge" style="background:'+(recMeta?.color||'#999')+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
-            '<span class="small-muted"> · latest recommendation · '+hist.length+' evaluation'+(hist.length===1?'':'s')+' total</span>'+
-          '</div>'+
+        // Only approved evaluations move the averages/latest recommendation —
+        // a team_lead's still-pending/needs-revision submission is listed
+        // below but doesn't count until a supervisor accepts it.
+        const approved = hist.filter(r=>r.status==='approved');
+        const awaiting = hist.filter(r=>r.status==='pending'||r.status==='needs_revision');
+        const avg = key => approved.length ? approved.reduce((sum,r)=>sum+r[key],0)/approved.length : 0;
+        const summary = approved.length ? (()=>{
+          const latest = approved[0];
+          const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
+          return '<div class="eval-summary-grid">'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Productivity</span>'+stars(avg('productivity'))+'</div>'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Performance</span>'+stars(avg('performance'))+'</div>'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Reliability</span>'+stars(avg('reliability'))+'</div>'+
+            '</div>'+
+            '<div class="eval-summary-meta">'+
+              '<span class="eval-rec-badge" style="background:'+(recMeta?.color||'#999')+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
+              '<span class="small-muted"> · latest recommendation · '+approved.length+' approved evaluation'+(approved.length===1?'':'s')+'</span>'+
+            '</div>';
+        })() : '<div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
+        const awaitingBanner = awaiting.length
+          ? '<div class="small-muted" style="margin-bottom:10px;">⏳ '+awaiting.length+' evaluation'+(awaiting.length===1?'':'s')+' awaiting supervisor review</div>'
+          : '';
+        body = summary + awaitingBanner +
           '<div class="eval-history-list">'+
           hist.slice(0,8).map(r=>{
             const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
             const areaName = r.area&&r.area.name;
             const periodLabel = r.period&&r.period.period_label;
             const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
-            const rowRecMeta = EVAL_RECOMMENDATION_META[r.recommendation];
+            const statusBadge = r.status==='approved'
+              ? (()=>{ const rm=EVAL_RECOMMENDATION_META[r.recommendation]; return '<span class="eval-rec-badge small" style="background:'+(rm?.color||'#999')+'">'+(rm?.label||r.recommendation)+'</span>'; })()
+              : r.status==='needs_revision'
+                ? '<span class="eval-rec-badge small" style="background:'+EVAL_RECOMMENDATION_META.training.color+'">Needs revision</span>'
+                : '<span class="eval-rec-badge small" style="background:#8B6F47;">Pending review</span>';
             return '<div class="eval-history-row">'+
               '<div class="eval-history-row-head">'+
                 '<span class="eval-history-date">'+escapeHtml(dateStr)+(periodLabel?' · '+escapeHtml(periodLabel):'')+'</span>'+
-                '<span class="eval-rec-badge small" style="background:'+(rowRecMeta?.color||'#999')+'">'+(rowRecMeta?.label||r.recommendation)+'</span>'+
+                statusBadge+
               '</div>'+
               '<div class="eval-history-scores">P '+r.productivity+' · Pf '+r.performance+' · R '+r.reliability+(areaName?' · '+escapeHtml(areaName):'')+'</div>'+
               '<div class="eval-history-evaluator">by '+escapeHtml(evaluatorName)+'</div>'+
               (r.note ? '<div class="eval-history-note">'+escapeHtml(r.note)+'</div>' : '')+
+              (r.review_note ? '<div class="eval-history-note" style="font-style:normal;"><b>Review note:</b> '+escapeHtml(r.review_note)+'</div>' : '')+
             '</div>';
           }).join('')+
           '</div>';
@@ -11247,24 +11264,47 @@ function renderMarkCalloutModal(m){
 }
 
 // --- Evaluations: team-lead "my queue" ---
+// Data attrs carrying the on-file scores/note/recommendation so reopening
+// the eval form for a revision pre-fills instead of starting from a blank
+// slate — the team lead shouldn't have to re-enter everything just to fix
+// what the supervisor flagged.
+function evalPrefillAttrs(i){
+  return `data-eval-prod="${i.existing_productivity||0}" data-eval-perf="${i.existing_performance||0}" `+
+    `data-eval-rel="${i.existing_reliability||0}" data-eval-rec="${escapeHtml(i.existing_recommendation||'stay')}" `+
+    `data-eval-note="${escapeHtml(i.existing_note||'')}" data-eval-review-note="${escapeHtml(i.existing_evaluation_review_note||'')}"`;
+}
 function renderEvalQueueModal(m){
   const items = m.items||[];
-  const pending = items.filter(i=>!i.existing_evaluation_id);
-  const done = items.filter(i=>i.existing_evaluation_id);
+  const needsFeedback = items.filter(i=>!i.existing_evaluation_id);
+  const needsRevision = items.filter(i=>i.existing_evaluation_status==='needs_revision');
+  const submitted = items.filter(i=>i.existing_evaluation_id && i.existing_evaluation_status!=='needs_revision');
+  const actionCount = needsFeedback.length + needsRevision.length;
   return `
   <div class="modal">
     <div class="modal-head">
-      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':pending.length+' need feedback this period')}</p></div>
+      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':actionCount+' need'+(actionCount===1?'s':'')+' your attention this period')}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       ${m.loading?`<div class="small-muted">Loading your queue…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load your queue: ${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error && items.length===0?`<div class="small-muted">Nobody is currently assigned to your area.</div>`:''}
-      ${!m.loading && pending.length>0?`
+      ${!m.loading && needsRevision.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;color:${EVAL_RECOMMENDATION_META.training.color};">⚠ Sent back for revision</div>
+        <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
+          ${needsRevision.map(i=>`
+            <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}" ${evalPrefillAttrs(i)}>
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+                ${i.existing_evaluation_review_note?`<span class="oc-sub" style="font-style:italic;">"${escapeHtml(i.existing_evaluation_review_note)}"</span>`:''}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && needsFeedback.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback</div>
         <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
-          ${pending.map(i=>`
+          ${needsFeedback.map(i=>`
             <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}">
               <div class="oc-left">
                 <span class="oc-name">${escapeHtml(i.name)}</span>
@@ -11272,14 +11312,14 @@ function renderEvalQueueModal(m){
               </div>
             </div>`).join('')}
         </div>` : ''}
-      ${!m.loading && done.length>0?`
+      ${!m.loading && submitted.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Already submitted</div>
         <div class="option-list" style="max-height:200px;overflow-y:auto;">
-          ${done.map(i=>`
+          ${submitted.map(i=>`
             <div class="option-card" style="opacity:.65;">
               <div class="oc-left">
-                <span class="oc-name">✓ ${escapeHtml(i.name)}</span>
-                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+                <span class="oc-name">${i.existing_evaluation_status==='approved'?'✓':'⏳'} ${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''} · ${i.existing_evaluation_status==='approved'?'approved':'awaiting supervisor review'}</span>
               </div>
             </div>`).join('')}
         </div>` : ''}
@@ -11307,6 +11347,7 @@ function renderEvalFormModal(m){
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
+      ${m.reviewNote?`<div class="alert-box rust" style="margin-bottom:14px;"><b>Sent back for revision:</b> ${escapeHtml(m.reviewNote)}</div>`:''}
       <div class="field">
         <label>Productivity</label>
         <div class="star-row">${renderStarRating(productivity,'eval-prod')}</div>
@@ -11661,13 +11702,23 @@ const AUDIT_ACTION_ICONS = {
   archive_staff:'🗑', edit_area:'🏷', add_area:'➕', rotate_period:'🔁', evaluation:'📝',
   account_request:'🔑', account_grant:'🔓', account_revoke:'🔒', time_off:'📅',
 };
+const AUDIT_ACTION_LABELS = {
+  move:'Move', swap:'Swap', callout:'Callout', clear_callout:'Clear callout', edit_staff:'Edit staff',
+  add_staff:'Add staff', archive_staff:'Remove staff', edit_area:'Edit area', add_area:'Add area',
+  rotate_period:'Rotate', evaluation:'Evaluation', account_request:'Account request',
+  account_grant:'Account grant', account_revoke:'Account revoke', time_off:'Time off',
+};
 function renderAuditLogModal(m){
   const q = (m.search||'').trim().toLowerCase();
-  const entries = q
-    ? (m.entries||[]).filter(e=>
-        (e.description||'').toLowerCase().includes(q) ||
-        (e.accounts?.name||'').toLowerCase().includes(q))
-    : (m.entries||[]);
+  const actionFilter = m.actionFilter||'';
+  const dateFilter = m.dateFilter||'';
+  const entries = (m.entries||[]).filter(e=>{
+    if(actionFilter && e.action!==actionFilter) return false;
+    if(dateFilter && (!e.created_at || e.created_at.slice(0,10)!==dateFilter)) return false;
+    if(q && !(e.description||'').toLowerCase().includes(q) && !(e.accounts?.name||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const actionsPresent = [...new Set((m.entries||[]).map(e=>e.action))];
   return `
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -11676,6 +11727,14 @@ function renderAuditLogModal(m){
     </div>
     <div class="modal-body">
       ${!m.loading?`
+      <div class="log-filters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <select id="audit-action-filter" style="border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12.5px;background:var(--md-sys-color-surface);">
+          <option value="">All action types</option>
+          ${actionsPresent.map(a=>`<option value="${a}" ${actionFilter===a?'selected':''}>${AUDIT_ACTION_LABELS[a]||a}</option>`).join('')}
+        </select>
+        <input type="date" id="audit-date-filter" value="${escapeHtml(dateFilter)}" style="border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12.5px;background:var(--md-sys-color-surface);"/>
+        ${(actionFilter||dateFilter)?'<button class="btn btn-light btn-sm" id="audit-filters-clear">Clear filters</button>':''}
+      </div>
       <div class="roster-search-wrap" style="margin-bottom:12px;">
         <span class="roster-search-icon">🔍</span>
         <input type="text" id="audit-search" class="roster-search" placeholder="Search by action or who did it…" value="${escapeHtml(m.search||'')}"/>
@@ -11684,7 +11743,7 @@ function renderAuditLogModal(m){
       ${m.loading?`<div class="small-muted">Loading audit log…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load the audit log: ${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error && (m.entries||[]).length===0?`<div class="small-muted" style="line-height:1.6;">No activity recorded yet. Moves, edits, rotations, and evaluations will show up here as people use the app.</div>`:''}
-      ${!m.loading && !m.error && (m.entries||[]).length>0 && entries.length===0?`<div class="small-muted">No entries match "${escapeHtml(m.search)}".</div>`:''}
+      ${!m.loading && !m.error && (m.entries||[]).length>0 && entries.length===0?`<div class="small-muted">No entries match the current filters.</div>`:''}
       ${entries.length>0?`
       <div class="option-list" style="max-height:420px;overflow-y:auto;">
         ${entries.map(e=>`
@@ -11754,11 +11813,68 @@ function renderTeamDashboardModal(m){
               ${r.count>0 ? `
                 <div class="team-dash-row-scores">P ${r.avgProductivity.toFixed(1)} · Pf ${r.avgPerformance.toFixed(1)} · R ${r.avgReliability.toFixed(1)}</div>
                 <span class="eval-rec-badge small" style="background:${recMeta?recMeta.color:'#999'}">${recMeta?recMeta.label:r.latestRecommendation}</span>
-              ` : `<span class="small-muted">Not yet evaluated</span>`}
+              ` : `<span class="small-muted">${r.pendingCount>0?'':'Not yet evaluated'}</span>`}
+              ${r.pendingCount>0?`<span class="eval-rec-badge small" style="background:#8B6F47;">⏳ ${r.pendingCount} pending</span>`:''}
             </button>`;
           }).join('')}
         </div>
       ` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Pending evaluations review queue (admin/supervisor) — the
+// supervisor-must-accept-it half of the evaluation workflow. A team_lead's
+// submission lands here as 'pending' (see 0006_evaluation_review_workflow.sql)
+// and only counts toward the staff performance profile / team dashboard
+// once approved. ---
+function renderPendingEvalsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>📝 Pending evaluations</h2><p>Submitted by team leads, awaiting your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending evaluations…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending evaluations: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every team-lead evaluation has been reviewed.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const staffName = (row.staff&&row.staff.name)||'Unknown';
+          const evaluatorName = (row.evaluator&&row.evaluator.name)||'Unknown';
+          const areaName = row.area&&row.area.name;
+          const periodLabel = row.period&&row.period.period_label;
+          const recMeta = EVAL_RECOMMENDATION_META[row.recommendation];
+          const isRejecting = m.rejectingId===row.id;
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(staffName)}${periodLabel?' · '+escapeHtml(periodLabel):''}</span>
+              <span class="eval-rec-badge small" style="background:${recMeta?recMeta.color:'#999'}">${recMeta?recMeta.label:row.recommendation}</span>
+            </div>
+            <div class="eval-history-scores">P ${row.productivity} · Pf ${row.performance} · R ${row.reliability}${areaName?' · '+escapeHtml(areaName):''}</div>
+            <div class="eval-history-evaluator">submitted by ${escapeHtml(evaluatorName)}</div>
+            ${row.note?`<div class="eval-history-note">${escapeHtml(row.note)}</div>`:''}
+            ${isRejecting ? `
+              <div style="margin-top:10px;">
+                <textarea id="reject-note-input" rows="2" placeholder="What needs to change before this can be approved?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <button class="btn btn-primary btn-sm" id="confirm-reject-btn" data-confirm-reject="${row.id}" data-confirm-reject-staff="${row.staff_id}">Send back</button>
+                  <button class="btn btn-light btn-sm" id="cancel-reject-btn">Cancel</button>
+                </div>
+              </div>
+            ` : `
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn btn-primary btn-sm" data-approve-eval="${row.id}" data-approve-staff="${row.staff_id}">✓ Approve</button>
+                <button class="btn btn-light btn-sm" data-reject-eval="${row.id}">↩ Send back</button>
+              </div>
+            `}
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -12232,7 +12348,10 @@ const EVAL_RECOMMENDATION_META = {
 // by staff_id and computes per-person averages, plus fills in any active
 // staff member who has zero evaluations — visible team-wide gaps are as
 // useful here as the scores themselves. Rows arrive newest-first from the
-// query, so each group's first row is already the latest.
+// query, so each group's first APPROVED row is already the latest one that
+// counts — a team_lead's still-'pending'/'needs_revision' submission
+// doesn't move the averages or the recommendation until a supervisor
+// accepts it, only shows up as a pendingCount badge.
 function aggregateTeamPerformance(raw){
   const byStaff = {};
   (raw||[]).forEach(r=>{
@@ -12240,17 +12359,22 @@ function aggregateTeamPerformance(raw){
     byStaff[r.staff_id].rows.push(r);
   });
   const evaluated = Object.values(byStaff).map(entry=>{
-    const rows = entry.rows;
-    const avg = key => rows.reduce((sum,row)=>sum+row[key],0)/rows.length;
+    const approvedRows = entry.rows.filter(r=>r.status==='approved');
+    const pendingCount = entry.rows.filter(r=>r.status==='pending'||r.status==='needs_revision').length;
+    if(!approvedRows.length){
+      return { staffId: entry.staffId, name: entry.name, count: 0, pendingCount,
+        avgProductivity: 0, avgPerformance: 0, avgReliability: 0, latestRecommendation: null, latestDate: null };
+    }
+    const avg = key => approvedRows.reduce((sum,row)=>sum+row[key],0)/approvedRows.length;
     return {
-      staffId: entry.staffId, name: entry.name, count: rows.length,
+      staffId: entry.staffId, name: entry.name, count: approvedRows.length, pendingCount,
       avgProductivity: avg('productivity'), avgPerformance: avg('performance'), avgReliability: avg('reliability'),
-      latestRecommendation: rows[0].recommendation, latestDate: rows[0].created_at,
+      latestRecommendation: approvedRows[0].recommendation, latestDate: approvedRows[0].created_at,
     };
   });
   const evaluatedIds = new Set(evaluated.map(e=>e.staffId));
   const notEvaluated = state.staff.filter(s=>!evaluatedIds.has(s.id)).map(s=>({
-    staffId: s.id, name: s.name, count: 0,
+    staffId: s.id, name: s.name, count: 0, pendingCount: 0,
     avgProductivity: 0, avgPerformance: 0, avgReliability: 0,
     latestRecommendation: null, latestDate: null,
   }));
@@ -12528,6 +12652,19 @@ async function openEvalQueue(){
     openModal({type:'eval-queue', loading:false, items: items||[]});
   }catch(e){
     openModal({type:'eval-queue', loading:false, items:[], error: (e && e.message) || 'Could not load your queue.'});
+  }
+}
+
+// Admin/supervisor review queue — team-lead-submitted evaluations awaiting
+// acceptance before they count anywhere (staff performance profile, team
+// dashboard). See PHASE2_ROADMAP.md.
+async function openPendingEvals(){
+  openModal({type:'pending-evals', loading:true, items:[], rejectingId:null});
+  try{
+    const items = await window.RC.fetchPendingEvaluations();
+    openModal({type:'pending-evals', loading:false, items: items||[], rejectingId:null});
+  }catch(e){
+    openModal({type:'pending-evals', loading:false, items:[], rejectingId:null, error: (e && e.message) || 'Could not load pending evaluations.'});
   }
 }
 
@@ -13989,6 +14126,7 @@ function attachHandlers(){
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
+  on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -15431,7 +15569,12 @@ function attachHandlers(){
         staffId: el.dataset.openEvalForm,
         areaId: el.dataset.evalArea || null,
         periodId: el.dataset.evalPeriod || null,
-        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        productivity: Number(el.dataset.evalProd)||0,
+        performance: Number(el.dataset.evalPerf)||0,
+        reliability: Number(el.dataset.evalRel)||0,
+        recommendation: el.dataset.evalRec || 'stay',
+        note: el.dataset.evalNote || '',
+        reviewNote: el.dataset.evalReviewNote || '',
         _returnModal:{type:'eval-queue'}});
     }));
   }
@@ -15456,6 +15599,7 @@ function attachHandlers(){
       const note = document.getElementById('eval-note-input')?.value||'';
       const recommendation = document.getElementById('eval-recommendation-input')?.value||'stay';
       openModal({...m, saving:true});
+      const isManager = authState.account.role!=='team_lead';
       const sync = await syncCrudWrite(()=>window.RC.submitEvaluation({
         staffId: m.staffId,
         periodId: m.periodId||null,
@@ -15466,9 +15610,10 @@ function attachHandlers(){
         reliability: m.reliability,
         note,
         recommendation,
+        isManager,
       }));
       if(sync.ok){
-        showToast('Evaluation saved to database ✓', 'teal');
+        showToast(isManager ? 'Evaluation saved to database ✓' : 'Evaluation sent to your supervisor for review ✓', 'teal');
         if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
         else if(m._returnModal) openModal(m._returnModal);
         else closeModal();
@@ -15610,6 +15755,11 @@ function attachHandlers(){
       });
     }
     on('audit-search-clear', ()=>{ openModal({...m, search:''}); });
+    const actionFilterSel = document.getElementById('audit-action-filter');
+    if(actionFilterSel) actionFilterSel.addEventListener('change', ()=>{ openModal({...m, actionFilter:actionFilterSel.value}); });
+    const dateFilterInput = document.getElementById('audit-date-filter');
+    if(dateFilterInput) dateFilterInput.addEventListener('change', ()=>{ openModal({...m, dateFilter:dateFilterInput.value}); });
+    on('audit-filters-clear', ()=>{ openModal({...m, actionFilter:'', dateFilter:''}); });
   }
 
   // --- team dashboard ---
@@ -15633,6 +15783,32 @@ function attachHandlers(){
     document.querySelectorAll('[data-team-staff]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'staff-manager', editId:el.dataset.teamStaff, staffTab:'stats'});
     }));
+  }
+
+  // --- pending evaluations review queue ---
+  if(activeModal.type==='pending-evals'){
+    const m = activeModal;
+    document.querySelectorAll('[data-approve-eval]').forEach(el=>el.addEventListener('click', async ()=>{
+      const id = el.dataset.approveEval, staffId = el.dataset.approveStaff;
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId:id, staffId, status:'approved', reviewNote:'', reviewerId:authState.account.id}));
+      showToast(sync.ok ? 'Evaluation approved ✓' : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      if(sync.ok) openPendingEvals(); else el.disabled = false;
+    }));
+    document.querySelectorAll('[data-reject-eval]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, rejectingId: el.dataset.rejectEval});
+    }));
+    on('cancel-reject-btn', ()=>openModal({...m, rejectingId:null}));
+    on('confirm-reject-btn', async ()=>{
+      const btn = document.getElementById('confirm-reject-btn');
+      const note = document.getElementById('reject-note-input')?.value?.trim();
+      if(!note){ showToast('Add a note so they know what to fix', 'rust'); return; }
+      const evaluationId = btn.dataset.confirmReject, staffId = btn.dataset.confirmRejectStaff;
+      btn.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId, staffId, status:'needs_revision', reviewNote:note, reviewerId:authState.account.id}));
+      showToast(sync.ok ? 'Sent back for revision' : `Could not send back — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      if(sync.ok) openPendingEvals(); else btn.disabled = false;
+    });
   }
 
   // --- account grant / add form ---

@@ -28,6 +28,8 @@ here should be built in one giant rewrite.
 | Supervisors/shifts/languages/rotation flows sync | **Done** |
 | Time off entries / blocked pairs sync | **Done** — `state.coverage` still local-only |
 | Staff performance profile, Team dashboard | **Done** |
+| Evaluation review workflow (team lead → supervisor accept/reject) | **Done** |
+| Audit log filters (action type, date) | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -351,6 +353,61 @@ lookup for the recommendation badge label/color, so the three
 recommendation values (`stay`/`advance`/`training`) render identically
 everywhere they show up.
 
+### Evaluation review workflow — a team lead's evaluation now needs a supervisor to accept it
+
+Confirmed against the actual mockup file (`39277bd8-phase2mockup.html`):
+admin/supervisor already had access to nearly everything, "Manage accounts"
+was already admin-only, and team leads were already locked to a read-only
+board plus their own evaluation queue — that permission model matched what
+was asked for. What genuinely didn't exist: a team lead's submitted
+evaluation went straight into the `evaluations` table as a final record,
+immediately visible on the staff performance profile and team dashboard,
+with no one else's sign-off.
+
+Migration `0006_evaluation_review_workflow.sql` adds `status`
+(`pending`/`approved`/`needs_revision`), `review_note`, `reviewed_by`, and
+`reviewed_at` to `evaluations`. The landing status is enforced in the
+`eval_insert`/`eval_update_own` RLS policies, not just trusted from the
+client: a manager's own submission must self-land as `approved` (no one
+reviews a manager); a team lead's must land as `pending`, and if a team
+lead edits their own row afterward it can only ever land back at
+`pending` — they can't flip themselves to `approved` by re-saving.
+Evaluations that already existed before this migration were grandfathered
+in as `approved` rather than surfacing years of history as suddenly
+pending.
+
+New pieces:
+- `reviewEvaluation()` / `fetchPendingEvaluations()` in `supabaseClient.js`.
+- A **Pending evaluations** review queue (`openPendingEvals()`, nav item
+  under Administration, admin/supervisor only) — approve, or send back
+  with a required note.
+- "My evaluations" (the team-lead queue) now has three buckets instead of
+  two: **Sent back for revision** (shows the supervisor's note, clicking
+  it reopens the eval form pre-filled with the original scores/note so
+  the team lead isn't retyping from scratch — the `my_evaluation_queue`
+  view was extended with a lateral join to surface those columns),
+  **Needs feedback**, and **Already submitted** (now distinguishes
+  "approved" from "awaiting supervisor review").
+- Staff performance profile and team dashboard now only average
+  `approved` evaluations — a still-pending or sent-back-for-revision
+  submission shows up (with a status badge instead of a recommendation
+  badge, and a "⏳ N pending" indicator on the team dashboard row) but
+  doesn't move anyone's numbers until it's actually accepted.
+
+Also added while cross-checking the mockup: the audit log's single search
+box is now backed by an action-type dropdown and a date filter too,
+matching the mockup's filter row more closely (a per-supervisor filter
+was left out — the existing search already matches by actor name).
+
+**Not done in this pass, deliberately out of scope:** the mockup's
+Staff-performance "trend over time" bar chart (screen 4) and the team
+dashboard's 3-column kanban-by-recommendation layout (screen 5) — the
+current list+filter-tabs dashboard is functionally equivalent (same data,
+same three buckets) but visually different from the mockup, and the trend
+chart would need deciding what "one bar per period" means when someone
+has multiple evaluators per period. Worth a follow-up pass, not bundled
+into an already-large evaluation-workflow change.
+
 ## Suggested next step
 
 Every numbered step (3a through 8) is done, plus staff import, the
@@ -358,7 +415,13 @@ team-lead access lock, Manage accounts, and every extra screen from the
 "Phase 2 mockups" reference — the board, staff/area edits, Rotate Now,
 evaluations, bulk onboarding, account provisioning, the audit trail, time
 off/blocked pairs, staff performance, and the team dashboard are all fully
-live against Supabase. The one deliberately-deferred piece is
-`state.coverage` (see above) — the live covering-assignment link, still
-local-only pending its own schema/scope decision. Otherwise the original
-mockup reference is fully wired up.
+live against Supabase, including the evaluation review workflow (team
+lead submissions now need supervisor acceptance). Three things remain
+deliberately deferred:
+- `state.coverage` (see above) — the live covering-assignment link, still
+  local-only pending its own schema/scope decision.
+- The staff-performance "trend over time" bar chart (mockup screen 4).
+- The team dashboard's 3-column kanban-by-recommendation layout (mockup
+  screen 5) — currently a searchable/filterable list instead, same data.
+
+Otherwise the original mockup reference is fully wired up.
