@@ -26,6 +26,7 @@ here should be built in one giant rewrite.
 | Manage accounts (grant/request) | **Done** |
 | Manage accounts edit/revoke on active accounts | **Done** |
 | Supervisors/shifts/languages/rotation flows sync | **Done** |
+| Time off entries / blocked pairs sync | **Done** — `state.coverage` still local-only |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
 
 The mockup you shared is UI reference only — none of its screens are wired
@@ -279,6 +280,38 @@ No audit_log entries for the four catalog CRUD functions — the
 `audit_action` enum has no catalog-edit values, and adding four just for
 this felt like more schema churn than the win was worth. Worth revisiting
 if these need an audit trail later.
+
+### Time off entries and blocked pairs — now synced, coverage still local
+
+`state.timeOff` (scheduled leave: start/end date + label) and
+`state.blocks` (mutual "don't place these two together" pairs) were both
+fully local — `time_off` already existed in the schema (RLS included,
+`timeoff_write` policy from 0001) but had zero read/write callers
+anywhere in the app; `blocked_pairs` had no table at all. Migration
+`0005_blocked_pairs_time_off_index.sql` adds `blocked_pairs` (with an
+order-independent unique index on `least/greatest(staff_a_id,
+staff_b_id)`, since a plain table `unique(...)` constraint can't use
+function expressions). `createTimeOff()`/`updateTimeOff()`/
+`deleteTimeOff()` and `createBlockedPair()`/`deleteBlockedPair()` are
+straightforward CRUD, wired into the time-off manager's save/delete
+handlers and the blocks-manager's add/remove handlers, following the same
+`syncCrudWrite()` "saved to database ✓" pattern as staff/area/catalog
+saves.
+
+**Deliberately NOT synced in this pass: `state.coverage`.** That's the
+live link between a time-off entry and the staff member currently
+covering the vacated area (assigned via the "best-fit suggestion" card or
+the "Others…" dropdown on the Time Off screen), plus the matching
+return-to-area bookkeeping. It has upwards of a dozen call sites threaded
+through board rendering, chip badges, and the daily-reset logic that
+auto-returns a covering staff member — migrating it safely means also
+deciding how `state.coverage` should even be represented in the schema
+(no `covering_staff_id` column exists on `time_off` yet), which is a
+bigger, separate slice rather than something to rush in alongside the
+entries themselves. The coverage-linking handlers (`.to-sug-card`,
+`.to-sug-more`, `.to-remove-cov`, `.to-assign-cov`) are untouched and
+still work exactly as before — just local-only, same as `state.coverage`
+was before this pass and same as `state.calloutHistory` still is.
 
 ## Suggested next step
 

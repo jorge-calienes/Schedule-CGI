@@ -158,7 +158,7 @@ export async function loadBoard() {
   const [
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
-    { data: rotationFlows }, { data: rotationFlowStages },
+    { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -171,10 +171,13 @@ export async function loadBoard() {
     supabase.from('staff_language_certs').select('*'),
     supabase.from('rotation_flows').select('*').order('created_at'),
     supabase.from('rotation_flow_stages').select('*').order('stage_order'),
+    supabase.from('time_off').select('*').order('start_date'),
+    supabase.from('blocked_pairs').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
+    timeOff, blockedPairs,
   };
 }
 
@@ -456,6 +459,44 @@ export async function deleteRotationFlow({ flowId }) {
 }
 
 // ---------------------------------------------------------------------------
+// Time off entries and blocked pairs. state.coverage (linking a returning
+// staff member's covering assignment back to an area/date) stays local-only
+// for now — it has ~15 call sites threaded through board rendering and chip
+// badges, and deserves its own pass rather than being rushed in here. Just
+// the time-off entries themselves (dates/label) and the blocked-pairs table
+// (brand new — see 0005_blocked_pairs_time_off_index.sql) are synced below.
+// ---------------------------------------------------------------------------
+
+export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId }) {
+  const { data, error } = await supabase.from('time_off').insert({
+    staff_id: staffId, start_date: startDate, end_date: endDate, label: label || null, created_by: actingAccountId,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateTimeOff({ timeOffId, startDate, endDate, label }) {
+  const { error } = await supabase.from('time_off')
+    .update({ start_date: startDate, end_date: endDate, label: label || null })
+    .eq('id', timeOffId);
+  if (error) throw error;
+}
+export async function deleteTimeOff({ timeOffId }) {
+  const { error } = await supabase.from('time_off').delete().eq('id', timeOffId);
+  if (error) throw error;
+}
+
+export async function createBlockedPair({ staffAId, staffBId }) {
+  const { data, error } = await supabase.from('blocked_pairs')
+    .insert({ staff_a_id: staffAId, staff_b_id: staffBId }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function deleteBlockedPair({ blockedPairId }) {
+  const { error } = await supabase.from('blocked_pairs').delete().eq('id', blockedPairId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
 // Rotate Now (Step 4). Snapshots the CLOSING period's assignments into
 // rotation_periods + rotation_period_assignments, mirroring the local
 // state.history.push() the app already does. This is deliberate/infrequent
@@ -615,5 +656,10 @@ window.RC = {
   createRotationFlow,
   updateRotationFlow,
   deleteRotationFlow,
+  createTimeOff,
+  updateTimeOff,
+  deleteTimeOff,
+  createBlockedPair,
+  deleteBlockedPair,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
