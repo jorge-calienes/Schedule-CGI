@@ -163,6 +163,32 @@ Role-based visibility (nav items, screens) is driven purely by the signed-in
 account's real `role` from `authState.account` — no manual "preview as"
 switcher like the mockup's dev toggle. Applies to every screen above.
 
+### Team lead access: evaluations + read-only board
+
+Every write table's RLS policy already requires `is_manager()`
+(admin/supervisor) — team leads were always blocked from writing at the
+database layer, the UI just didn't reflect it, so a team lead could drag
+people around, mark callouts, edit staff, even hit Rotate Now, and only
+find out afterward it silently failed to save. `isTeamLeadRole()` (in
+`index.html`) closes that gap client-side:
+- Nav drawer collapses to "My evaluations" + "Sign out" only.
+- `viewMode` is pinned to `'board'` — the Board/Overview/Breaks/Time Off
+  tab bar doesn't render, so Roster (which has an inline-editable table)
+  and the other view modes aren't reachable at all.
+- On the board itself: chips aren't draggable and drop their Move/Swap/
+  Out/Edit pills and long-press menu; areas drop their "⋯" edit button and
+  drag-to-reorder handle; the "+ Add area" and sidebar "Quick actions"
+  (Add work area / Mark someone out) buttons are gone; the callout
+  banner's "Assign coverage" action is hidden. Tapping a person's name
+  still works, but opens the read-only stats modal (`staff-stats`)
+  instead of the editable `staff-manager` one, and that modal's own
+  "Edit details" escape hatch is hidden too.
+
+This is a client-side UX fix, not the security boundary — RLS was always
+the real enforcement. Verified with headless-Chromium tests for both a
+team_lead session (no tab bar, minimal nav, no chip/area actions, name
+click opens read-only stats) and an admin session (fully unaffected).
+
 ## Suggested next step
 
 Steps 3a, 3b, 4, and 5 are done — the board, staff/area edits, Rotate Now,

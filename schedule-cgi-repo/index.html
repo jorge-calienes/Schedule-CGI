@@ -8195,6 +8195,14 @@ let authState = {
   account: null, // {id, name, role, assigned_area_id}
 };
 
+// Team leads get evaluations + a read-only board view — every write table's
+// RLS policy already requires is_manager() (admin/supervisor) server-side,
+// so this is closing the client-side gap: without it, a team lead could
+// drag people around, mark callouts, edit staff, etc. and only find out it
+// silently failed to save. Real enforcement stays in Postgres; this just
+// keeps the UI from offering actions that were always going to be rejected.
+function isTeamLeadRole(){ return !!(authState.account && authState.account.role === 'team_lead'); }
+
 function waitForRC(){
   return new Promise(resolve=>{
     if(window.RC){ resolve(); return; }
@@ -9116,6 +9124,7 @@ function render(){
   }
   // Sync today's scheduled time-off on every render
   _applyTodayTimeOff();
+  if(isTeamLeadRole() && viewMode!=='board') viewMode='board'; // team leads: board view only, no other tabs
   const dragModes = (viewMode==='board' || viewMode==='supervisors');
   const mainViews = {
     board: renderBoard,
@@ -9134,7 +9143,7 @@ function render(){
   root.innerHTML = `
     ${renderNavDrawer()}
     ${renderTopbar()}
-    ${renderTabBar()}
+    ${isTeamLeadRole() ? '' : renderTabBar()}
     ${renderCalloutBanner()}
     ${swapMode ? `<div class="swap-banner">
       <div class="swap-banner-left">
@@ -9439,6 +9448,20 @@ function renderTabBar(){
 
 function renderNavDrawer(){
   const isOpen = navDrawerOpen;
+  if(isTeamLeadRole()){
+    // Team leads: evaluations + board view only — every other nav item
+    // opens something that mutates data, which is manager-only server-side.
+    return `
+    <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
+    <nav class="nav-drawer ${isOpen?'open':''}">
+      <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
+      ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
+      <div class="nav-drawer-section">Schedule</div>
+      <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>
+      <div class="nav-divider"></div>
+      <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
+    </nav>`;
+  }
   return `
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
@@ -9455,7 +9478,6 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-manage-flows"><span class="nav-item-icon">🔀</span>Rotation Flows</button>
       <button class="nav-item" id="nav-history"><span class="nav-item-icon">📜</span>History</button>
-      ${authState.account?.role==='team_lead' ? `<button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>` : ''}
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Board</div>
       <button class="nav-item" id="nav-mark-callout"><span class="nav-item-icon">⚠️</span>Mark someone out</button>
@@ -9553,7 +9575,7 @@ function renderCalloutBanner(){
           <span class="callout-banner-names">${escapeHtml(names)}${extra}</span>
         </div>
       </div>
-      <button class="callout-banner-btn" id="btn-open-callout-dash">⚡ Assign coverage</button>
+      ${isTeamLeadRole() ? '' : '<button class="callout-banner-btn" id="btn-open-callout-dash">⚡ Assign coverage</button>'}
     </div>`;
   }
 
@@ -9566,13 +9588,14 @@ function renderCalloutBanner(){
         <span class="callout-banner-names">${escapeHtml(names)}${extra}</span>
       </div>
     </div>
-    <button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>
+    ${isTeamLeadRole() ? '' : '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>'}
   </div>`;
 }
 
 function renderSidebar(){
   const unplaced = state.staff.filter(s=>s.active!==false && !state.assignments[s.id]);
-  const isTapTarget = !!selectedStaffId && !!state.assignments[selectedStaffId];
+  const readOnly = isTeamLeadRole();
+  const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
   return `
   <div class="sidebar ${drawerOpen?'drawer-open':''}">
     <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
@@ -9580,16 +9603,17 @@ function renderSidebar(){
       ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="">Move here (unassign)</button>`:''}
       ${unplaced.length===0 ? '<div class="pool-empty">Everyone is placed</div>' : unplaced.map(s=>renderChip(s)).join('')}
     </div>
+    ${readOnly ? '' : `
     <h3>Quick actions</h3>
     <div class="sidebar-actions">
       <button class="btn btn-light btn-sm" id="btn-add-area">+ Add work area</button>
       <button class="btn btn-light btn-sm" id="btn-mark-callout">Mark someone out</button>
-    </div>
+    </div>`}
     <h3>Legend</h3>
     <div class="small-muted" style="line-height:1.7;padding:0 4px;">
       <span class="trail-dot" style="background:var(--amber);display:inline-block;"></span> = was here last rotation<br/>
       <span class="trail-dot" style="background:var(--rust);display:inline-block;"></span> = blocked with someone in area<br/>
-      Drag chips between areas or the pool.
+      ${readOnly ? 'View only — you can view the board and submit evaluations.' : 'Drag chips between areas or the pool.'}
     </div>
   </div>`;
 }
@@ -9616,8 +9640,9 @@ function renderChip(s){
   const timeOffRec  = ((state.timeOff||{})[s.id]||[]).find(r=>today>=r.startDate&&today<=r.endDate);
   const isScheduled = !!timeOffRec;                // has a scheduled time-off record today
   const hasCoverage = !!(timeOffRec?.coverageStaffId); // coverage person has been assigned
+  const readOnly = isTeamLeadRole();
   return `
-  <div class="chip ${flagged?'flagged':''} ${(isOut||isScheduled)?'out':''} ${s.isTeamLead?'lead':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''} ${dimmed?'search-dim':''} ${searched?'search-match':''} ${isCovering?'covering':''}" draggable="true" data-staff-id="${s.id}" title="${escapeHtml(s.name)}${s.tdisNumber?' · TDIS '+escapeHtml(s.tdisNumber):''}">
+  <div class="chip ${flagged?'flagged':''} ${(isOut||isScheduled)?'out':''} ${s.isTeamLead?'lead':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''} ${dimmed?'search-dim':''} ${searched?'search-match':''} ${isCovering?'covering':''}" draggable="${readOnly?'false':'true'}" data-staff-id="${s.id}" title="${escapeHtml(s.name)}${s.tdisNumber?' · TDIS '+escapeHtml(s.tdisNumber):''}">
     <div class="chip-row-header">
       <div class="chip-name-wrap">
         ${s.isTeamLead?'<span class="chip-lead-star">★</span>':''}
@@ -9629,12 +9654,14 @@ function renderChip(s){
         ${streak>=2&&!area?.fixed?`<span class="streak-badge" title="${streak} rotations in a row">🔥${streak}</span>`:''}
         ${isScheduled&&!hasCoverage?'<span class="chip-out-tag chip-out-scheduled">📅</span>':isScheduled&&hasCoverage?'<span class="chip-out-tag chip-out-covered">✓</span>':isOut?'<span class="chip-out-tag">Out</span>':''}
       </div>
+      ${readOnly ? '' : `
       <!-- Mobile only: ○ + ··· -->
       <div class="chip-actions-mobile">
         <button class="chip-quick-out ${isOut?'is-out':''}" data-quick-out="${s.id}" title="${isOut?'Mark back in':'Call out'}">${isOut?'●':'○'}</button>
         <button class="chip-menu-btn ${chipMenuOpen===s.id?'active':''}" data-chip-menu="${s.id}">···</button>
-      </div>
+      </div>`}
     </div>
+    ${readOnly ? '' : `
     <!-- Desktop only: action pills on their own row below the name -->
     <div class="chip-actions-desktop">
       <button class="chip-act move" data-move="${s.id}">Move</button>
@@ -9642,7 +9669,7 @@ function renderChip(s){
       <button class="chip-act ${isOut?'markin':'callout'}" data-quick-out="${s.id}">${isOut?'Mark in':'Out'}</button>
       <button class="chip-act edit" data-show-profile="${s.id}">Edit</button>
       ${isSwapTarget?'<span class="swap-here-hint" style="margin-left:auto">↕ Swap here</span>':''}
-    </div>
+    </div>`}
     ${s.tags ? `<div class="chip-tags">${escapeHtml(s.tags)}</div>` : ''}
     ${(()=>{
       const certs=[];
@@ -9681,9 +9708,9 @@ function renderChip(s){
     ${isCovering ? `<div class="chip-covering-row">
       <span class="chip-covering-tag">↩ Return</span>
       <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(state.coverage[s.id].returnToAreaId)?.name||'pool')}</span>
-      <button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>
+      ${readOnly ? '' : `<button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>`}
     </div>` : ''}
-    ${chipMenuOpen===s.id ? `<div class="chip-cia-popup">
+    ${(!readOnly && chipMenuOpen===s.id) ? `<div class="chip-cia-popup">
       <button class="cia-btn primary act-move ${isSelected?'active':''}" data-id="${s.id}">${isSelected?'Cancel':'Move'}</button>
       <button class="cia-btn act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}">Swap</button>
       <button class="cia-btn act-callout" data-id="${s.id}">${isOut?'Mark in':'Call out'}</button>
@@ -9725,10 +9752,11 @@ function renderBoard(){
           </div>
         </div>
       `).join('')}
+      ${isTeamLeadRole() ? '' : `
       <div class="dept-group">
         <div class="dept-label">&nbsp;</div>
         <div class="board"><button class="add-area-col" id="btn-add-area-2">+ Add area</button></div>
-      </div>
+      </div>`}
     </div>
 
   </div>`;
@@ -9738,14 +9766,15 @@ function renderAreaCol(area){
   const members = staffInArea(area.id);
   const over = members.length > area.capacity;
   const under = isUnderStaffed(area.id);
-  const isTapTarget = !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
+  const readOnly = isTeamLeadRole();
+  const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
   return `
   <div class="area-col ${under?'understaffed':''}" style="--area-color:${area.color}">
-    <div class="area-head" draggable="true" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="Drag to reorder">
+    <div class="area-head" draggable="${readOnly?'false':'true'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="${readOnly?'':'Drag to reorder'}">
       <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <span class="area-count ${over?'over':under?'under':members.length>0?'ok':''}">${members.length}/${area.capacity}</span>
-        <button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>
+        ${readOnly ? '' : `<button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>`}
       </div>
     </div>
     <div class="area-drop ${isTapTarget?'tap-target':''}" data-dropzone="area" data-area-id="${area.id}">
@@ -10324,7 +10353,7 @@ function renderStaffStatsModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-stats">Close</button>
-      <button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>
+      ${isTeamLeadRole() ? '' : '<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>'}
     </div>
   </div>`;
 }
@@ -12414,7 +12443,8 @@ function attachHandlers(){
   // Chip name + Edit button → open profile modal
   document.querySelectorAll('[data-show-profile]').forEach(el=>el.addEventListener('click', e=>{
     e.stopPropagation();
-    openModal({type:'staff-manager', editId:el.dataset.showProfile, staffTab:'profile'});
+    if(isTeamLeadRole()) openModal({type:'staff-stats', staffId:el.dataset.showProfile});
+    else openModal({type:'staff-manager', editId:el.dataset.showProfile, staffTab:'profile'});
     render();
   }));
   // Desktop chip: Move
