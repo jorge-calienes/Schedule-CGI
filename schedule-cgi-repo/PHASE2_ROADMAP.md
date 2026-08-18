@@ -24,6 +24,8 @@ here should be built in one giant rewrite.
 | Team lead access lock (evaluations + read-only board) | **Done** |
 | Audit log screen | **Done** |
 | Manage accounts (grant/request) | **Done** |
+| Manage accounts edit/revoke on active accounts | **Done** |
+| Supervisors/shifts/languages/rotation flows sync | **Done** |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
 
 The mockup you shared is UI reference only — none of its screens are wired
@@ -218,6 +220,65 @@ This is a client-side UX fix, not the security boundary — RLS was always
 the real enforcement. Verified with headless-Chromium tests for both a
 team_lead session (no tab bar, minimal nav, no chip/area actions, name
 click opens read-only stats) and an admin session (fully unaffected).
+
+### Supervisors, shifts, languages, rotation flows — now synced
+
+These four tables existed in the schema from the start but `loadBoard()`
+never fetched them and no write functions existed — every manager screen
+(`supervisor-manager`, `shifts-manager`, `languages-manager`,
+`flow-manager`/`flow-editor`) mutated `state.supervisors`/`shifts`/
+`languages`/`rotationFlows` locally only. `createSupervisor()`/
+`updateSupervisor()`/`deleteSupervisor()` and the equivalent trio for
+shifts and languages are straightforward CRUD; rotation flow stages have
+no independent identity worth diffing, so `updateRotationFlow()` deletes
+and reinserts the full stage list on every save, same reasoning as
+`setStaffLanguageCerts()`. `rotation_flows` was also missing a `color`
+column entirely (migration `0004_flow_color.sql`) — same class of gap as
+`counter_cert`/`hire_date` in migration 0003.
+
+Fixing the catalogs alone wouldn't have fixed the actual complaint
+("a supervisor assignment set on one device doesn't show up on another"),
+since that's a **staff-level** field. `staffRow()` already had
+`supervisor_id`/`flow_id`/`flow_enrolled` columns and `mapSupabaseBoard()`
+already read them back — `createStaff()`/`updateStaff()` just never sent
+them. Now they do, plus a new `setStaffLanguageCerts()` (delete + reinsert
+into the `staff_language_certs` join table) called alongside every staff
+save.
+
+This surfaced two real pre-existing bugs in the staff-manager modal,
+unrelated to Supabase but directly undermining this fix if left alone:
+- `snapshotStaffForm()` normalized `supervisorId`/`flowId` to `null` when
+  those fields weren't in the *current* tab's DOM (every other field
+  correctly returned `undefined`, which the tab-switch handler filters
+  out) — so switching from Profile to Rotation and back silently nulled
+  out whatever supervisor had just been picked.
+- Language cert checkboxes were only ever read live from the DOM at save
+  time, with no snapshot capture at all — switching away from the
+  Rotation tab lost the selection entirely before Save could see it.
+- The Supervisor and Rotation-flow `<select>`s in `staff-manager` also
+  only checked `editing.supervisorId`/`editing.flowId` (the original,
+  unsaved record) when deciding which `<option>` is `selected`, never the
+  in-progress draft — so the dropdown visually reset to the old value on
+  a tab round-trip even though the draft itself was still correct in
+  memory. Fixed those two selects to prefer the draft; the same pattern
+  likely affects other Profile-tab fields (name, TDIS, shift, lunch) but
+  that's a wider pre-existing modal-state bug, not a sync gap — left
+  alone here.
+
+Also fixed: the Roster table's inline editors (shift/lunch/flow selects,
+CA-cert toggle, AGS toggle, team-lead toggle, tags cell, supervisor
+select) bypassed `staff-save-btn` entirely and never synced *any* field to
+Supabase — arguably the more likely place an admin sets a supervisor
+day-to-day than the modal. `syncRosterStaffEdit()` resends the full
+current record through `updateStaff()` (required, since it overwrites
+every `staffRow()` column) via the existing fire-and-forget
+`syncBoardWrite()`, since these are frequent low-friction edits, not
+deliberate CRUD saves.
+
+No audit_log entries for the four catalog CRUD functions — the
+`audit_action` enum has no catalog-edit values, and adding four just for
+this felt like more schema churn than the win was worth. Worth revisiting
+if these need an audit trail later.
 
 ## Suggested next step
 

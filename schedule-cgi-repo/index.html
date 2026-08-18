@@ -10589,7 +10589,7 @@ function renderStaffManagerModal(m){
     </div>
     <div class="field"><label>Supervisor</label>
       <select id="staff-supervisor-input"><option value="">—</option>
-        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+(editing&&editing.supervisorId===sv.id?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
+        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
       </select>
     </div>
     <div class="field">
@@ -10611,7 +10611,7 @@ function renderStaffManagerModal(m){
   const rotationTab = `
     <div class="field"><label>Rotation flow</label>
       <select id="staff-flow-input"><option value="">No flow / rotates freely</option>
-        ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+(editing&&editing.flowId===f.id?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
+        ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+((m.flowId!==undefined ? m.flowId===f.id : editing&&editing.flowId===f.id)?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
       </select>
     </div>
     <div class="sw-group">
@@ -12285,6 +12285,25 @@ async function syncCrudWrite(fn){
   }
 }
 
+// Roster table inline edits (shift/lunch/flow selects, CA-cert toggle, AGS
+// toggle, team-lead toggle, tags cell) mutate a single field on `s`, but
+// updateStaff() writes every staffRow() column — so the sync must resend
+// the record's current full state, not just the one field that changed.
+// Fire-and-forget like syncBoardWrite(): frequent, low-friction edits, not
+// a deliberate CRUD save that deserves an awaited "saved to database ✓".
+function syncRosterStaffEdit(s, label){
+  syncBoardWrite(async ()=>{
+    const departmentId = s.department ? await window.RC.ensureDepartment(s.department) : null;
+    return window.RC.updateStaff({
+      staffId: s.id, name: s.name, tdisNumber: s.tdisNumber, departmentId, homeAreaId: s.homeAreaId,
+      isTeamLead: s.isTeamLead, isSubcontractor: s.isSubcontractor, needsAccommodations: s.needsAccommodations,
+      tags: s.tags, counterCert: s.counterCert, hireDate: s.hireDate,
+      supervisorId: s.supervisorId, flowId: s.flowId, flowEnrolled: s.flowEnrolled,
+      shiftHoursLabel: s.shiftHours, breakTimesLabel: s.breakTimes, actingAccountId: authState.account.id,
+    });
+  }, label);
+}
+
 async function openAuditLog(){
   openModal({type:'audit-log', loading:true, entries:[], search:''});
   try{
@@ -12806,12 +12825,14 @@ function attachHandlers(){
         s.flowId = flowId;
         s.flowEnrolled = !!flowId;
         saveState();
+        syncRosterStaffEdit(s, 'flow enrollment');
         showToast(flowId ? `${s.name.split(' ')[0]} enrolled in ${getFlowById(flowId)?.name||'flow'}` : `${s.name.split(' ')[0]} removed from flow`, 'teal');
         render();
         return;
       }
       s[sel.dataset.field] = sel.value;
       saveState();
+      syncRosterStaffEdit(s, 'roster edit');
       showToast(`${s.name.split(' ')[0]} updated`, 'teal');
       render();
     }));
@@ -12822,6 +12843,7 @@ function attachHandlers(){
       if(!s) return;
       s.counterCert = !s.counterCert;
       saveState();
+      syncRosterStaffEdit(s, 'CA cert');
       showToast(`${s.name.split(' ')[0]} CA Cert ${s.counterCert?'added':'removed'}`, 'teal');
       render();
     }));
@@ -12832,6 +12854,7 @@ function attachHandlers(){
       if(!s) return;
       s.isSubcontractor = cb.checked;
       saveState();
+      syncRosterStaffEdit(s, 'AGS status');
       showToast(`${s.name.split(' ')[0]} ${s.isSubcontractor?'marked as AGS / sub-contractor':'marked as in-house'}`, 'teal');
       render();
     }));
@@ -12841,6 +12864,7 @@ function attachHandlers(){
       s.isTeamLead = cb.checked;
       if(s.isTeamLead && !s.homeAreaId) s.homeAreaId = state.assignments[s.id] || null;
       saveState();
+      syncRosterStaffEdit(s, 'team lead status');
       showToast(s.isTeamLead ? s.name+' is now a Team Lead' : s.name+' is no longer a Team Lead', 'teal');
       render();
     }));
@@ -12857,6 +12881,7 @@ function attachHandlers(){
       const commit = ()=>{
         s[field] = input.value.trim();
         saveState();
+        syncRosterStaffEdit(s, 'roster edit');
         render();
       };
       input.addEventListener('blur', commit);
@@ -13809,6 +13834,7 @@ function attachHandlers(){
     const s = getStaffById(sel.dataset.supSelect);
     s.supervisorId = sel.value || null;
     saveState();
+    syncRosterStaffEdit(s, 'supervisor assignment');
     render();
   }));
 
@@ -14092,11 +14118,14 @@ function attachHandlers(){
         const homeAreaId = (isTeamLead&&!s.homeAreaId) ? (state.assignments[s.id]||null) : s.homeAreaId;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
-          return window.RC.updateStaff({
+          const result = await window.RC.updateStaff({
             staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
+            supervisorId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
+          await window.RC.setStaffLanguageCerts({staffId: s.id, languageIds: finalLangCerts});
+          return result;
         });
         Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
@@ -14111,9 +14140,11 @@ function attachHandlers(){
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
+            supervisorId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           createdId = row.id;
+          if(finalLangCerts.length) await window.RC.setStaffLanguageCerts({staffId: row.id, languageIds: finalLangCerts});
           return row;
         });
         // Use the real Supabase-generated id when the sync succeeded, so the
@@ -14339,22 +14370,30 @@ function attachHandlers(){
   if(activeModal.type==='shifts-manager'){
     on('btn-new-shift', ()=>openModal({type:'shifts-manager', editId:'__new__'}));
     on('shift-cancel-btn', ()=>openModal({type:'shifts-manager'}));
-    on('shift-save-btn', ()=>{
+    on('shift-save-btn', async ()=>{
       const start = document.getElementById('shift-start-input').value.trim();
       const end   = document.getElementById('shift-end-input').value.trim();
       if(!start||!end){ showToast('Enter start and end time','rust'); return; }
       const label = `${start} – ${end}`;
       if(activeModal.editId==='__new__'){
-        state.shifts.push({id:uid('sh'), label, start, end});
+        const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
+        state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
+        showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const sh = state.shifts.find(s=>s.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
         if(sh){ sh.start=start; sh.end=end; sh.label=label; }
+        showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState(); openModal({type:'shifts-manager'});
     });
-    on('shift-delete-btn', ()=>{
-      state.shifts = state.shifts.filter(s=>s.id!==activeModal.editId);
-      saveState(); openModal({type:'shifts-manager'});
+    on('shift-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
+      state.shifts = state.shifts.filter(s=>s.id!==id);
+      saveState();
+      showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'shifts-manager'});
     });
     document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
       openModal({type:'shifts-manager', editId:el.dataset.editShift});
@@ -14365,22 +14404,29 @@ function attachHandlers(){
   if(activeModal.type==='languages-manager'){
     on('btn-new-lang', ()=>openModal({type:'languages-manager', editId:'__new__'}));
     on('lang-cancel-btn', ()=>openModal({type:'languages-manager'}));
-    on('lang-save-btn', ()=>{
+    on('lang-save-btn', async ()=>{
       const name = document.getElementById('lang-name-input').value.trim();
       if(!name){ showToast('Enter a language name','rust'); return; }
       if(activeModal.editId==='__new__'){
-        state.languages.push({id:uid('lang'), name});
+        const sync = await syncCrudWrite(()=>window.RC.createLanguage({name}));
+        state.languages.push({id: sync.ok ? sync.result.id : uid('lang'), name});
+        showToast(sync.ok ? 'Language added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const l = state.languages.find(x=>x.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateLanguage({languageId: l.id, name}));
         if(l) l.name = name;
+        showToast(sync.ok ? 'Language updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState(); openModal({type:'languages-manager'});
     });
-    on('lang-delete-btn', ()=>{
+    on('lang-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteLanguage({languageId:id}));
       state.languages = state.languages.filter(l=>l.id!==id);
       state.staff.forEach(s=>{ if(s.languageCerts) s.languageCerts = s.languageCerts.filter(x=>x!==id); });
-      saveState(); openModal({type:'languages-manager'});
+      saveState();
+      showToast(sync.ok ? 'Language removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'languages-manager'});
     });
     document.querySelectorAll('[data-edit-lang]').forEach(el=>el.addEventListener('click',()=>{
       openModal({type:'languages-manager', editId:el.dataset.editLang});
@@ -14601,26 +14647,30 @@ function attachHandlers(){
     }));
     on('sup-new-btn', ()=>openModal({type:'supervisor-manager'}));
     on('sup-view-org-link', ()=>openModal({type:'org-diagram'}));
-    on('sup-save-btn', ()=>{
+    on('sup-save-btn', async ()=>{
       const name = document.getElementById('sup-name-input').value.trim();
       const color = document.getElementById('sup-color-input').value;
       if(!name){ showToast('Enter a name', 'rust'); return; }
       if(activeModal.editId){
         const sv = getSupervisorById(activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color}));
         sv.name = name; sv.color = color;
-        showToast('Supervisor updated', 'teal');
+        showToast(sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
-        state.supervisors.push({id:uid('sup'), name, color});
+        const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color}));
+        state.supervisors.push({id: sync.ok ? sync.result.id : uid('sup'), name, color});
+        showToast(sync.ok ? 'Supervisor added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
       closeModal();
     });
-    on('sup-delete-btn', ()=>{
+    on('sup-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteSupervisor({supervisorId:id}));
       state.supervisors = state.supervisors.filter(sv=>sv.id!==id);
       state.staff.forEach(s=>{ if(s.supervisorId===id) s.supervisorId = null; });
       saveState();
-      showToast('Supervisor removed', 'rust');
+      showToast(sync.ok ? 'Supervisor removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -15457,28 +15507,32 @@ function attachHandlers(){
     });
 
     on('flow-cancel-btn', ()=>{ closeModal(); });
-    on('flow-save-btn', ()=>{
+    on('flow-save-btn', async ()=>{
       const name = document.getElementById('flow-name-input').value.trim();
       const color = document.getElementById('flow-color-input').value;
       if(!name){ showToast('Enter a flow name','rust'); return; }
       if(currentStages.length===0){ showToast('Add at least one stage','rust'); return; }
       if(editingFlow){
+        const sync = await syncCrudWrite(()=>window.RC.updateRotationFlow({flowId: editingFlow.id, name, color, stages: currentStages}));
         editingFlow.name=name; editingFlow.color=color; editingFlow.stages=currentStages;
-        showToast('Flow updated','teal');
+        showToast(sync.ok ? 'Flow updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
-        state.rotationFlows.push({id:uid('flow'), name, color, stages:currentStages});
+        const sync = await syncCrudWrite(()=>window.RC.createRotationFlow({name, color, stages: currentStages}));
+        state.rotationFlows.push({id: sync.ok ? sync.result.id : uid('flow'), name, color, stages:currentStages});
+        showToast(sync.ok ? 'Flow added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
       openModal({type:'flow-manager'});
       render();
-    });;
+    });
 
-    on('flow-delete-btn', ()=>{
+    on('flow-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteRotationFlow({flowId:id}));
       state.rotationFlows = state.rotationFlows.filter(f=>f.id!==id);
       state.staff.forEach(s=>{ if(s.flowId===id){ s.flowId=null; s.flowEnrolled=false; } });
       saveState();
-      showToast('Flow deleted','rust');
+      showToast(sync.ok ? 'Flow deleted — saved to database ✓' : `Deleted here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       openModal({type:'flow-manager'});
     });
   }
@@ -15496,8 +15550,8 @@ function snapshotStaffForm(){
       hireDate:      v('staff-hiredate-input'),
       lateStart:     v('staff-latestart-input'),
     lunchVal:      v('staff-lunch-input'),
-    supervisorId:  v('staff-supervisor-input') || null,
-    flowId:        v('staff-flow-input')       || null,
+    supervisorId:  v('staff-supervisor-input'),
+    flowId:        v('staff-flow-input'),
     swTags:        sw('sw-tags'),
     swTeamLead:    sw('sw-team-lead'),
     swAccom:       sw('sw-accom'),
@@ -15505,6 +15559,13 @@ function snapshotStaffForm(){
     swLang:        sw('sw-lang'),
     swSubcontractor: sw('sw-subcontractor'),
     swLateStart: sw('sw-late-start'),
+    // undefined when the checkboxes aren't in the current tab's DOM at all
+    // (so it doesn't clobber a value captured from a previous tab visit);
+    // an array (possibly empty) when they are, so explicitly unchecking
+    // every cert and switching tabs still saves that as "no certs".
+    langCerts: document.querySelector('.staff-lang-cert')
+      ? Array.from(document.querySelectorAll('.staff-lang-cert:checked')).map(el=>el.dataset.langId)
+      : undefined,
   };
 }
 
@@ -15732,6 +15793,12 @@ function mapSupabaseBoard(board){
     fixed: false,
   }));
 
+  const langCertsByStaff = {};
+  (board.staffLanguageCerts||[]).forEach(row=>{
+    if(!langCertsByStaff[row.staff_id]) langCertsByStaff[row.staff_id] = [];
+    langCertsByStaff[row.staff_id].push(row.language_id);
+  });
+
   const staff = (board.staff||[]).map(s=>({
     id: s.id,
     name: s.name,
@@ -15750,7 +15817,7 @@ function mapSupabaseBoard(board){
     tdisNumber: s.tdis_number || '',
     counterCert: !!s.counter_cert,
     hireDate: s.hire_date || '',
-    languageCerts: [],
+    languageCerts: langCertsByStaff[s.id] || [],
   }));
 
   const assignments = {};
@@ -15763,7 +15830,18 @@ function mapSupabaseBoard(board){
     callouts[row.staff_id] = true;
   });
 
-  return { areas, staff, assignments, callouts };
+  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
+  const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
+  const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+
+  const stagesByFlow = {};
+  (board.rotationFlowStages||[]).forEach(st=>{
+    if(!stagesByFlow[st.flow_id]) stagesByFlow[st.flow_id] = [];
+    stagesByFlow[st.flow_id].push({ id: st.id, areaId: st.area_id, label: st.label || '', requiredRotations: st.min_periods });
+  });
+  const rotationFlows = (board.rotationFlows||[]).map(f=>({ id: f.id, name: f.name, color: f.color, stages: stagesByFlow[f.id]||[] }));
+
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows };
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
@@ -15783,6 +15861,10 @@ async function bootApp(){
       const mapped = mapSupabaseBoard(board);
       state.areas = mapped.areas;
       state.staff = mapped.staff;
+      state.supervisors = mapped.supervisors;
+      state.shifts = mapped.shifts;
+      state.languages = mapped.languages;
+      state.rotationFlows = mapped.rotationFlows;
       state.assignments = mapped.assignments;
       state.callouts = mapped.callouts;
       render();

@@ -155,14 +155,27 @@ export async function getCurrentAccount() {
 // ---------------------------------------------------------------------------
 
 export async function loadBoard() {
-  const [{ data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts }] = await Promise.all([
+  const [
+    { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
+    { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
+    { data: rotationFlows }, { data: rotationFlowStages },
+  ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
     supabase.from('assignments').select('*'),
     supabase.from('departments').select('*').order('sort_order'),
     supabase.from('callouts').select('*'),
+    supabase.from('supervisors').select('*').order('name'),
+    supabase.from('shifts').select('*'),
+    supabase.from('languages').select('*').order('name'),
+    supabase.from('staff_language_certs').select('*'),
+    supabase.from('rotation_flows').select('*').order('created_at'),
+    supabase.from('rotation_flow_stages').select('*').order('stage_order'),
   ]);
-  return { areas, staff, assignments, departments, callouts };
+  return {
+    areas, staff, assignments, departments, callouts,
+    supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
+  };
 }
 
 export async function moveStaff({ staffId, areaId, actingAccountId, staffName, fromAreaName, toAreaName }) {
@@ -247,7 +260,7 @@ export async function ensureDepartment(name) {
   return data.id;
 }
 
-function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate }) {
+function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate, supervisorId, flowId, flowEnrolled }) {
   return {
     name,
     tdis_number: tdisNumber || null,
@@ -261,7 +274,24 @@ function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSu
     break_times_label: breakTimesLabel || null,
     counter_cert: !!counterCert,
     hire_date: hireDate || null,
+    supervisor_id: supervisorId || null,
+    flow_id: flowId || null,
+    flow_enrolled: !!flowEnrolled,
   };
+}
+
+// staff_language_certs is a many-to-many join table with no "which cert is
+// which" identity worth preserving — replacing the whole set for this staff
+// member on every save is simpler and just as correct as diffing.
+export async function setStaffLanguageCerts({ staffId, languageIds }) {
+  const { error: delErr } = await supabase.from('staff_language_certs').delete().eq('staff_id', staffId);
+  if (delErr) throw delErr;
+  if (languageIds && languageIds.length) {
+    const { error: insErr } = await supabase
+      .from('staff_language_certs')
+      .insert(languageIds.map(language_id => ({ staff_id: staffId, language_id })));
+    if (insErr) throw insErr;
+  }
 }
 
 export async function createStaff(fields) {
@@ -342,6 +372,87 @@ export async function deleteArea({ areaId, areaName, actingAccountId }) {
     action: 'edit_area',
     description: `deleted work area "${areaName || areaId}"`,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Catalog entities (supervisors, shifts, languages, rotation flows). These
+// were tables that existed in the schema but nothing ever read from or wrote
+// to them — loadBoard() didn't fetch them and every manager screen mutated
+// state.supervisors/shifts/languages/rotationFlows locally only, so none of
+// it synced across devices. No audit_log entries here (unlike staff/area
+// CRUD) — the audit_action enum has no catalog-edit values yet, and adding
+// four just for this felt like more schema churn than the win was worth;
+// worth revisiting if these turn out to need an audit trail too.
+// ---------------------------------------------------------------------------
+
+export async function createSupervisor({ name, color }) {
+  const { data, error } = await supabase.from('supervisors').insert({ name, color: color || '#2F5FA8' }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateSupervisor({ supervisorId, name, color }) {
+  const { error } = await supabase.from('supervisors').update({ name, color: color || '#2F5FA8' }).eq('id', supervisorId);
+  if (error) throw error;
+}
+export async function deleteSupervisor({ supervisorId }) {
+  const { error } = await supabase.from('supervisors').delete().eq('id', supervisorId);
+  if (error) throw error;
+}
+
+export async function createShift({ label, start, end }) {
+  const { data, error } = await supabase.from('shifts').insert({ label, start_time: start, end_time: end }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateShift({ shiftId, label, start, end }) {
+  const { error } = await supabase.from('shifts').update({ label, start_time: start, end_time: end }).eq('id', shiftId);
+  if (error) throw error;
+}
+export async function deleteShift({ shiftId }) {
+  const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+  if (error) throw error;
+}
+
+export async function createLanguage({ name }) {
+  const { data, error } = await supabase.from('languages').insert({ name }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateLanguage({ languageId, name }) {
+  const { error } = await supabase.from('languages').update({ name }).eq('id', languageId);
+  if (error) throw error;
+}
+export async function deleteLanguage({ languageId }) {
+  const { error } = await supabase.from('languages').delete().eq('id', languageId);
+  if (error) throw error;
+}
+
+// Stages have no independent identity worth diffing — delete-and-reinsert on
+// every save, same reasoning as setStaffLanguageCerts().
+async function replaceFlowStages(flowId, stages) {
+  const { error: delErr } = await supabase.from('rotation_flow_stages').delete().eq('flow_id', flowId);
+  if (delErr) throw delErr;
+  if (stages && stages.length) {
+    const { error: insErr } = await supabase.from('rotation_flow_stages').insert(
+      stages.map((s, i) => ({ flow_id: flowId, area_id: s.areaId, stage_order: i, min_periods: s.requiredRotations, label: s.label || null }))
+    );
+    if (insErr) throw insErr;
+  }
+}
+export async function createRotationFlow({ name, color, stages }) {
+  const { data: flow, error } = await supabase.from('rotation_flows').insert({ name, color: color || '#2F5FA8' }).select().single();
+  if (error) throw error;
+  await replaceFlowStages(flow.id, stages);
+  return flow;
+}
+export async function updateRotationFlow({ flowId, name, color, stages }) {
+  const { error } = await supabase.from('rotation_flows').update({ name, color: color || '#2F5FA8' }).eq('id', flowId);
+  if (error) throw error;
+  await replaceFlowStages(flowId, stages);
+}
+export async function deleteRotationFlow({ flowId }) {
+  const { error } = await supabase.from('rotation_flows').delete().eq('id', flowId);
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,5 +602,18 @@ window.RC = {
   grantAccess,
   fetchAccounts,
   revokeAccess,
+  setStaffLanguageCerts,
+  createSupervisor,
+  updateSupervisor,
+  deleteSupervisor,
+  createShift,
+  updateShift,
+  deleteShift,
+  createLanguage,
+  updateLanguage,
+  deleteLanguage,
+  createRotationFlow,
+  updateRotationFlow,
+  deleteRotationFlow,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
