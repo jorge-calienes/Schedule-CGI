@@ -43,13 +43,18 @@ export default async function handler(req, res) {
       });
     }
 
-    const { error } = await supabaseAdmin
+    const { data: created, error } = await supabaseAdmin
       .from('accounts')
-      .insert({ name: name.trim(), status: 'pending', role: 'team_lead' });
+      .insert({ name: name.trim(), status: 'pending', role: 'team_lead' })
+      .select('id')
+      .single();
 
     if (error) return res.status(500).json({ error: 'Could not submit request.' });
 
-    return res.status(200).json({ message: 'Request submitted — an admin needs to approve you before you can sign in.' });
+    // accountId lets an admin's "Manage accounts" screen grant this request
+    // (or a fresh account it created on someone's behalf) immediately after
+    // this call, without a separate lookup.
+    return res.status(200).json({ message: 'Request submitted — an admin needs to approve you before you can sign in.', accountId: created.id });
   } catch (e) {
     console.error('accounts/request: unexpected error:', e);
     return res.status(500).json({ error: `Unexpected server error: ${e && e.message || e}` });

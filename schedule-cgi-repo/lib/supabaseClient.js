@@ -85,6 +85,30 @@ export async function requestAccess(name) {
   return res.json();
 }
 
+// Admin-only — the server re-verifies admin status itself (see
+// api/accounts/grant.js) rather than trusting the client, so this Bearer
+// token is what actually gates the request, not anything in this file.
+export async function grantAccess({ accountId, role, assignedAreaId, pin }) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch('/api/accounts/grant', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify({ accountId, role, assignedAreaId, pin }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Could not grant access.');
+  return body;
+}
+
+export async function fetchAccounts() {
+  const { data, error } = await supabase.from('accounts').select('*').order('requested_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export async function signOut() {
   await supabase.auth.signOut();
 }
@@ -445,5 +469,7 @@ window.RC = {
   submitEvaluation,
   myEvaluationQueue,
   fetchAuditLog,
+  grantAccess,
+  fetchAccounts,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
