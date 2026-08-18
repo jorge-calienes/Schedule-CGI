@@ -19,7 +19,7 @@ async function requireAdmin(supabaseAdmin, req) {
 
   const { data: account } = await supabaseAdmin
     .from('accounts')
-    .select('id, role, status')
+    .select('id, name, role, status')
     .eq('user_id', userData.user.id)
     .single();
 
@@ -49,16 +49,27 @@ export default async function handler(req, res) {
     if (!caller) return res.status(403).json({ error: 'Admin access required.' });
 
     const { accountId, role, assignedAreaId, pin } = req.body || {};
-    if (!accountId || !role || !/^\d{4}$/.test(pin || '')) {
-      return res.status(400).json({ error: 'accountId, role, and a 4-digit pin are required.' });
+    if (!accountId || !role) {
+      return res.status(400).json({ error: 'accountId and role are required.' });
+    }
+    if (pin && !/^\d{4}$/.test(pin)) {
+      return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
     }
     if (role === 'team_lead' && !assignedAreaId) {
       return res.status(400).json({ error: 'Team leads need an assigned area.' });
     }
 
     const { data: pending, error: fetchErr } = await supabaseAdmin
-      .from('accounts').select('id, name, user_id').eq('id', accountId).single();
+      .from('accounts').select('id, name, user_id, status').eq('id', accountId).single();
     if (fetchErr || !pending) return res.status(404).json({ error: 'Account not found.' });
+
+    // Editing an already-active account (role/area change, or resetting the
+    // PIN) can skip the PIN — only a pending/revoked → active transition
+    // needs one, since that's the only way this account could ever sign in.
+    const wasActive = pending.status === 'active';
+    if (!wasActive && !pin) {
+      return res.status(400).json({ error: 'A 4-digit PIN is required to activate this account.' });
+    }
 
     // Create the backing Supabase Auth user if this account doesn't have one yet
     // (internal, unguessable email — nobody logs in with it directly, only via PIN).
@@ -86,17 +97,22 @@ export default async function handler(req, res) {
       .eq('id', accountId);
     if (updateErr) return res.status(500).json({ error: 'Could not activate account.' });
 
-    const { error: pinErr } = await supabaseAdmin.rpc('set_pin', { p_account_id: accountId, p_pin: pin });
-    if (pinErr) return res.status(500).json({ error: 'Account activated but PIN could not be set — ask them to reset it.' });
+    if (pin) {
+      const { error: pinErr } = await supabaseAdmin.rpc('set_pin', { p_account_id: accountId, p_pin: pin });
+      if (pinErr) return res.status(500).json({ error: 'Account saved but the PIN could not be set — try again.' });
+    }
 
     await supabaseAdmin.from('audit_log').insert({
       actor_id: caller.id,
       action: 'account_grant',
-      description: `${caller.id} granted ${role} access to ${pending.name}`,
-      metadata: { accountId, role, assignedAreaId },
+      description: `${caller.name} ${wasActive ? 'updated' : 'granted'} ${role} access for ${pending.name}${pin ? ' (PIN reset)' : ''}`,
+      metadata: { accountId, role, assignedAreaId, pinReset: !!pin },
     });
 
-    return res.status(200).json({ message: `${pending.name} can now sign in.` });
+    return res.status(200).json({
+      message: wasActive ? `${pending.name}'s account was updated.` : `${pending.name} can now sign in.`,
+      pinReset: !!pin,
+    });
   } catch (e) {
     console.error('accounts/grant: unexpected error:', e);
     return res.status(500).json({ error: `Unexpected server error: ${e && e.message || e}` });

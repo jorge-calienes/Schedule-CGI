@@ -11458,6 +11458,7 @@ function renderManageAccountsModal(m){
   const accounts = m.accounts||[];
   const pending = accounts.filter(a=>a.status==='pending');
   const active = accounts.filter(a=>a.status==='active');
+  const revoked = accounts.filter(a=>a.status==='revoked');
   const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&a.assigned_area_id?' · '+escapeHtml(getAreaById(a.assigned_area_id)?.name||''):''}`;
   return `
   <div class="modal" style="max-width:560px;">
@@ -11482,12 +11483,24 @@ function renderManageAccountsModal(m){
         </div>` : ''}
       ${!m.loading && !m.error && active.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Active accounts</div>
-        <div class="option-list" style="max-height:260px;overflow-y:auto;">
+        <div class="option-list" style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
           ${active.map(a=>`
-            <div class="option-card">
-              <div class="oc-left">
+            <div class="option-card" style="cursor:default;">
+              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-area="${a.assigned_area_id||''}" style="cursor:pointer;flex:1;">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)}</span>
+              </div>
+              <button class="btn btn-light btn-sm" data-revoke-account="${a.id}" data-revoke-name="${escapeHtml(a.name)}" style="flex-shrink:0;color:var(--c-red);">Revoke</button>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && !m.error && revoked.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Revoked</div>
+        <div class="option-list" style="max-height:200px;overflow-y:auto;">
+          ${revoked.map(a=>`
+            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-area="${a.assigned_area_id||''}" style="opacity:.65;">
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(a.name)}</span>
+                <span class="oc-sub">${rowSub(a)} · access revoked</span>
               </div>
             </div>`).join('')}
         </div>` : ''}
@@ -11496,20 +11509,31 @@ function renderManageAccountsModal(m){
   </div>`;
 }
 
+const ACCOUNT_FORM_COPY = {
+  create: {title:'Add account', sub:'Creates the account and activates it in one step.', submit:'Create & grant'},
+  grant:  {title:'Grant access', sub:'Requested by', submit:'Grant access'},
+  edit:   {title:'Edit account', sub:'Leave PIN blank to keep their current one.', submit:'Save changes'},
+  restore:{title:'Restore access', sub:'access was revoked — granting again reactivates it.', submit:'Restore access'},
+};
 function renderAccountGrantFormModal(m){
+  const mode = m.mode||'create';
+  const copy = ACCOUNT_FORM_COPY[mode];
   const role = m.role||'team_lead';
   const pin = m.pin||'';
-  const canSubmit = m.name.trim() && /^\d{4}$/.test(pin) && (role!=='team_lead' || m.assignedAreaId) && !m.saving;
+  const pinRequired = mode!=='edit';
+  const pinValid = pinRequired ? /^\d{4}$/.test(pin) : (pin==='' || /^\d{4}$/.test(pin));
+  const canSubmit = m.name.trim() && pinValid && (role!=='team_lead' || m.assignedAreaId) && !m.saving;
   if(m.result){
+    const noPinToShow = mode==='edit' && !pin;
     return `
     <div class="modal" style="max-width:440px;">
       <div class="modal-head">
-        <div><h2>${escapeHtml(m.name)} can sign in</h2><p>Share this PIN with them now — it won't be shown again.</p></div>
+        <div><h2>${escapeHtml(m.name)}${noPinToShow?"'s account was updated":' can sign in'}</h2>${noPinToShow?'':'<p>Share this PIN with them now — it won\'t be shown again.</p>'}</div>
       </div>
       <div class="modal-body">
-        <div class="rc-pin-dots" style="justify-content:center;gap:12px;margin:8px 0 20px;">
+        ${noPinToShow?'':`<div class="rc-pin-dots" style="justify-content:center;gap:12px;margin:8px 0 20px;">
           ${pin.split('').map(d=>`<span style="font-size:32px;font-weight:800;font-family:var(--mono);">${d}</span>`).join('')}
-        </div>
+        </div>`}
         <div class="small-muted" style="text-align:center;">Name: <b>${escapeHtml(m.name)}</b> · Role: <b>${ACCOUNT_ROLE_LABELS[role]}</b>${role==='team_lead'?` · Area: <b>${escapeHtml(getAreaById(m.assignedAreaId)?.name||'')}</b>`:''}</div>
       </div>
       <div class="modal-foot">
@@ -11520,13 +11544,13 @@ function renderAccountGrantFormModal(m){
   return `
   <div class="modal" style="max-width:440px;">
     <div class="modal-head">
-      <div><h2>${m.accountId?'Grant access':'Add account'}</h2><p>${m.accountId?`Requested by ${escapeHtml(m.name)}`:'Creates the account and activates it in one step.'}</p></div>
+      <div><h2>${copy.title}</h2><p>${mode==='grant'?`${copy.sub} ${escapeHtml(m.name)}`:mode==='restore'?`${escapeHtml(m.name)}'s ${copy.sub}`:copy.sub}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       <div class="field">
         <label>Name</label>
-        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}" ${m.accountId?'disabled':''}/>
+        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}" ${mode!=='create'?'disabled':''}/>
       </div>
       <div class="field">
         <label>Role</label>
@@ -11543,7 +11567,7 @@ function renderAccountGrantFormModal(m){
         </select>
       </div>`:''}
       <div class="field">
-        <label>PIN (4 digits)</label>
+        <label>${pinRequired?'PIN (4 digits)':'New PIN (optional)'}</label>
         <div style="display:flex;gap:8px;">
           <input type="text" id="grant-pin-input" inputmode="numeric" maxlength="4" placeholder="1234" value="${escapeHtml(pin)}" style="font-family:var(--mono);letter-spacing:.1em;"/>
           <button class="btn btn-light btn-sm" id="grant-random-pin" type="button">Generate</button>
@@ -11553,7 +11577,7 @@ function renderAccountGrantFormModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="grant-cancel-btn">Cancel</button>
-      <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':(m.accountId?'Grant access':'Create & grant')}</button>
+      <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':copy.submit}</button>
     </div>
   </div>`;
 }
@@ -15252,10 +15276,31 @@ function attachHandlers(){
   // --- manage accounts ---
   if(activeModal.type==='manage-accounts'){
     on('btn-add-account', ()=>{
-      openModal({type:'account-grant-form', accountId:null, name:'', role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaId:null, pin:''});
     });
     document.querySelectorAll('[data-grant-account]').forEach(el=>el.addEventListener('click', ()=>{
-      openModal({type:'account-grant-form', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
+    }));
+    document.querySelectorAll('[data-edit-account]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'account-grant-form', mode:'edit', accountId:el.dataset.editAccount, name:el.dataset.editName,
+        role:el.dataset.editRole||'team_lead', assignedAreaId:el.dataset.editArea||null, pin:''});
+    }));
+    document.querySelectorAll('[data-restore-account]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'account-grant-form', mode:'restore', accountId:el.dataset.restoreAccount, name:el.dataset.restoreName,
+        role:el.dataset.restoreRole||'team_lead', assignedAreaId:el.dataset.restoreArea||null, pin:''});
+    }));
+    document.querySelectorAll('[data-revoke-account]').forEach(el=>el.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const accountId = el.dataset.revokeAccount, name = el.dataset.revokeName;
+      el.disabled = true; el.textContent = 'Revoking…';
+      try{
+        await window.RC.revokeAccess({accountId, actingAccountId: authState.account.id});
+        showToast(`${name}'s access revoked`, 'rust');
+        openManageAccounts();
+      }catch(err){
+        showToast(`Could not revoke access: ${(err&&err.message)||'try again'}`, 'rust');
+        el.disabled = false; el.textContent = 'Revoke';
+      }
     }));
   }
 
@@ -15293,13 +15338,15 @@ function attachHandlers(){
       });
       const areaSel = document.getElementById('grant-area-input');
       if(areaSel) areaSel.addEventListener('change', ()=>{ activeModal.assignedAreaId = areaSel.value; });
+      const pinRequired = m.mode!=='edit';
+      const pinIsValid = p => pinRequired ? /^\d{4}$/.test(p) : (p==='' || /^\d{4}$/.test(p));
       const pinInput = document.getElementById('grant-pin-input');
       if(pinInput) pinInput.addEventListener('input', ()=>{
         const cleaned = pinInput.value.replace(/\D/g,'').slice(0,4);
         if(cleaned!==pinInput.value) pinInput.value = cleaned;
         activeModal.pin = cleaned;
         const btn = document.getElementById('grant-submit-btn');
-        if(btn) btn.disabled = !(activeModal.name.trim() && /^\d{4}$/.test(cleaned) && (activeModal.role!=='team_lead' || activeModal.assignedAreaId) && !activeModal.saving);
+        if(btn) btn.disabled = !(activeModal.name.trim() && pinIsValid(cleaned) && (activeModal.role!=='team_lead' || activeModal.assignedAreaId) && !activeModal.saving);
       });
       on('grant-random-pin', ()=>{ openModal({...m, name: nameInput?nameInput.value:m.name, pin: randomPin()}); });
       on('grant-cancel-btn', ()=>openManageAccounts());
@@ -15308,7 +15355,7 @@ function attachHandlers(){
         const role = roleSel?roleSel.value:m.role;
         const assignedAreaId = role==='team_lead' ? (areaSel?areaSel.value:m.assignedAreaId) : null;
         const pin = pinInput?pinInput.value:m.pin;
-        if(!name || !/^\d{4}$/.test(pin) || (role==='team_lead'&&!assignedAreaId)) return;
+        if(!name || !pinIsValid(pin) || (role==='team_lead'&&!assignedAreaId)) return;
         openModal({...m, name, role, assignedAreaId, pin, saving:true, error:''});
         try{
           let accountId = m.accountId;
@@ -15317,8 +15364,8 @@ function attachHandlers(){
             if(!reqResult.accountId) throw new Error(reqResult.message || 'Could not create that account — a person with that name may already exist.');
             accountId = reqResult.accountId;
           }
-          await window.RC.grantAccess({accountId, role, assignedAreaId, pin});
-          openModal({type:'account-grant-form', accountId, name, role, assignedAreaId, pin, result:true});
+          await window.RC.grantAccess({accountId, role, assignedAreaId, pin: pin||undefined});
+          openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaId, pin, result:true});
         }catch(e){
           openModal({...m, name, role, assignedAreaId, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
         }

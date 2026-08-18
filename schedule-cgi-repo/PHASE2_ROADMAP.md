@@ -164,6 +164,20 @@ two parts:
   reminder that it won't be shown again — it's hashed via `set_pin`
   immediately after and unrecoverable from then on, same as every other
   PIN in this app.
+- **Edit + revoke on active accounts** — active rows now have an Edit
+  action (same form, same `grantAccess()`) for changing role/area or
+  resetting a forgotten PIN, and a Revoke button. `grant.js`'s PIN
+  requirement is now conditional: required for a pending/revoked → active
+  transition (that's the only way the account could ever sign in), optional
+  for editing an already-active account so a role/area change doesn't force
+  a PIN reset nobody asked for. Revoke needed no new API route — RLS's
+  `accounts_admin_write` policy already lets a signed-in admin update any
+  account row directly, so `revokeAccess()` just flips `status` to
+  `'revoked'` and logs it; `pin-login.js`'s existing "not active yet" check
+  already blocks sign-in for anything but `'active'`. A revoked account
+  shows in a third "Revoked" section with a "Restore access" action
+  (same form, `mode:'restore'`, pin required again since reactivating is
+  the same trust decision as a first grant).
 
 ### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
 Read-only aggregations over `evaluations` (avg scores, trend over time,

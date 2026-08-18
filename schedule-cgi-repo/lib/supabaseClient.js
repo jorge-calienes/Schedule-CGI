@@ -109,6 +109,25 @@ export async function fetchAccounts() {
   return data;
 }
 
+// Unlike grantAccess() this doesn't need the service-role API route — RLS's
+// accounts_admin_write policy already lets an authenticated admin update any
+// account row directly. Revoking just flips status; pin-login.js's "not
+// active yet" check already blocks sign-in for anything but 'active'.
+export async function revokeAccess({ accountId, actingAccountId }) {
+  const { data: account, error: fetchErr } = await supabase.from('accounts').select('name').eq('id', accountId).single();
+  if (fetchErr) throw fetchErr;
+
+  const { error } = await supabase.from('accounts').update({ status: 'revoked' }).eq('id', accountId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'account_revoke',
+    description: `revoked ${account.name}'s access`,
+    metadata: { accountId },
+  });
+}
+
 export async function signOut() {
   await supabase.auth.signOut();
 }
@@ -471,5 +490,6 @@ window.RC = {
   fetchAuditLog,
   grantAccess,
   fetchAccounts,
+  revokeAccess,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
