@@ -11156,86 +11156,137 @@ function renderEvalFormModal(m){
 }
 
 // --- Staff import (Excel/CSV) ---
+// Fields NOT included here (Supervisor, Language certifications, Rotation
+// flow) aren't wired to Supabase anywhere yet, even from the manual staff
+// form — those tables are never loaded by loadBoard() and there's no sync
+// function for them. Importing them would silently not persist, the same
+// trap counter_cert/hire_date were in before this feature surfaced it.
+const STAFF_IMPORT_FIELDS = ['name','tdis','department','shift','hireDate','teamLead','subcontractor','accommodations','counterCert','tags'];
 const STAFF_IMPORT_ALIASES = {
   name: ['name','fullname','staffname','employeename'],
   tdis: ['tdis','tdisnumber','tdisno','tdis#'],
-  counterCert: ['counteracceptance','counteracceptancecertified','countercert','cacertified','ca','counteracceptancecert'],
+  department: ['department','dept'],
   shift: ['shift','shifthours','hours','shifttime'],
+  hireDate: ['hiredate','datehired','startdate'],
+  teamLead: ['teamlead','isteamlead','tl'],
+  subcontractor: ['agssubcontractor','subcontractor','ags','issubcontractor'],
+  accommodations: ['needsaccommodations','accommodations','accommodation'],
+  counterCert: ['counteracceptance','counteracceptancecertified','countercert','cacertified','ca','counteracceptancecert'],
+  tags: ['tags','roletags','role'],
+};
+const STAFF_IMPORT_LABELS = {
+  name:'Name', tdis:'TDIS #', department:'Department', shift:'Shift', hireDate:'Hire date',
+  teamLead:'Team Lead (Y/N)', subcontractor:'AGS/Subcontractor (Y/N)', accommodations:'Needs Accommodations (Y/N)',
+  counterCert:'Counter Acceptance Certified (Y/N)', tags:'Tags',
 };
 function autoDetectStaffImportMapping(headers){
-  const norm = h => String(h).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const norm = h => String(h).toLowerCase().replace(/\([^)]*\)/g,'').replace(/[^a-z0-9]/g,'');
   const find = aliases => headers.find(h => aliases.includes(norm(h))) || '';
-  return {
-    name: find(STAFF_IMPORT_ALIASES.name),
-    tdis: find(STAFF_IMPORT_ALIASES.tdis),
-    counterCert: find(STAFF_IMPORT_ALIASES.counterCert),
-    shift: find(STAFF_IMPORT_ALIASES.shift),
-  };
+  const mapping = {};
+  STAFF_IMPORT_FIELDS.forEach(key => { mapping[key] = find(STAFF_IMPORT_ALIASES[key]); });
+  return mapping;
 }
 const STAFF_IMPORT_TRUTHY = ['yes','y','true','1','x','✓','certified','cert'];
+function normalizeDateForImport(raw){
+  const s = String(raw||'').trim();
+  if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+}
 function buildStaffImportPreview(rawRows, mapping){
   const seenTdis = new Set();
+  const g = (row, key) => String(row[mapping[key]] ?? '').trim();
+  const truthy = (row, key) => STAFF_IMPORT_TRUTHY.includes(g(row,key).toLowerCase());
   return rawRows.map(row=>{
-    const name = String(row[mapping.name] ?? '').trim();
-    const tdisNumber = String(row[mapping.tdis] ?? '').trim().toUpperCase();
-    const rawCert = String(row[mapping.counterCert] ?? '').trim().toLowerCase();
-    const counterCert = STAFF_IMPORT_TRUTHY.includes(rawCert);
-    const shiftHours = String(row[mapping.shift] ?? '').trim();
+    const name = g(row,'name');
+    const tdisNumber = g(row,'tdis').toUpperCase();
+    const department = g(row,'department');
+    const shiftHours = g(row,'shift');
+    const hireDate = normalizeDateForImport(g(row,'hireDate'));
+    const tags = g(row,'tags');
+    const isTeamLead = truthy(row,'teamLead');
+    const isSubcontractor = truthy(row,'subcontractor');
+    const needsAccommodations = truthy(row,'accommodations');
+    const counterCert = truthy(row,'counterCert');
+
+    const existing = tdisNumber ? state.staff.find(s=>s.tdisNumber===tdisNumber) : null;
 
     let error = '';
     if(!name) error = 'Missing name';
     else if(tdisNumber && !/^[A-Z0-9]{3}$/.test(tdisNumber)) error = 'TDIS must be 3 letters/numbers';
-    else if(tdisNumber && (seenTdis.has(tdisNumber) || state.staff.some(s=>s.tdisNumber===tdisNumber))) error = `TDIS ${tdisNumber} already used`;
+    else if(tdisNumber && seenTdis.has(tdisNumber)) error = `TDIS ${tdisNumber} appears twice in this file`;
     if(!error && tdisNumber) seenTdis.add(tdisNumber);
 
-    return { name, tdisNumber, counterCert, shiftHours, error };
+    return { name, tdisNumber, department, shiftHours, hireDate, tags, isTeamLead, isSubcontractor, needsAccommodations, counterCert,
+      error, existingId: existing ? existing.id : null };
   });
+}
+function downloadStaffImportTemplate(){
+  const headers = STAFF_IMPORT_FIELDS.map(k=>STAFF_IMPORT_LABELS[k]);
+  const example = ['Jane Doe','JD1','Fixed Positions','7:30 - 4:15','2024-03-01','No','No','No','Yes','Bilingual'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Staff');
+  XLSX.writeFile(wb, 'staff-import-template.xlsx');
 }
 
 function renderStaffImportModal(m){
   if(m.step==='preview'){
     const preview = buildStaffImportPreview(m.rawRows, m.mapping);
-    const validCount = preview.filter(r=>!r.error).length;
-    const errorCount = preview.length - validCount;
-    const headerOptions = selected => m.headers.map(h=>`<option value="${escapeHtml(h)}" ${h===selected?'selected':''}>${escapeHtml(h)}</option>`).join('');
+    const validRows = preview.filter(r=>!r.error);
+    const updateCount = validRows.filter(r=>r.existingId).length;
+    const createCount = validRows.length - updateCount;
+    const errorCount = preview.length - validRows.length;
+    const headerOptions = selected => `<option value="">— None —</option>` + m.headers.map(h=>`<option value="${escapeHtml(h)}" ${h===selected?'selected':''}>${escapeHtml(h)}</option>`).join('');
+    const yn = v => v?'✅':'—';
     return `
-    <div class="modal" style="max-width:820px;">
+    <div class="modal" style="max-width:900px;">
       <div class="modal-head">
         <div><h2>Review import</h2><p>${escapeHtml(m.fileName)} · ${preview.length} row${preview.length===1?'':'s'} found</p></div>
         <button class="modal-close" id="modal-close-x">✕</button>
       </div>
       <div class="modal-body">
         <div class="sm-grid-2" style="margin-bottom:16px;">
-          <div class="field"><label>Name column</label><select id="map-name">${headerOptions(m.mapping.name)}</select></div>
-          <div class="field"><label>TDIS # column</label><select id="map-tdis"><option value="">— None —</option>${headerOptions(m.mapping.tdis)}</select></div>
-          <div class="field"><label>Counter Acceptance column</label><select id="map-counterCert"><option value="">— None —</option>${headerOptions(m.mapping.counterCert)}</select></div>
-          <div class="field"><label>Shift column</label><select id="map-shift"><option value="">— None —</option>${headerOptions(m.mapping.shift)}</select></div>
+          ${STAFF_IMPORT_FIELDS.map(key=>`<div class="field"><label>${STAFF_IMPORT_LABELS[key]} column</label><select id="map-${key}">${headerOptions(m.mapping[key])}</select></div>`).join('')}
         </div>
         <div style="max-height:320px;overflow:auto;border:1px solid var(--c-border);border-radius:8px;">
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;">
             <thead><tr style="position:sticky;top:0;background:var(--md-sys-color-surface-container-low);">
               <th style="text-align:left;padding:6px 8px;">Name</th>
               <th style="text-align:left;padding:6px 8px;">TDIS</th>
-              <th style="text-align:left;padding:6px 8px;">Counter Accept.</th>
+              <th style="text-align:left;padding:6px 8px;">Department</th>
               <th style="text-align:left;padding:6px 8px;">Shift</th>
+              <th style="text-align:left;padding:6px 8px;">Hire date</th>
+              <th style="text-align:left;padding:6px 8px;">TL</th>
+              <th style="text-align:left;padding:6px 8px;">AGS</th>
+              <th style="text-align:left;padding:6px 8px;">Accom.</th>
+              <th style="text-align:left;padding:6px 8px;">CA Cert.</th>
+              <th style="text-align:left;padding:6px 8px;">Tags</th>
               <th style="text-align:left;padding:6px 8px;">Status</th>
             </tr></thead>
             <tbody>
               ${preview.map(r=>`<tr style="border-top:1px solid var(--c-border);${r.error?'opacity:.6;':''}">
                 <td style="padding:6px 8px;">${escapeHtml(r.name||'—')}</td>
                 <td style="padding:6px 8px;font-family:var(--mono);">${escapeHtml(r.tdisNumber||'—')}</td>
-                <td style="padding:6px 8px;">${r.counterCert?'✅':'—'}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.department||'—')}</td>
                 <td style="padding:6px 8px;">${escapeHtml(r.shiftHours||'—')}</td>
-                <td style="padding:6px 8px;">${r.error?`<span style="color:var(--c-red);">⚠ ${escapeHtml(r.error)}</span>`:'<span style="color:var(--c-green);">Ready</span>'}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.hireDate||'—')}</td>
+                <td style="padding:6px 8px;">${yn(r.isTeamLead)}</td>
+                <td style="padding:6px 8px;">${yn(r.isSubcontractor)}</td>
+                <td style="padding:6px 8px;">${yn(r.needsAccommodations)}</td>
+                <td style="padding:6px 8px;">${yn(r.counterCert)}</td>
+                <td style="padding:6px 8px;">${escapeHtml(r.tags||'—')}</td>
+                <td style="padding:6px 8px;">${r.error?`<span style="color:var(--c-red);">⚠ ${escapeHtml(r.error)}</span>`:(r.existingId?`<span style="color:var(--c-green);">Will update</span>`:`<span style="color:var(--c-green);">Will add</span>`)}</td>
               </tr>`).join('')}
             </tbody>
           </table>
         </div>
-        <div class="small-muted" style="margin-top:8px;">${validCount} ready to import${errorCount?` · ${errorCount} will be skipped (see Status column)`:''}</div>
+        <div class="small-muted" style="margin-top:8px;">${createCount} new · ${updateCount} updates to existing staff (matched by TDIS #)${errorCount?` · ${errorCount} will be skipped (see Status column)`:''}</div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-light" id="import-back-btn">← Back</button>
-        <button class="btn btn-primary" id="import-confirm-btn" ${validCount===0?'disabled':''} style="margin-left:auto;">Import ${validCount} staff</button>
+        <button class="btn btn-primary" id="import-confirm-btn" ${validRows.length===0?'disabled':''} style="margin-left:auto;">Import ${validRows.length} row${validRows.length===1?'':'s'}</button>
       </div>
     </div>`;
   }
@@ -11243,7 +11294,8 @@ function renderStaffImportModal(m){
   if(m.step==='importing' || m.step==='done'){
     const progress = m.progress || {done:0,total:0};
     const pct = progress.total ? Math.round(progress.done/progress.total*100) : 0;
-    const results = m.results || {created:[], failed:[]};
+    const results = m.results || {created:[], updated:[], failed:[]};
+    const totalOk = results.created.length + results.updated.length;
     return `
     <div class="modal" style="max-width:520px;">
       <div class="modal-head">
@@ -11255,7 +11307,7 @@ function renderStaffImportModal(m){
           <div class="stats-overall-track"><div class="stats-overall-fill" style="width:${pct}%"></div></div>
           <div class="small-muted" style="margin-top:8px;">Don't close this window…</div>
         `:`
-          <div class="alert-box ${results.failed.length?'rust':'teal'}">${results.created.length} of ${results.created.length+results.failed.length} saved to database ✓${results.failed.length?` · ${results.failed.length} failed`:''}</div>
+          <div class="alert-box ${results.failed.length?'rust':'teal'}">${results.created.length} added, ${results.updated.length} updated — saved to database ✓${results.failed.length?` · ${results.failed.length} failed`:''}</div>
           ${results.failed.length?`
             <div class="small-muted" style="font-weight:700;margin:12px 0 6px;">Failed rows</div>
             <div class="option-list" style="max-height:200px;overflow-y:auto;">
@@ -11272,16 +11324,17 @@ function renderStaffImportModal(m){
   return `
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
-      <div><h2>Import staff from Excel</h2><p>Upload a spreadsheet with names, TDIS #, Counter Acceptance certification, and shift.</p></div>
+      <div><h2>Import staff from Excel</h2><p>Upload a spreadsheet to add new staff and update existing profiles.</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
+      <button class="btn btn-light" id="import-download-template" type="button" style="width:100%;margin-bottom:16px;">⬇ Download blank template (.xlsx)</button>
       <div class="field">
         <label>Spreadsheet file (.xlsx, .xls, .csv)</label>
         <input type="file" id="staff-import-file" accept=".xlsx,.xls,.csv"/>
       </div>
       <div class="small-muted" style="line-height:1.6;">
-        First row should be column headers. We'll try to auto-detect the Name, TDIS #, Counter Acceptance, and Shift columns — you can fix the mapping on the next screen if we get it wrong. Rows without a name are skipped automatically.
+        First row should be column headers. We'll try to auto-detect the Name, TDIS #, Department, Shift, Hire date, Team Lead, AGS/Subcontractor, Needs Accommodations, Counter Acceptance, and Tags columns — you can fix the mapping on the next screen if we get it wrong. Rows without a name are skipped. A row whose TDIS # matches someone already in the app <b>updates</b> their profile instead of creating a duplicate — so editing this same file and re-uploading it keeps the board in sync. Supervisor and language certifications aren't part of this import yet — those aren't saved to the database anywhere in the app currently, so we're not pretending they are here.
       </div>
       ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
     </div>
@@ -14833,6 +14886,7 @@ function attachHandlers(){
     const m = activeModal;
 
     if(m.step==='pick' || !m.step){
+      on('import-download-template', downloadStaffImportTemplate);
       const fileInput = document.getElementById('staff-import-file');
       if(fileInput) fileInput.addEventListener('change', async ()=>{
         const file = fileInput.files[0];
@@ -14853,7 +14907,7 @@ function attachHandlers(){
     }
 
     if(m.step==='preview'){
-      ['name','tdis','counterCert','shift'].forEach(key=>{
+      STAFF_IMPORT_FIELDS.forEach(key=>{
         const sel = document.getElementById('map-'+key);
         if(sel) sel.addEventListener('change', ()=>{
           openModal({...m, mapping:{...m.mapping, [key]:sel.value}});
@@ -14863,27 +14917,48 @@ function attachHandlers(){
       on('import-confirm-btn', async ()=>{
         const toImport = buildStaffImportPreview(m.rawRows, m.mapping).filter(r=>!r.error);
         openModal({type:'staff-import', step:'importing', progress:{done:0, total:toImport.length}});
-        const created = [], failed = [];
+        const created = [], updated = [], failed = [];
         for(const row of toImport){
-          const sync = await syncCrudWrite(()=>window.RC.createStaff({
-            name: row.name, tdisNumber: row.tdisNumber, departmentId:null, homeAreaId:null,
-            isTeamLead:false, isSubcontractor:false, needsAccommodations:false, tags:'',
-            shiftHoursLabel: row.shiftHours, breakTimesLabel:'', counterCert: row.counterCert, hireDate:'',
-            actingAccountId: authState.account.id,
-          }));
+          const isUpdate = !!row.existingId;
+          const existing = isUpdate ? getStaffById(row.existingId) : null;
+          const sync = await syncCrudWrite(async ()=>{
+            const departmentId = row.department ? await window.RC.ensureDepartment(row.department) : null;
+            if(isUpdate){
+              return window.RC.updateStaff({
+                staffId: existing.id, name: row.name, tdisNumber: row.tdisNumber, departmentId, homeAreaId: existing.homeAreaId||null,
+                isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor, needsAccommodations: row.needsAccommodations, tags: row.tags,
+                shiftHoursLabel: row.shiftHours, breakTimesLabel:'', counterCert: row.counterCert, hireDate: row.hireDate,
+                actingAccountId: authState.account.id,
+              });
+            }
+            return window.RC.createStaff({
+              name: row.name, tdisNumber: row.tdisNumber, departmentId, homeAreaId:null,
+              isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor, needsAccommodations: row.needsAccommodations, tags: row.tags,
+              shiftHoursLabel: row.shiftHours, breakTimesLabel:'', counterCert: row.counterCert, hireDate: row.hireDate,
+              actingAccountId: authState.account.id,
+            });
+          });
           if(sync.ok){
-            const newStaff = {id: sync.result.id, name: row.name, tdisNumber: row.tdisNumber, tags:'', department:'', active:true,
-              shiftHours: row.shiftHours, breakTimes:'', isTeamLead:false, homeAreaId:null, supervisorId:null, flowId:null, flowEnrolled:false,
-              needsAccommodations:false, counterCert: row.counterCert, hireDate:'', isSubcontractor:false, languageCerts:[]};
-            state.staff.push(newStaff); state.assignments[newStaff.id]=null;
-            created.push(newStaff);
+            if(isUpdate){
+              Object.assign(existing, {name: row.name, tdisNumber: row.tdisNumber, department: row.department||existing.department,
+                shiftHours: row.shiftHours||existing.shiftHours, isTeamLead: row.isTeamLead, isSubcontractor: row.isSubcontractor,
+                needsAccommodations: row.needsAccommodations, tags: row.tags||existing.tags, counterCert: row.counterCert,
+                hireDate: row.hireDate||existing.hireDate});
+              updated.push(existing);
+            } else {
+              const newStaff = {id: sync.result.id, name: row.name, tdisNumber: row.tdisNumber, tags: row.tags, department: row.department, active:true,
+                shiftHours: row.shiftHours, breakTimes:'', isTeamLead: row.isTeamLead, homeAreaId:null, supervisorId:null, flowId:null, flowEnrolled:false,
+                needsAccommodations: row.needsAccommodations, counterCert: row.counterCert, hireDate: row.hireDate, isSubcontractor: row.isSubcontractor, languageCerts:[]};
+              state.staff.push(newStaff); state.assignments[newStaff.id]=null;
+              created.push(newStaff);
+            }
           } else {
             failed.push({name: row.name, error: (sync.error&&sync.error.message)||'Save failed'});
           }
-          openModal({type:'staff-import', step:'importing', progress:{done:created.length+failed.length, total:toImport.length}});
+          openModal({type:'staff-import', step:'importing', progress:{done:created.length+updated.length+failed.length, total:toImport.length}});
         }
         saveState();
-        openModal({type:'staff-import', step:'done', results:{created, failed}});
+        openModal({type:'staff-import', step:'done', results:{created, updated, failed}});
       });
     }
 

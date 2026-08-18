@@ -96,14 +96,26 @@ the first Rotate Now).
 ### ~~5. Staff import from Excel/CSV~~ ✅ Done (pulled forward, ahead of Manage accounts)
 Not in the original list — added because onboarding a whole roster by hand
 in the Add Staff form doesn't scale. "Import staff (Excel)" (admin/supervisor
-nav item) parses a spreadsheet client-side with SheetJS (loaded from
-jsDelivr, same CDN as `supabase-js`), auto-detects Name/TDIS/Counter
-Acceptance/Shift columns by header name with a manual-remap fallback, shows
-a row-by-row validation preview (missing name, malformed or duplicate TDIS),
-then imports the valid rows sequentially through the same `createStaff()`
-path the manual form uses — so every imported row gets a real Supabase
-UUID and an `audit_log` entry, no separate bulk-insert code path to keep in
-sync.
+nav item) includes a "Download blank template" button (generated client-side
+with SheetJS) covering every profile field that's actually wired to
+Supabase: Name, TDIS #, Department, Shift, Hire date, Team Lead, AGS/
+Subcontractor, Needs Accommodations, Counter Acceptance, Tags. Deliberately
+excludes Supervisor, Language certifications, and Rotation flow — those
+aren't synced to Supabase anywhere yet, even from the manual form (no
+`loadBoard()` fetch, no write path), so importing them would silently not
+persist, the same trap `counter_cert` was in below.
+
+Uploading parses the spreadsheet client-side with SheetJS (loaded from
+jsDelivr, same CDN as `supabase-js`), auto-detects columns by header name
+(stripping "(Y/N)"-style hints before matching) with a manual-remap
+fallback, and shows a row-by-row validation preview (missing name,
+malformed or duplicate-within-file TDIS). Rows are upserted, not just
+created: a row whose TDIS # matches an existing staff member calls
+`updateStaff()` instead of `createStaff()`, so re-uploading the same file
+after editing it is a real "keep the roster in sync" workflow, not just a
+one-time seed. Every row still goes through the same `createStaff()`/
+`updateStaff()` path the manual form uses — real Supabase UUIDs and
+`audit_log` entries, no separate bulk-write code path to keep in sync.
 
 Building this exposed a real gap: `counter_cert` and `hire_date` were UI
 fields (`state.staff[].counterCert`/`.hireDate`, the "✅ Counter Acceptance
