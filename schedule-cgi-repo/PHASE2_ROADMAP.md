@@ -20,6 +20,7 @@ here should be built in one giant rewrite.
 | Staff/area CRUD writes + audit_log (Step 3b) | **Done** |
 | Rotate Now / history (Step 4) | **Done** |
 | Evaluation form, team-lead queue (Step 5) | **Done** |
+| Staff import from Excel/CSV | **Done** |
 | Audit log screen | Not built (client function already exists, unused) |
 | Manage accounts (grant/request) | Not built (API routes exist, unused) |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
@@ -92,14 +93,35 @@ index already coalesces `period_id` for this), while the team-lead queue
 passes whatever `current_period_id` the view resolves (also nullable before
 the first Rotate Now).
 
-### 5. Step 6 — Audit log screen
+### ~~5. Staff import from Excel/CSV~~ ✅ Done (pulled forward, ahead of Manage accounts)
+Not in the original list — added because onboarding a whole roster by hand
+in the Add Staff form doesn't scale. "Import staff (Excel)" (admin/supervisor
+nav item) parses a spreadsheet client-side with SheetJS (loaded from
+jsDelivr, same CDN as `supabase-js`), auto-detects Name/TDIS/Counter
+Acceptance/Shift columns by header name with a manual-remap fallback, shows
+a row-by-row validation preview (missing name, malformed or duplicate TDIS),
+then imports the valid rows sequentially through the same `createStaff()`
+path the manual form uses — so every imported row gets a real Supabase
+UUID and an `audit_log` entry, no separate bulk-insert code path to keep in
+sync.
+
+Building this exposed a real gap: `counter_cert` and `hire_date` were UI
+fields (`state.staff[].counterCert`/`.hireDate`, the "✅ Counter Acceptance
+certified" toggle and hire-date input in the staff-manager form) that had
+**no column in the `staff` table at all** — edits to them silently never
+reached the database. Added both columns (migration
+`0003_staff_cert_hiredate.sql`) and wired them into `staffRow()`,
+`createStaff()`/`updateStaff()`, and `mapSupabaseBoard()`'s read-back, so
+the manual form now actually persists them too, not just the importer.
+
+### 6. Step 6 — Audit log screen
 `fetchAuditLog()` already exists and is bridged. Purely additive, read-only,
 supervisor/admin only. **Caveat:** until Step 3 ships, this will only show
 evaluation submissions and account grants — no moves/swaps/rotations yet.
 Worth an empty-state hint rather than looking broken. Low risk enough that
 it could go before Step 5 instead, if preferred.
 
-### 6. Manage accounts (mockup screen "accounts")
+### 7. Manage accounts (mockup screen "accounts")
 Not in the original 6-step list, but the actual bottleneck to "fully
 functional" — right now there's exactly one admin account (the manually
 seeded one from `SETUP_GUIDE.md`), and nobody else can get in. Admin-only.
@@ -115,7 +137,7 @@ Two parts:
   in this whole roadmap that talks to a custom API route instead of
   querying Supabase tables directly.
 
-### 7. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
+### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
 Read-only aggregations over `evaluations` (avg scores, trend over time,
 latest recommendation per person). No client functions exist yet — will
 need something like `fetchStaffEvaluationHistory(staffId)` and
