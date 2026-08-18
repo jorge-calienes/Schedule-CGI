@@ -21,8 +21,9 @@ here should be built in one giant rewrite.
 | Rotate Now / history (Step 4) | **Done** |
 | Evaluation form, team-lead queue (Step 5) | **Done** |
 | Staff import from Excel/CSV | **Done** |
+| Team lead access lock (evaluations + read-only board) | **Done** |
 | Audit log screen | Not built (client function already exists, unused) |
-| Manage accounts (grant/request) | Not built (API routes exist, unused) |
+| Manage accounts (grant/request) | **Done** |
 | Staff performance profile, Team dashboard | Not built, no client functions yet either |
 
 The mockup you shared is UI reference only — none of its screens are wired
@@ -133,21 +134,33 @@ evaluation submissions and account grants — no moves/swaps/rotations yet.
 Worth an empty-state hint rather than looking broken. Low risk enough that
 it could go before Step 5 instead, if preferred.
 
-### 7. Manage accounts (mockup screen "accounts")
-Not in the original 6-step list, but the actual bottleneck to "fully
-functional" — right now there's exactly one admin account (the manually
-seeded one from `SETUP_GUIDE.md`), and nobody else can get in. Admin-only.
-Two parts:
-- **Pending requests** — list accounts with `status='pending'` (RLS already
-  allows admins to see everyone). Also means finally adding the "Request
-  access" link to the sign-in screen — `requestAccess()` is already bridged
-  through `window.RC` but nothing calls it yet.
-- **Grant flow** — needs a new `grantAccess()` client function that POSTs to
-  `/api/accounts/grant` with the signed-in admin's `access_token` as a
-  Bearer header (that route re-verifies admin status server-side with the
-  service-role key — see `api/accounts/grant.js`). This is the one screen
-  in this whole roadmap that talks to a custom API route instead of
-  querying Supabase tables directly.
+### ~~7. Manage accounts (mockup screen "accounts")~~ ✅ Done
+Was the actual bottleneck to "fully functional" — previously there was
+exactly one admin account (the manually seeded one from `SETUP_GUIDE.md`)
+and no in-app way to add another. Admin-only "Manage accounts" nav item,
+two parts:
+- **Pending requests** — lists `status='pending'` accounts (RLS already
+  lets admins see everyone via `fetchAccounts()`), each with a "Grant
+  access" action. The sign-in screen now has a "Request access" link too
+  (toggles to a small name-only form, calls the already-bridged
+  `requestAccess()`) — without it the pending list had no way to ever be
+  non-empty.
+- **Grant flow** — `grantAccess()` POSTs to `/api/accounts/grant` with the
+  signed-in admin's `access_token` as a Bearer header (that route
+  re-verifies admin status server-side with the service-role key — see
+  `api/accounts/grant.js`); this is the one screen in this whole roadmap
+  that talks to a custom API route instead of querying Supabase tables
+  directly. Same form also handles **"+ Add account"** — onboarding
+  someone who hasn't self-requested — by chaining `requestAccess(name)`
+  (to get a fresh account id) straight into `grantAccess()`, so admin-added
+  and self-requested accounts are activated through the identical code
+  path. `request.js` was extended to return the new row's `accountId` for
+  this. Role picker covers all three (admin/supervisor/team_lead); picking
+  team_lead reveals a required area select. On success, the plaintext PIN
+  is shown once (a "Generate" button offers a random 4-digit one) with a
+  reminder that it won't be shown again — it's hashed via `set_pin`
+  immediately after and unrecoverable from then on, same as every other
+  PIN in this app.
 
 ### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
 Read-only aggregations over `evaluations` (avg scores, trend over time,
@@ -163,10 +176,38 @@ Role-based visibility (nav items, screens) is driven purely by the signed-in
 account's real `role` from `authState.account` — no manual "preview as"
 switcher like the mockup's dev toggle. Applies to every screen above.
 
+### Team lead access: evaluations + read-only board
+
+Every write table's RLS policy already requires `is_manager()`
+(admin/supervisor) — team leads were always blocked from writing at the
+database layer, the UI just didn't reflect it, so a team lead could drag
+people around, mark callouts, edit staff, even hit Rotate Now, and only
+find out afterward it silently failed to save. `isTeamLeadRole()` (in
+`index.html`) closes that gap client-side:
+- Nav drawer collapses to "My evaluations" + "Sign out" only.
+- `viewMode` is pinned to `'board'` — the Board/Overview/Breaks/Time Off
+  tab bar doesn't render, so Roster (which has an inline-editable table)
+  and the other view modes aren't reachable at all.
+- On the board itself: chips aren't draggable and drop their Move/Swap/
+  Out/Edit pills and long-press menu; areas drop their "⋯" edit button and
+  drag-to-reorder handle; the "+ Add area" and sidebar "Quick actions"
+  (Add work area / Mark someone out) buttons are gone; the callout
+  banner's "Assign coverage" action is hidden. Tapping a person's name
+  still works, but opens the read-only stats modal (`staff-stats`)
+  instead of the editable `staff-manager` one, and that modal's own
+  "Edit details" escape hatch is hidden too.
+
+This is a client-side UX fix, not the security boundary — RLS was always
+the real enforcement. Verified with headless-Chromium tests for both a
+team_lead session (no tab bar, minimal nav, no chip/area actions, name
+click opens read-only stats) and an admin session (fully unaffected).
+
 ## Suggested next step
 
-Steps 3a, 3b, 4, and 5 are done — the board, staff/area edits, Rotate Now,
-and evaluations are all fully live against Supabase. Step 6 (audit log
-screen) is next in line: `fetchAuditLog()` already exists and is bridged,
-it's purely additive/read-only, and there's now real activity (moves,
-CRUD, rotations, evaluations) for it to show.
+Steps 3a, 3b, 4, and 5 are done, plus staff import, the team-lead access
+lock, and Manage accounts — the board, staff/area edits, Rotate Now,
+evaluations, bulk onboarding, and account provisioning are all fully live
+against Supabase. Step 6 (audit log screen) is next in line:
+`fetchAuditLog()` already exists and is bridged, it's purely
+additive/read-only, and there's now real activity (moves, CRUD, rotations,
+evaluations, account grants) for it to show.
