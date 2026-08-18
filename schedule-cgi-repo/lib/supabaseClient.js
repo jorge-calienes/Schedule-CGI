@@ -601,6 +601,33 @@ export async function myEvaluationQueue() {
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
+// (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
+// visibility (eval_select: managers see everyone, team leads only their own
+// authored evaluations), so these just select and let the database enforce
+// it rather than re-implementing that check client-side.
+// ---------------------------------------------------------------------------
+
+export async function fetchStaffEvaluationHistory(staffId) {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('*, evaluator:evaluator_id(name), area:area_id(name), period:period_id(period_label)')
+    .eq('staff_id', staffId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchTeamPerformanceOverview() {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('staff_id, productivity, performance, reliability, recommendation, created_at, staff:staff_id(name)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchAuditLog({ limit = 50 } = {}) {
   const { data, error } = await supabase
     .from('audit_log')
@@ -661,5 +688,7 @@ window.RC = {
   deleteTimeOff,
   createBlockedPair,
   deleteBlockedPair,
+  fetchStaffEvaluationHistory,
+  fetchTeamPerformanceOverview,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));

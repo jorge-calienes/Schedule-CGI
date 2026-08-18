@@ -6801,6 +6801,36 @@
   .stats-never-label{font-size:var(--md-sys-typescale-label-medium-size);text-transform:uppercase;letter-spacing:.04em;color:var(--md-sys-color-on-surface-variant);font-weight:700;margin:var(--md-space-3) 0 var(--md-space-2);}
   .stats-never-chip{display:inline-flex;align-items:center;gap:4px;font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);border-radius:var(--md-sys-shape-corner-full);padding:3px 10px;margin:3px;}
 
+  /* ── Performance evaluations (Stats tab + team dashboard) ── */
+  .eval-summary-grid{display:flex;gap:var(--md-space-4);flex-wrap:wrap;margin-bottom:var(--md-space-2);}
+  .eval-summary-stat{display:flex;flex-direction:column;gap:2px;}
+  .eval-summary-label{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-weight:600;}
+  .eval-summary-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:var(--md-space-3);}
+  .eval-rec-badge{font-size:11px;font-weight:700;color:#fff;padding:3px 10px;border-radius:var(--md-sys-shape-corner-full);white-space:nowrap;}
+  .eval-rec-badge.small{font-size:9.5px;padding:2px 8px;}
+  .eval-history-list{display:flex;flex-direction:column;gap:var(--md-space-2);}
+  .eval-history-row{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);}
+  .eval-history-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+  .eval-history-date{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);}
+  .eval-history-scores{font-family:var(--mono);font-size:var(--md-sys-typescale-body-small-size);margin-bottom:2px;}
+  .eval-history-evaluator{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);}
+  .eval-history-note{font-size:var(--md-sys-typescale-body-small-size);font-style:italic;margin-top:4px;padding-top:4px;border-top:1px dashed var(--md-sys-color-outline-variant);}
+
+  /* ── Team dashboard ── */
+  .team-dash-summary{display:flex;gap:var(--md-space-5);flex-wrap:wrap;margin-bottom:var(--md-space-4);padding-bottom:var(--md-space-4);border-bottom:1px solid var(--md-sys-color-outline-variant);}
+  .team-dash-stat{display:flex;flex-direction:column;gap:2px;}
+  .team-dash-stat-label{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-weight:600;}
+  .team-dash-search{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-small);font-family:inherit;font-size:14px;margin-bottom:var(--md-space-3);}
+  .team-dash-filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--md-space-3);}
+  .team-dash-filter-tab{font-size:12px;font-weight:600;padding:5px 12px;border-radius:var(--md-sys-shape-corner-full);border:1px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface-variant);cursor:pointer;display:flex;align-items:center;gap:5px;}
+  .team-dash-filter-tab.active{background:var(--md-sys-color-primary);border-color:var(--md-sys-color-primary);color:#fff;}
+  .team-dash-filter-count{font-family:var(--mono);font-size:10.5px;opacity:.85;}
+  .team-dash-list{display:flex;flex-direction:column;gap:var(--md-space-2);max-height:50vh;overflow-y:auto;}
+  .team-dash-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);cursor:pointer;font-family:inherit;}
+  .team-dash-row:hover{border-color:var(--md-sys-color-primary);}
+  .team-dash-row-name{font-weight:700;flex:1;min-width:0;}
+  .team-dash-row-scores{font-family:var(--mono);font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
+
   /* ---------- certifications & language badges ---------- */
   .chip-certs{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
   .cert-badge{
@@ -9562,6 +9592,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Administration</div>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
@@ -10350,6 +10381,7 @@ function renderModal(){
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
+  else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -10635,27 +10667,68 @@ function renderStaffManagerModal(m){
 
   const statsTab = (() => {
     if(!editing) return '<div class="small-muted">Save first to see stats.</div>';
+
+    // star display helper: filled/empty stars for 1-5 rating
+    const stars = renderProficiencyStars;
+
+    // ── Performance evaluations (Phase 2 mockup screen 4) ── fetched
+    // on-demand when this tab is opened — see the fetch trigger in the
+    // 'staff-manager' event-wiring block below. Shown above the rotation
+    // stats since it's not gated on rotation history existing at all.
+    const evalSection = (() => {
+      const hist = m.evalHistory;
+      const err = m.evalHistoryError;
+      let body;
+      if(err){
+        body = '<div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>';
+      } else if(hist===undefined || m._evalHistoryLoading){
+        body = '<div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>';
+      } else if(hist.length===0){
+        body = '<div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
+      } else {
+        const avg = key => hist.reduce((sum,r)=>sum+r[key],0)/hist.length;
+        const latest = hist[0];
+        const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
+        body =
+          '<div class="eval-summary-grid">'+
+            '<div class="eval-summary-stat"><span class="eval-summary-label">Productivity</span>'+stars(avg('productivity'))+'</div>'+
+            '<div class="eval-summary-stat"><span class="eval-summary-label">Performance</span>'+stars(avg('performance'))+'</div>'+
+            '<div class="eval-summary-stat"><span class="eval-summary-label">Reliability</span>'+stars(avg('reliability'))+'</div>'+
+          '</div>'+
+          '<div class="eval-summary-meta">'+
+            '<span class="eval-rec-badge" style="background:'+(recMeta?.color||'#999')+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
+            '<span class="small-muted"> · latest recommendation · '+hist.length+' evaluation'+(hist.length===1?'':'s')+' total</span>'+
+          '</div>'+
+          '<div class="eval-history-list">'+
+          hist.slice(0,8).map(r=>{
+            const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
+            const areaName = r.area&&r.area.name;
+            const periodLabel = r.period&&r.period.period_label;
+            const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+            const rowRecMeta = EVAL_RECOMMENDATION_META[r.recommendation];
+            return '<div class="eval-history-row">'+
+              '<div class="eval-history-row-head">'+
+                '<span class="eval-history-date">'+escapeHtml(dateStr)+(periodLabel?' · '+escapeHtml(periodLabel):'')+'</span>'+
+                '<span class="eval-rec-badge small" style="background:'+(rowRecMeta?.color||'#999')+'">'+(rowRecMeta?.label||r.recommendation)+'</span>'+
+              '</div>'+
+              '<div class="eval-history-scores">P '+r.productivity+' · Pf '+r.performance+' · R '+r.reliability+(areaName?' · '+escapeHtml(areaName):'')+'</div>'+
+              '<div class="eval-history-evaluator">by '+escapeHtml(evaluatorName)+'</div>'+
+              (r.note ? '<div class="eval-history-note">'+escapeHtml(r.note)+'</div>' : '')+
+            '</div>';
+          }).join('')+
+          '</div>';
+      }
+      return '<div class="stats-prof-section-label" style="margin-top:0;">Performance evaluations</div>'+body;
+    })();
+
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
-    if(totalCompletedRotations===0) return '<div class="small-muted" style="line-height:1.6;padding:8px 0;">No rotations recorded yet. Stats will appear after the first Rotate Now.</div>';
+    if(totalCompletedRotations===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet. Stats will appear after the first Rotate Now.</div>';
     const worked = rows.filter(r=>r.hasExperience);
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
-    // star display helper: filled/empty stars for 1-5 rating
-    const stars = (rating) => {
-      if(!rating) return '<span class="prof-stars unrated">Not yet rated</span>';
-      const full = Math.floor(rating);
-      const half = rating - full >= 0.5;
-      let s = '';
-      for(let i=1;i<=5;i++){
-        if(i<=full) s+='<span class="prof-star filled">★</span>';
-        else if(i===full+1&&half) s+='<span class="prof-star half">★</span>';
-        else s+='<span class="prof-star empty">☆</span>';
-      }
-      return '<span class="prof-stars">'+s+'</span>';
-    };
-
     return (
+      evalSection+
       // ── Overall progress ──
       '<div class="stats-overall-bar-wrap">'+
       '<div class="stats-overall-label"><span>Areas covered</span><span class="stats-overall-pct">'+pct+'%</span></div>'+
@@ -11626,6 +11699,69 @@ function renderAuditLogModal(m){
   </div>`;
 }
 
+// --- Team dashboard (Phase 2 mockup screen 5) — aggregated evaluations
+// across the whole team, admin/supervisor only. ---
+function renderTeamDashboardModal(m){
+  const search = (m.search||'').trim().toLowerCase();
+  const filter = m.filter||'all';
+  const rows = m.loading ? [] : aggregateTeamPerformance(m.raw);
+  const counts = {
+    all: rows.length,
+    training: rows.filter(r=>r.latestRecommendation==='training').length,
+    advance: rows.filter(r=>r.latestRecommendation==='advance').length,
+    unrated: rows.filter(r=>r.count===0).length,
+  };
+  const filtered = rows.filter(r=>{
+    if(search && !r.name.toLowerCase().includes(search)) return false;
+    if(filter==='training') return r.latestRecommendation==='training';
+    if(filter==='advance') return r.latestRecommendation==='advance';
+    if(filter==='unrated') return r.count===0;
+    return true;
+  });
+  const evaluatedRows = rows.filter(r=>r.count>0);
+  const teamAvg = key => evaluatedRows.length ? evaluatedRows.reduce((sum,r)=>sum+r[key],0)/evaluatedRows.length : 0;
+  const filterTabs = [
+    {id:'all', label:'All', count:counts.all},
+    {id:'training', label:'Needs training', count:counts.training},
+    {id:'advance', label:'Ready to advance', count:counts.advance},
+    {id:'unrated', label:'Not yet evaluated', count:counts.unrated},
+  ];
+  return `
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div><h2>📊 Team performance</h2><p>Aggregated from staff evaluations</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading ? `<div class="small-muted">Loading team performance…</div>` : ''}
+      ${!m.loading && m.error ? `<div class="alert-box rust">Couldn't load team performance: ${escapeHtml(m.error)}</div>` : ''}
+      ${!m.loading && !m.error ? `
+        ${evaluatedRows.length===0 ? `<div class="small-muted" style="line-height:1.6;margin-bottom:12px;">No evaluations submitted yet — team-wide stats will appear here once staff have been evaluated.</div>` : `
+        <div class="team-dash-summary">
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Productivity</span>${renderProficiencyStars(teamAvg('avgProductivity'))}</div>
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Performance</span>${renderProficiencyStars(teamAvg('avgPerformance'))}</div>
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Reliability</span>${renderProficiencyStars(teamAvg('avgReliability'))}</div>
+        </div>`}
+        <input type="text" id="team-dash-search" class="team-dash-search" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
+        <div class="team-dash-filter-row">
+          ${filterTabs.map(t=>`<button class="team-dash-filter-tab ${filter===t.id?'active':''}" data-team-filter="${t.id}">${t.label} <span class="team-dash-filter-count">${t.count}</span></button>`).join('')}
+        </div>
+        <div class="team-dash-list">
+          ${filtered.length===0 ? `<div class="small-muted" style="padding:12px 0;">No staff match.</div>` : filtered.map(r=>{
+            const recMeta = r.latestRecommendation ? EVAL_RECOMMENDATION_META[r.latestRecommendation] : null;
+            return `<button class="team-dash-row" data-team-staff="${r.staffId}">
+              <div class="team-dash-row-name">${escapeHtml(r.name)}</div>
+              ${r.count>0 ? `
+                <div class="team-dash-row-scores">P ${r.avgProductivity.toFixed(1)} · Pf ${r.avgPerformance.toFixed(1)} · R ${r.avgReliability.toFixed(1)}</div>
+                <span class="eval-rec-badge small" style="background:${recMeta?recMeta.color:'#999'}">${recMeta?recMeta.label:r.latestRecommendation}</span>
+              ` : `<span class="small-muted">Not yet evaluated</span>`}
+            </button>`;
+          }).join('')}
+        </div>
+      ` : ''}
+    </div>
+  </div>`;
+}
 
 // --- Department order (board layout) ---
 function renderDeptReorderModal(m){
@@ -12070,6 +12206,57 @@ function renderStarRating(rating, prefix){
   `).join('');
 }
 
+// Read-only star display (filled/half/empty) for a 1-5 rating — shared by
+// the Stats tab's proficiency cards, the performance-evaluation summary,
+// and the team dashboard.
+function renderProficiencyStars(rating){
+  if(!rating) return '<span class="prof-stars unrated">Not yet rated</span>';
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  let s = '';
+  for(let i=1;i<=5;i++){
+    if(i<=full) s+='<span class="prof-star filled">★</span>';
+    else if(i===full+1&&half) s+='<span class="prof-star half">★</span>';
+    else s+='<span class="prof-star empty">☆</span>';
+  }
+  return '<span class="prof-stars">'+s+'</span>';
+}
+
+const EVAL_RECOMMENDATION_META = {
+  stay:     { label: 'Stay in current role', color: '#5E9A3A' },
+  advance:  { label: 'Ready to advance',     color: '#2F5FA8' },
+  training: { label: 'Needs more training',  color: '#C9722A' },
+};
+
+// Groups raw evaluation rows (as returned by fetchTeamPerformanceOverview)
+// by staff_id and computes per-person averages, plus fills in any active
+// staff member who has zero evaluations — visible team-wide gaps are as
+// useful here as the scores themselves. Rows arrive newest-first from the
+// query, so each group's first row is already the latest.
+function aggregateTeamPerformance(raw){
+  const byStaff = {};
+  (raw||[]).forEach(r=>{
+    if(!byStaff[r.staff_id]) byStaff[r.staff_id] = { staffId:r.staff_id, name:(r.staff&&r.staff.name)||getStaffById(r.staff_id)?.name||'Unknown', rows:[] };
+    byStaff[r.staff_id].rows.push(r);
+  });
+  const evaluated = Object.values(byStaff).map(entry=>{
+    const rows = entry.rows;
+    const avg = key => rows.reduce((sum,row)=>sum+row[key],0)/rows.length;
+    return {
+      staffId: entry.staffId, name: entry.name, count: rows.length,
+      avgProductivity: avg('productivity'), avgPerformance: avg('performance'), avgReliability: avg('reliability'),
+      latestRecommendation: rows[0].recommendation, latestDate: rows[0].created_at,
+    };
+  });
+  const evaluatedIds = new Set(evaluated.map(e=>e.staffId));
+  const notEvaluated = state.staff.filter(s=>!evaluatedIds.has(s.id)).map(s=>({
+    staffId: s.id, name: s.name, count: 0,
+    avgProductivity: 0, avgPerformance: 0, avgReliability: 0,
+    latestRecommendation: null, latestDate: null,
+  }));
+  return evaluated.concat(notEvaluated).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
 function renderFeedbackModal(m){
   const sug = m.suggestion;
   const s = sug.staff;
@@ -12311,6 +12498,16 @@ async function openAuditLog(){
     openModal({type:'audit-log', loading:false, entries: entries||[], search:''});
   }catch(e){
     openModal({type:'audit-log', loading:false, entries:[], search:'', error: (e && e.message) || 'Could not load the audit log.'});
+  }
+}
+
+async function openTeamDashboard(){
+  openModal({type:'team-dashboard', loading:true, raw:[], search:'', filter:'all'});
+  try{
+    const raw = await window.RC.fetchTeamPerformanceOverview();
+    openModal({type:'team-dashboard', loading:false, raw: raw||[], search:'', filter:'all'});
+  }catch(e){
+    openModal({type:'team-dashboard', loading:false, raw:[], search:'', filter:'all', error: (e && e.message) || 'Could not load team performance.'});
   }
 }
 
@@ -13791,6 +13988,7 @@ function attachHandlers(){
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
+  on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -13964,6 +14162,28 @@ function attachHandlers(){
 
   if(activeModal.type==='staff-manager'){
     const editing = activeModal.editId ? getStaffById(activeModal.editId) : null;
+
+    // Lazy-load evaluation history the first time the Stats tab is opened
+    // for this staff member. Guarded on activeModal._evalHistoryStaffId so
+    // it doesn't refire on every render — only when the tab is active AND
+    // the loaded (or in-flight) history doesn't already belong to this
+    // person. Mutates activeModal directly to set the loading flag (no
+    // render needed for that), same pattern as the switch handlers above.
+    if((activeModal.staffTab||'profile')==='stats' && editing && window.RC
+        && typeof window.RC.fetchStaffEvaluationHistory==='function'
+        && activeModal._evalHistoryStaffId!==editing.id && !activeModal._evalHistoryLoading){
+      const forStaffId = editing.id;
+      activeModal._evalHistoryLoading = true;
+      window.RC.fetchStaffEvaluationHistory(forStaffId).then(rows=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forStaffId){
+          openModal({...activeModal, evalHistory:rows||[], evalHistoryError:undefined, _evalHistoryStaffId:forStaffId, _evalHistoryLoading:false});
+        }
+      }).catch(e=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forStaffId){
+          openModal({...activeModal, evalHistoryError:(e&&e.message)||'try again', _evalHistoryStaffId:forStaffId, _evalHistoryLoading:false});
+        }
+      });
+    }
 
     const tdisInput = document.getElementById('staff-tdis-input');
     if(tdisInput) tdisInput.addEventListener('input', ()=>{
@@ -15390,6 +15610,29 @@ function attachHandlers(){
       });
     }
     on('audit-search-clear', ()=>{ openModal({...m, search:''}); });
+  }
+
+  // --- team dashboard ---
+  if(activeModal.type==='team-dashboard'){
+    const m = activeModal;
+    const searchInput = document.getElementById('team-dash-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('team-dash-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    document.querySelectorAll('[data-team-filter]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, filter:el.dataset.teamFilter});
+    }));
+    document.querySelectorAll('[data-team-staff]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'staff-manager', editId:el.dataset.teamStaff, staffTab:'stats'});
+    }));
   }
 
   // --- account grant / add form ---

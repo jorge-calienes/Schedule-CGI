@@ -27,7 +27,7 @@ here should be built in one giant rewrite.
 | Manage accounts edit/revoke on active accounts | **Done** |
 | Supervisors/shifts/languages/rotation flows sync | **Done** |
 | Time off entries / blocked pairs sync | **Done** — `state.coverage` still local-only |
-| Staff performance profile, Team dashboard | Not built, no client functions yet either |
+| Staff performance profile, Team dashboard | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -182,13 +182,10 @@ two parts:
   (same form, `mode:'restore'`, pin required again since reactivating is
   the same trust decision as a first grant).
 
-### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
+### ~~8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)~~ ✅ Done
 Read-only aggregations over `evaluations` (avg scores, trend over time,
-latest recommendation per person). No client functions exist yet — will
-need something like `fetchStaffEvaluationHistory(staffId)` and
-`fetchTeamPerformanceOverview()`. Do these last: they're only useful once
-there's real evaluation history to show, which means Step 5 needs to have
-been live for at least one rotation period first.
+latest recommendation per person), via `fetchStaffEvaluationHistory(staffId)`
+and `fetchTeamPerformanceOverview()`.
 
 ## Cross-cutting decision (already settled)
 
@@ -313,13 +310,55 @@ entries themselves. The coverage-linking handlers (`.to-sug-card`,
 still work exactly as before — just local-only, same as `state.coverage`
 was before this pass and same as `state.calloutHistory` still is.
 
+### Staff performance profile and Team dashboard — now live
+
+Both screens are read-only aggregations over `evaluations`
+(`fetchStaffEvaluationHistory(staffId)` and
+`fetchTeamPerformanceOverview()`); RLS (`eval_select`) already scopes what
+each caller can see — managers get everyone, team leads only the
+evaluations they personally authored — so the client just selects and
+lets the database enforce it rather than re-checking the role client-side.
+
+**Staff performance profile** turned out not to need a new modal at all.
+`staff-manager` already had a third "Stats" tab showing rotation
+experience/proficiency (`state.history`/`state.proficiency`, both a
+separate, still-local rating system unrelated to `evaluations`) — the new
+"Performance evaluations" section was added at the top of that same tab:
+average productivity/performance/reliability as star ratings, the latest
+recommendation badge, and up to 8 recent evaluations with evaluator, date,
+scores, and note. Fetched lazily the first time the Stats tab is opened
+for a given staff member (guarded on a `_evalHistoryStaffId` field on
+`activeModal` so switching tabs and back doesn't refetch), independent of
+whether that person has any rotation history yet — a brand-new hire with
+zero rotations but an evaluation on file still sees it.
+
+**Team dashboard** is a new modal (`openTeamDashboard()`, nav item under
+Administration, admin/supervisor only) that fetches every evaluation once
+and aggregates client-side by `staff_id`: team-wide average scores, a
+searchable/filterable staff list (All / Needs training / Ready to
+advance / Not yet evaluated), and per-row scores + latest recommendation.
+The "Not yet evaluated" bucket is deliberately included — it's computed
+by diffing `state.staff` against whoever has at least one evaluation row,
+since knowing who's *never* been reviewed is at least as useful as seeing
+scores for who has. Clicking a row jumps straight to that person's
+Stats tab (the profile above), so the two screens share one code path
+for the actual per-person detail instead of duplicating it.
+
+Both share a hoisted `renderProficiencyStars()` (same filled/half/empty
+star markup the existing proficiency cards used, previously a local
+closure duplicated per call site) and an `EVAL_RECOMMENDATION_META`
+lookup for the recommendation badge label/color, so the three
+recommendation values (`stay`/`advance`/`training`) render identically
+everywhere they show up.
+
 ## Suggested next step
 
-Every numbered step (3a through 6) is done, plus staff import, the
-team-lead access lock, and Manage accounts — the board, staff/area edits,
-Rotate Now, evaluations, bulk onboarding, account provisioning, and the
-audit trail are all fully live against Supabase. What's left from the
-original mockup reference is Staff performance profile and Team dashboard
-(step 8 above) — read-only aggregations over `evaluations` that are only
-useful once there's real evaluation history to show, so worth waiting
-until Step 5 has been live for at least one rotation period.
+Every numbered step (3a through 8) is done, plus staff import, the
+team-lead access lock, Manage accounts, and every extra screen from the
+"Phase 2 mockups" reference — the board, staff/area edits, Rotate Now,
+evaluations, bulk onboarding, account provisioning, the audit trail, time
+off/blocked pairs, staff performance, and the team dashboard are all fully
+live against Supabase. The one deliberately-deferred piece is
+`state.coverage` (see above) — the live covering-assignment link, still
+local-only pending its own schema/scope decision. Otherwise the original
+mockup reference is fully wired up.
