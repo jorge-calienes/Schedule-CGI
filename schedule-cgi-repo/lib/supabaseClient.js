@@ -459,6 +459,47 @@ export async function deleteRotationFlow({ flowId }) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin reset utilities — wipe rotation flows, or areas + departments, to
+// start over from scratch. Deliberately admin-only client-side (see the
+// nav gating in index.html) since these affect the whole team's board, not
+// one record. Every FK from staff/assignments/evaluations/accounts/etc.
+// into areas/departments/rotation_flows is ON DELETE SET NULL
+// (rotation_flow_stages -> rotation_flows is CASCADE), so Postgres itself
+// keeps everything consistent — staff just become unassigned/un-enrolled
+// rather than the delete failing or leaving orphaned rows.
+// ---------------------------------------------------------------------------
+
+export async function resetRotationFlows({ actingAccountId }) {
+  const { error } = await supabase.from('rotation_flows').delete().not('id', 'is', null);
+  if (error) throw error;
+  // flow_id is already nulled by the FK, but flow_enrolled is a plain
+  // boolean with no FK to clean it up — clear it explicitly so no one is
+  // left "enrolled" in a flow that no longer exists.
+  await supabase.from('staff').update({ flow_enrolled: false }).eq('flow_enrolled', true);
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_area',
+    description: 'reset all rotation flows',
+    metadata: { reset: 'rotation_flows' },
+  });
+}
+
+export async function resetAreasAndDepartments({ actingAccountId }) {
+  const { error: areaErr } = await supabase.from('areas').delete().not('id', 'is', null);
+  if (areaErr) throw areaErr;
+  const { error: deptErr } = await supabase.from('departments').delete().not('id', 'is', null);
+  if (deptErr) throw deptErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_area',
+    description: 'reset all areas and departments',
+    metadata: { reset: 'areas_and_departments' },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Time off entries and blocked pairs. state.coverage (linking a returning
 // staff member's covering assignment back to an area/date) stays local-only
 // for now — it has ~15 call sites threaded through board rendering and chip
@@ -723,6 +764,8 @@ window.RC = {
   createRotationFlow,
   updateRotationFlow,
   deleteRotationFlow,
+  resetRotationFlows,
+  resetAreasAndDepartments,
   createTimeOff,
   updateTimeOff,
   deleteTimeOff,

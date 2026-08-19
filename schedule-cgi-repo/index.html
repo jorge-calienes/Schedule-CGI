@@ -9597,6 +9597,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
+      ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
@@ -10384,6 +10385,7 @@ function renderModal(){
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
+  else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -12186,6 +12188,50 @@ function renderFlowManagerModal(m){
             <span class="oc-sub">${f.stages.length} stage${f.stages.length===1?'':'s'} · ${state.staff.filter(s=>s.flowId===f.id&&s.flowEnrolled).length} staff enrolled</span>
           </div>
         </div>`).join('')}
+      ${state.rotationFlows.length>0 && authState.account?.role==='admin' ? `
+        <button class="btn btn-danger btn-sm" id="btn-reset-flows" style="width:100%;margin-top:var(--md-space-4);">🗑 Reset all flows — start from scratch</button>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Generic destructive-reset confirmation (admin only) ---
+// Requires typing the confirm phrase, not just a button tap — these wipe
+// shared structure the whole team depends on (every device's board or
+// rotation flows), not one record, so the usual single-click delete
+// confirmation used elsewhere isn't enough friction here.
+const RESET_CONFIRM_COPY = {
+  flows: {
+    title: 'Reset all rotation flows',
+    phrase: 'RESET FLOWS',
+    warning: () => `This permanently deletes all ${state.rotationFlows.length} rotation flow${state.rotationFlows.length===1?'':'s'} and their stages, for every device. Anyone currently enrolled in a flow will be un-enrolled. This can't be undone.`,
+  },
+  areas: {
+    title: 'Reset all areas and departments',
+    phrase: 'RESET AREAS',
+    warning: () => `This permanently deletes all ${state.areas.length} area${state.areas.length===1?'':'s'} and ${state.departments.length} department${state.departments.length===1?'':'s'}, for every device. Everyone currently placed on the board will become unassigned. This can't be undone.`,
+  },
+};
+function renderResetConfirmModal(m){
+  const copy = RESET_CONFIRM_COPY[m.kind];
+  const typed = (m.typed||'').trim();
+  const canConfirm = typed===copy.phrase && !m.saving;
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>⚠️ ${copy.title}</h2></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert-box rust" style="margin-bottom:16px;line-height:1.5;">${copy.warning()}</div>
+      <div class="field">
+        <label>Type <span style="font-family:var(--mono);font-weight:700;">${copy.phrase}</span> to confirm</label>
+        <input type="text" id="reset-confirm-input" placeholder="${copy.phrase}" value="${escapeHtml(m.typed||'')}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--md-sys-color-outline);border-radius:8px;font-family:inherit;"/>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="reset-cancel-btn">Cancel</button>
+      <button class="btn btn-danger" id="reset-confirm-btn" ${canConfirm?'':'disabled'}>${m.saving?'Resetting…':copy.title}</button>
     </div>
   </div>`;
 }
@@ -14128,6 +14174,7 @@ function attachHandlers(){
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
+  on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
@@ -15868,6 +15915,54 @@ function attachHandlers(){
     document.querySelectorAll('[data-edit-flow]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'flow-editor', editId:el.dataset.editFlow});
     }));
+    on('btn-reset-flows', ()=>openModal({type:'reset-confirm', kind:'flows', typed:''}));
+  }
+
+  // --- destructive reset confirmation ---
+  if(activeModal.type==='reset-confirm'){
+    const m = activeModal;
+    const input = document.getElementById('reset-confirm-input');
+    if(input){
+      input.addEventListener('input', ()=>{
+        m.typed = input.value;
+        const focused = document.activeElement === input;
+        render();
+        if(focused){
+          const el = document.getElementById('reset-confirm-input');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    on('reset-cancel-btn', closeModal);
+    on('reset-confirm-btn', async ()=>{
+      const copy = RESET_CONFIRM_COPY[m.kind];
+      if((m.typed||'').trim()!==copy.phrase || m.saving) return;
+      openModal({...m, saving:true});
+      let sync;
+      if(m.kind==='flows'){
+        sync = await syncCrudWrite(()=>window.RC.resetRotationFlows({actingAccountId:authState.account.id}));
+        if(sync.ok){
+          state.rotationFlows = [];
+          state.staff.forEach(s=>{ s.flowId=null; s.flowEnrolled=false; });
+        }
+      } else if(m.kind==='areas'){
+        sync = await syncCrudWrite(()=>window.RC.resetAreasAndDepartments({actingAccountId:authState.account.id}));
+        if(sync.ok){
+          state.areas = [];
+          state.departments = [];
+          state.staff.forEach(s=>{ s.homeAreaId=null; s.department=''; });
+          state.assignments = {};
+        }
+      }
+      if(sync.ok){
+        saveState();
+        showToast(copy.title+' — saved to database ✓', 'teal');
+        closeModal();
+      } else {
+        showToast(`Could not reset — ${sync.error?.message||'try again'}`, 'rust');
+        openModal({...m, saving:false});
+      }
+    });
   }
 
   // --- flow editor modal ---

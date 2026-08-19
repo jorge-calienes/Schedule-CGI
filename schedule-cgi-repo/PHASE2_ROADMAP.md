@@ -30,6 +30,8 @@ here should be built in one giant rewrite.
 | Staff performance profile, Team dashboard | **Done** |
 | Evaluation review workflow (team lead → supervisor accept/reject) | **Done** |
 | Audit log filters (action type, date) | **Done** |
+| Static asset caching fix (Vercel preview served stale JS) | **Done** |
+| Admin reset: rotation flows, areas & departments | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -407,6 +409,56 @@ same three buckets) but visually different from the mockup, and the trend
 chart would need deciding what "one bar per period" means when someone
 has multiple evaluators per period. Worth a follow-up pass, not bundled
 into an already-large evaluation-workflow change.
+
+### "Add supervisor doesn't save" — stale Vercel/browser cache, not a code bug
+
+Reported: adding a supervisor showed no toast and didn't persist; language
+certs didn't stick either; the Rotation Flows list showed 3 leftover
+demo entries ("Agency Channel", "Courier Channel", "APS Channel") with 0
+staff enrolled. Checked the live database directly — `supervisors`,
+`languages`, `rotation_flows`, and `staff_language_certs` were all
+genuinely empty (0 rows), while `staff` had the real 64 people correctly
+synced. RLS policies on all four tables were correct, and the client save
+path (`sup-save-btn` → `createSupervisor()` → Supabase) matched the
+working code in this repo.
+
+The tell: no toast at all, not even the "Enter a name" validation toast
+for an empty field. That's not what the current code does — it's what the
+*old*, pre-sync, local-only version of this modal did (toasts on
+save/error were only added when the Supabase sync work landed). That
+means the browser was still running an old cached bundle, and every
+`+ Add supervisor` tap was silently saving to local state only, which the
+next real Supabase board load then overwrote — explaining both "doesn't
+save" and the phantom demo flows (old local seed data that never got
+synced in the first place).
+
+Root cause: `vercel.json` only set `Cache-Control: no-store` for
+`/api/*` — the static `index.html` and `/lib/*` had no explicit
+cache header, so Vercel's/Safari's default caching could keep serving a
+build from before the latest deploy. Added `no-cache, must-revalidate`
+for `/`, `/index.html`, and `/lib/(.*)` so every visit revalidates with
+the server instead of trusting a locally cached copy — this was a real
+gap that would have bitten every future deploy, not just this one.
+
+### Admin reset: rotation flows, areas & departments
+
+Two new destructive, admin-only actions for starting over: **Reset all
+flows** (in the Rotation Flows modal, only shown once flows exist) and
+**Reset areas & departments** (nav drawer, under Administration). Both
+require typing an exact confirm phrase (`RESET FLOWS` / `RESET AREAS`)
+before the button enables — the single-click delete confirmation used
+elsewhere in the app isn't enough friction for something that wipes
+shared structure the whole team depends on, on every device, not just
+one record.
+
+Safe by construction: every FK from `staff`/`assignments`/`evaluations`/
+`accounts`/etc. into `areas`/`departments`/`rotation_flows` is `ON DELETE
+SET NULL` (`rotation_flow_stages` → `rotation_flows` is `CASCADE`), so
+Postgres itself keeps everything consistent — staff just become
+unassigned/un-enrolled rather than the delete failing or leaving orphaned
+rows. `resetRotationFlows()`/`resetAreasAndDepartments()` in
+`supabaseClient.js` also clear the one non-FK-linked flag
+(`staff.flow_enrolled`) that the cascade wouldn't touch on its own.
 
 ## Suggested next step
 
