@@ -5401,7 +5401,7 @@
     border:1px solid var(--c-border,#efefef);
     box-shadow:0 1px 4px rgba(0,0,0,.06);
     display:flex;flex-direction:column;
-    height:calc(100vh - 148px);max-height:calc(100vh - 148px);
+    height:auto;max-height:min(52vh, 440px);
     overflow:hidden;
     position:relative;
   }
@@ -8225,6 +8225,7 @@ let state = {
   proficiency: {}, // {staffId: {areaId: {rating:1-5, ratings:[{period,teamLeadRating,teamLeadId,teamLeadNote,supervisorRating,supervisorId,supervisorApproved,overrideReason}]}}}
   pendingFeedback: [], // [{staffId,areaId,toAreaId,...}]
   shifts: [],      // [{id, label, start, end}] editable shift schedule
+  lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
   languages: [],   // [{id, name}] editable language certifications list
   calloutHistory: {},  // {staffId: [{date, period, reason}]}
   rotationNotes: {},   // {period: string}
@@ -8566,6 +8567,10 @@ async function loadState(){
         {id:'sh4',label:'7:45 – 4:30',start:'7:45',end:'4:30'},
         {id:'sh5',label:'8:00 – 4:45',start:'8:00',end:'4:45'},
       ];
+      if(!state.lunchTimes) state.lunchTimes = [
+        {id:'lt1',label:'12:00 PM',sort_order:0},
+        {id:'lt2',label:'1:00 PM',sort_order:1},
+      ];
       if(!state.languages) state.languages = [
         {id:'lang_es',name:'Spanish'},{id:'lang_ar',name:'Arabic'},{id:'lang_zh',name:'Mandarin'},
       ];
@@ -8682,6 +8687,10 @@ function seedDemoData(){
       {id:'sh3', label:'7:30 – 4:15', start:'7:30', end:'4:15'},
       {id:'sh4', label:'7:45 – 4:30', start:'7:45', end:'4:30'},
       {id:'sh5', label:'8:00 – 4:45', start:'8:00', end:'4:45'},
+    ];
+    state.lunchTimes = [
+      {id:'lt1', label:'12:00 PM', sort_order:0},
+      {id:'lt2', label:'1:00 PM', sort_order:1},
     ];
     state.languages = [
       {id:'lang_es', name:'Spanish'},
@@ -9151,12 +9160,15 @@ function computeFlowAdvancement(){
 // for 12 and 1-6 (since lunch/end-of-shift times fall in that range for this operation).
 
 function parseClockToken(token){
-  const t = token.trim().replace(/\s+/g,''); // tolerate stray spaces like "12: 00"
-  const m = t.match(/^(\d{1,2}):?(\d{2})?$/);
+  const t = token.trim().replace(/\s+/g,' '); // tolerate stray spaces like "12: 00"
+  const m = t.match(/^(\d{1,2}):?(\d{2})?\s*([AaPp][Mm])?$/);
   if(!m) return null;
   let hour = parseInt(m[1],10);
   const minute = m[2] ? parseInt(m[2],10) : 0;
-  if(hour===12){ /* noon, keep as 12 */ }
+  const ampm = m[3] ? m[3].toUpperCase() : null;
+  if(ampm==='PM'){ if(hour!==12) hour += 12; }
+  else if(ampm==='AM'){ if(hour===12) hour = 0; }
+  else if(hour===12){ /* noon, keep as 12 */ }
   else if(hour>=1 && hour<=6){ hour += 12; } // 1:00-6:59 -> PM (lunch/shift end range)
   // 7-11 stay as-is (AM, shift start / break range)
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
@@ -9633,6 +9645,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
+      <button class="nav-item" id="nav-manage-lunch-times"><span class="nav-item-icon">🍽</span>Manage lunch times</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -10143,9 +10156,15 @@ function renderRosterRow(s, i){
     <td class="cell-dim" style="text-align:center;">${s.tdisNumber?`<span class="tdis-badge">${escapeHtml(s.tdisNumber)}</span>`:'<em>—</em>'}</td>
     <td class="cell-dim"><span>${escapeHtml(s.department||'—')}</span></td>
     <td>
-      ${area
-        ?`<div class="cell-area-block"><span class="roster-area-dot" style="background:${area.color}"></span><span>${escapeHtml(area.name)}</span></div>`
-        :'<span class="cell-dim"><em>—</em></span>'}
+      <div class="cell-area-block">
+        <span class="roster-area-dot" style="background:${area?area.color:'transparent'};border-color:${area?area.color:'var(--c-border)'};"></span>
+        <select class="roster-select" data-area-place="${s.id}" title="Change this person's area">
+          <option value="">Unassigned</option>
+          ${areasByDepartment().map(g=>`<optgroup label="${escapeHtml(g.department)}">
+            ${g.areas.map(a=>`<option value="${a.id}" ${areaId===a.id?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}
+          </optgroup>`).join('')}
+        </select>
+      </div>
     </td>
     <td>
       <select class="roster-select" data-field="shiftHours" data-id="${s.id}">
@@ -10412,6 +10431,7 @@ function renderModal(){
   else if(m.type==='mark-callout') inner = renderMarkCalloutModal(m);
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
   else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
+  else if(m.type==='lunch-times-manager') inner = renderLunchTimesManagerModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
@@ -10655,8 +10675,18 @@ function renderStaffManagerModal(m){
       </div>
       <div class="field"><label>Lunch</label>
         <select id="staff-lunch-input"><option value="">— Select —</option>
-          <option value="12:00" ${editing&&editing.breakTimes&&editing.breakTimes.includes('12:00')&&!editing.breakTimes.includes('1:00')?'selected':''}>12:00 PM</option>
-          <option value="1:00" ${editing&&editing.breakTimes&&editing.breakTimes.includes('1:00')?'selected':''}>1:00 PM</option>
+          ${(()=>{
+            // match on the parsed clock time, not exact text, so this still
+            // recognizes older records saved before lunch times became a
+            // manageable catalog (e.g. bare "12:00" now shows as "12:00 PM" selected)
+            const savedLunchRaw = editing && editing.breakTimes ? editing.breakTimes.split('/')[1] : null;
+            const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
+            return state.lunchTimes.map(lt=>{
+              const ltMins = parseClockToken(lt.label);
+              const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
+              return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
+            }).join('');
+          })()}
         </select>
       </div>
     </div>
@@ -12018,6 +12048,40 @@ function renderShiftsManagerModal(m){
   </div>`;
 }
 
+// --- Lunch times manager (admin) — same list/edit pattern as shifts above.
+// Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
+// used to be a hardcoded two-option <select> baked into the markup.
+function renderLunchTimesManagerModal(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Manage lunch times</h2><p>Define the lunch time options staff can select from.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${editing?`
+      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
+      <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
+        ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
+      </div>
+      <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
+      `:`
+      <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
+      ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
+        <div class="option-card" data-edit-lunch-time="${l.id}">
+          <div class="oc-left">
+            <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
+          </div>
+        </div>`).join('')}
+      `}
+    </div>
+  </div>`;
+}
+
 // --- Languages manager (admin) ---
 function renderLanguagesManagerModal(m){
   const isNew = m.editId === '__new__';
@@ -13297,8 +13361,15 @@ function attachHandlers(){
       else { rosterSort.col = col; rosterSort.dir = 1; }
       render();
     }));
+    // Area dropdown: routes through attemptPlace() (not a plain field write) so
+    // it gets the same capacity/cert/blocked-pair/team-lead-displacement checks
+    // as dragging a chip does — an admin picking a new area from the roster
+    // shouldn't be able to silently create a conflict drag-and-drop would catch.
+    document.querySelectorAll('[data-area-place]').forEach(sel=>sel.addEventListener('change', ()=>{
+      attemptPlace(sel.dataset.areaPlace, sel.value || null);
+    }));
     // Dropdown selects for shift and lunch
-    document.querySelectorAll('.roster-select').forEach(sel=>sel.addEventListener('change', ()=>{
+    document.querySelectorAll('.roster-select[data-field]').forEach(sel=>sel.addEventListener('change', ()=>{
       const s = getStaffById(sel.dataset.id);
       if(!s) return;
       if(sel.dataset.field==='flowId'){
@@ -14240,6 +14311,7 @@ function attachHandlers(){
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
+  on('nav-manage-lunch-times',  ()=>{ closeNav(); openModal({type:'lunch-times-manager'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -14881,6 +14953,39 @@ function attachHandlers(){
     }));
   }
 
+  // --- lunch times manager ---
+  if(activeModal.type==='lunch-times-manager'){
+    on('btn-new-lunch-time', ()=>openModal({type:'lunch-times-manager', editId:'__new__'}));
+    on('lunch-time-cancel-btn', ()=>openModal({type:'lunch-times-manager'}));
+    on('lunch-time-save-btn', async ()=>{
+      const label = document.getElementById('lunch-time-label-input').value.trim();
+      if(!label){ showToast('Enter a label','rust'); return; }
+      if(activeModal.editId==='__new__'){
+        const sortOrder = state.lunchTimes.length;
+        const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
+        state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
+        showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      } else {
+        const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
+        if(lt){ lt.label = label; }
+        showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      }
+      saveState(); openModal({type:'lunch-times-manager'});
+    });
+    on('lunch-time-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
+      state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
+      saveState();
+      showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'lunch-times-manager'});
+    });
+    document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'lunch-times-manager', editId:el.dataset.editLunchTime});
+    }));
+  }
+
   // --- languages manager ---
   if(activeModal.type==='languages-manager'){
     on('btn-new-lang', ()=>openModal({type:'languages-manager', editId:'__new__'}));
@@ -15135,7 +15240,10 @@ function attachHandlers(){
         showToast(sync.ok ? 'Supervisor added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
-      closeModal();
+      // Stay on the manager (reset to a blank "Add" form) so an admin can add
+      // or edit several supervisors in a row without getting bounced back to
+      // the board each time — only the ✕ button should close this modal.
+      openModal({type:'supervisor-manager'});
     });
     on('sup-delete-btn', async ()=>{
       const id = activeModal.editId;
@@ -15144,7 +15252,7 @@ function attachHandlers(){
       state.staff.forEach(s=>{ if(s.supervisorId===id) s.supervisorId = null; });
       saveState();
       showToast(sync.ok ? 'Supervisor removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      closeModal();
+      openModal({type:'supervisor-manager'});
     });
   }
 
@@ -16498,6 +16606,7 @@ function mapSupabaseBoard(board){
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+  const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
 
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
@@ -16522,7 +16631,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -16563,6 +16672,7 @@ async function bootApp(){
       state.staff = mapped.staff;
       state.supervisors = mapped.supervisors;
       state.shifts = mapped.shifts;
+      state.lunchTimes = mapped.lunchTimes;
       state.languages = mapped.languages;
       state.rotationFlows = mapped.rotationFlows;
       state.assignments = mapped.assignments;

@@ -159,7 +159,7 @@ export async function loadBoard() {
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
-    { data: coverageAssignments },
+    { data: coverageAssignments }, { data: lunchTimes },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -175,11 +175,12 @@ export async function loadBoard() {
     supabase.from('time_off').select('*').order('start_date'),
     supabase.from('blocked_pairs').select('*'),
     supabase.from('coverage_assignments').select('*'),
+    supabase.from('lunch_times').select('*').order('sort_order'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs, coverageAssignments,
+    timeOff, blockedPairs, coverageAssignments, lunchTimes,
   };
 }
 
@@ -415,6 +416,20 @@ export async function updateShift({ shiftId, label, start, end }) {
 }
 export async function deleteShift({ shiftId }) {
   const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+  if (error) throw error;
+}
+
+export async function createLunchTime({ label, sortOrder }) {
+  const { data, error } = await supabase.from('lunch_times').insert({ label, sort_order: sortOrder || 0 }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateLunchTime({ lunchTimeId, label, sortOrder }) {
+  const { error } = await supabase.from('lunch_times').update({ label, sort_order: sortOrder || 0 }).eq('id', lunchTimeId);
+  if (error) throw error;
+}
+export async function deleteLunchTime({ lunchTimeId }) {
+  const { error } = await supabase.from('lunch_times').delete().eq('id', lunchTimeId);
   if (error) throw error;
 }
 
@@ -811,6 +826,9 @@ window.RC = {
   createShift,
   updateShift,
   deleteShift,
+  createLunchTime,
+  updateLunchTime,
+  deleteLunchTime,
   createLanguage,
   updateLanguage,
   deleteLanguage,
