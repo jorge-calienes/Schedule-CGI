@@ -8504,6 +8504,12 @@ function todayLabel(){
   return d.toISOString().slice(0,10);
 }
 
+function yesterdayLabel(){
+  const d = new Date();
+  d.setDate(d.getDate()-1);
+  return d.toISOString().slice(0,10);
+}
+
 function friendlyDate(isoStr){
   if(!isoStr) return '—';
   try{
@@ -9942,8 +9948,14 @@ function renderBoard(){
 }
 
 function renderAreaCol(area){
+  // members drives which chips render (out + covering + regular, so you
+  // can still see who's out and who stepped in); the count badge uses
+  // activeInArea() instead — physically-present headcount, excluding
+  // whoever's out — so a callout + their coverer no longer double-counts
+  // against capacity (was showing e.g. "4/3" when only 3 were really there).
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   const under = isUnderStaffed(area.id);
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
@@ -9952,7 +9964,7 @@ function renderAreaCol(area){
     <div class="area-head" draggable="${readOnly?'false':'true'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="${readOnly?'':'Drag to reorder'}">
       <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <span class="area-count ${over?'over':under?'under':members.length>0?'ok':''}">${members.length}/${area.capacity}</span>
+        <span class="area-count ${over?'over':under?'under':present>0?'ok':''}">${present}/${area.capacity}</span>
         ${readOnly ? '' : `<button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>`}
       </div>
     </div>
@@ -9997,13 +10009,14 @@ function renderOverviewDept(g){
 
 function renderOverviewArea(area){
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   return `
   <div class="ov-area">
     <div class="ov-area-head" style="border-color:${area.color}">
       <span class="area-swatch" style="background:${area.color}"></span>
       <span class="ov-area-name">${escapeHtml(area.name)}</span>
-      <span class="area-count ${over?'over':''}">${members.length}/${area.capacity}</span>
+      <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
     </div>
     ${members.length===0 ? '<div class="ov-empty">No one placed</div>' : members.map(s=>renderOverviewRow(s, area.id)).join('')}
   </div>`;
@@ -10262,8 +10275,10 @@ function renderSupervisorSidebar(){
 }
 
 function renderFixedAreaCol(area){
+  // same present-vs-assigned distinction as renderAreaCol() above
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   // fixed areas: never show as tap-to-move target for other staff
   // but do allow receiving staff as backup (drag/tap from outside works)
   const permanent = members.filter(s=>!s.isBackupHere);
@@ -10274,7 +10289,7 @@ function renderFixedAreaCol(area){
       <div class="area-name"><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <span class="fixed-badge">Fixed</span>
-        <span class="area-count ${over?'over':''}">${members.length}/${area.capacity}</span>
+        <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
         <button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>
       </div>
     </div>
@@ -13209,6 +13224,7 @@ function attachHandlers(){
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
       syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[sid]);
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
       state.callouts[sid] = true;
@@ -13261,6 +13277,7 @@ function attachHandlers(){
     if(state.callouts[id]){
       delete state.callouts[id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[id]);
     } else {
       state.callouts[id] = true;
       syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
@@ -14795,6 +14812,7 @@ function attachHandlers(){
       const _person = getStaffById(_id);
       delete state.callouts[_id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[_id]);
       saveState();
       const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
       if(outIds.length===0){ closeModal(); return; }
@@ -16406,6 +16424,19 @@ function returnFromCoverage(staffId){
   }), 'coverage return');
 }
 
+// Whoever's covering `areaId` should go back to their own regular area the
+// moment nobody assigned there is still out — whether that's because a
+// manager just marked someone back in, or because a scheduled leave
+// reached its end date. Only returns if there's no one else still out in
+// the same area, since one coverer is tracked per area, not per person.
+function maybeReturnCoverageFor(areaId){
+  if(!areaId) return;
+  const stillOut = state.staff.some(s => state.assignments[s.id]===areaId && state.callouts[s.id]);
+  if(stillOut) return;
+  const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
+  if(covererId) returnFromCoverage(covererId);
+}
+
 function endAllCoverage(){
   // Called at Rotate Now — returns all coverage staff to their original areas
   Object.keys(state.coverage).forEach(sid => {
@@ -16524,6 +16555,44 @@ function _applyTodayTimeOff(){
         }
       }
     }
+  });
+
+  // 3. Scheduled leave that ended yesterday — auto mark the person back in
+  // and send whoever covered their area back to regular duties, the same
+  // as clicking "Back ✓" manually. Narrowly scoped to endDate===yesterday
+  // (not "any past record") so this can't misfire against an unrelated
+  // manual callout that happens to share a staff member with old time-off
+  // history — it only fires in the one-render window right after a leave
+  // actually ends.
+  // Mutates state directly instead of calling maybeReturnCoverageFor() /
+  // returnFromCoverage() — this whole function runs as the first line of
+  // render(), so calling something that itself calls render() here would
+  // re-enter render() mid-build, same reason step 2 above mutates
+  // state.coverage/state.assignments directly instead of calling
+  // assignCoverage().
+  const yesterday = yesterdayLabel();
+  state.staff.forEach(s=>{
+    if(!state.callouts[s.id]) return;          // not out, nothing to reconcile
+    if(isScheduledOut(s.id, today)) return;     // still within an active range
+    const justEnded = ((state.timeOff||{})[s.id]||[]).some(r=>r.endDate===yesterday);
+    if(!justEnded) return;
+    const areaId = state.assignments[s.id];
+    delete state.callouts[s.id];
+    if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.clearCallout({
+      staffId: s.id, actingAccountId: authState.account.id, staffName: s.name,
+    }), 'callout');
+    if(!areaId) return;
+    const stillOut = state.staff.some(x => state.assignments[x.id]===areaId && state.callouts[x.id]);
+    if(stillOut) return;
+    const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
+    if(!covererId) return;
+    const cov = state.coverage[covererId];
+    state.assignments[covererId] = cov.returnToAreaId || null;
+    delete state.coverage[covererId];
+    if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: covererId, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(covererId)?.name,
+    }), 'coverage return');
   });
 }
 
