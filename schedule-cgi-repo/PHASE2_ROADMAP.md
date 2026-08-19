@@ -33,6 +33,7 @@ here should be built in one giant rewrite.
 | Static asset caching fix (Vercel preview served stale JS) | **Done** |
 | Admin reset: rotation flows, areas & departments | **Done** |
 | Coverage sync (`state.coverage` + time-off coverage link) | **Done** |
+| Staff performance trend chart, team dashboard kanban layout | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -519,20 +520,56 @@ its linked coverage move both apply and sync exactly once (not once per
 render), and the manual assign/return/link/unlink paths all sync the
 right payload.
 
+### Staff performance trend chart + team dashboard kanban — mockup fidelity closed out
+
+The two remaining visual gaps from the mockup, both built on data that
+was already correct and synced — this was purely presentation.
+
+**Trend chart** (`renderEvalTrendChart()`): groups a staff member's
+*approved* evaluations by `period_id`, averages productivity/performance/
+reliability into one 0–5 "combined score" per period (multiple
+evaluators in the same period just average together), and plots the last
+6 periods oldest-to-newest as bars — same visual as the mockup. Rendered
+above the evaluation history list on the Stats tab. Evaluations with no
+`period_id` (submitted outside a formal rotation) aren't plottable on a
+period timeline and are skipped here, though they still show in the
+history list below. Returns nothing (no chart section at all) when there
+isn't at least one approved, period-linked evaluation to plot.
+
+**Team dashboard**: replaced the filter-tabs-plus-list layout with the
+mockup's 3-column kanban grouped by latest recommendation (`stay` →
+"Keep on rotation", `advance` → "Ready to advance", `training` →
+"Flagged for training"), plus a 4th column that wasn't in the mockup but
+was worth keeping — "Not yet evaluated", the one place a manager can see
+who's never been reviewed at all rather than only how the reviewed people
+scored. Search still narrows within all columns at once; the filter tabs
+were removed since the columns already segment everything they filtered.
+Clicking a card still jumps to that person's Stats tab, unchanged.
+
+Verified with headless-Chromium tests: the trend chart renders the right
+bar count/values/period labels in chronological order, all four kanban
+columns place people correctly (including a zero-evaluation person
+landing in "Not yet evaluated"), card clicks navigate to the right
+profile, and search filters correctly across columns.
+
 ## Suggested next step
 
 Every numbered step (3a through 8) is done, plus staff import, the
 team-lead access lock, Manage accounts, every extra screen from the
-"Phase 2 mockups" reference, the evaluation review workflow, and coverage
-sync — the board, staff/area edits, Rotate Now, evaluations, bulk
-onboarding, account provisioning, the audit trail, time off/blocked
-pairs/coverage, staff performance, and the team dashboard are all fully
-live against Supabase. Two things remain deliberately deferred, both
-cosmetic (the underlying data is already correct and synced):
-- The staff-performance "trend over time" bar chart (mockup screen 4).
-- The team dashboard's 3-column kanban-by-recommendation layout (mockup
-  screen 5) — currently a searchable/filterable list instead, same data.
+"Phase 2 mockups" reference (now including the trend chart and kanban
+layout), the evaluation review workflow, and coverage sync — the board,
+staff/area edits, Rotate Now, evaluations, bulk onboarding, account
+provisioning, the audit trail, time off/blocked pairs/coverage, staff
+performance, and the team dashboard are all fully live against Supabase
+and visually match the mockup reference. There is no remaining
+local-only state that actively misleads a user the way coverage did, and
+no outstanding mockup-fidelity gaps.
 
-Otherwise the original mockup reference is fully wired up, and there's no
-remaining local-only state that actively misleads a user the way coverage
-did.
+From here, further work is genuinely open-ended rather than "finish the
+mockup" — candidates worth considering next: pagination on the audit log
+(currently caps at the most recent 100 entries with no "load more"),
+syncing the local-only proficiency-rating/position-change-request system
+(`state.proficiency`, `state.positionRequests` — separate from
+`evaluations`, same category of gap coverage was before this pass), or
+whatever surfaces from actual day-to-day use now that the app is fully
+wired up.
