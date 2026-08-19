@@ -552,18 +552,76 @@ columns place people correctly (including a zero-evaluation person
 landing in "Not yet evaluated"), card clicks navigate to the right
 profile, and search filters correctly across columns.
 
+### Evaluation form — rebuilt to match mockup screen 3, plus a real note-loss bug fixed
+
+User report: "the UI doesn't look like the mockup and also don't allow
+to complete the evaluation looks off." Two separate things were going
+on.
+
+**Visual mismatch.** The eval form (`renderEvalFormModal`) had been
+built earlier in this migration, before the actual mockup file was
+supplied, and reused two unrelated components as a stand-in: a 5-star
+`renderStarRating` widget (shared with the peer-feedback modal) for the
+three scores, and a plain `<select>` dropdown for the recommendation, in
+a single-column layout. The mockup uses neither — it's a 1–5
+numbered-button scale per score row, and the recommendation is a set of
+selectable cards (title + one-line description) in a two-column grid
+with a person header (avatar initials, name, area/period) on the left.
+Rewrote the modal to match: new `.score-scale-btn` row per score,
+`.rec-opt` cards driven by the existing `EVAL_RECOMMENDATION_META`
+labels plus a new `EVAL_RECOMMENDATION_DESC` map for the descriptive
+subtext, `.eval-person` header block, and a `max-width:720px` two-column
+grid (`.eval-form-grid`, single column under 600px). The submit button
+now reads "Submit evaluation" and stays disabled until all three scores
+are picked, matching the mockup's affordance instead of a dropdown that
+silently defaulted to a value.
+
+**Note field wiped on every score/recommendation click.** This was the
+same root-cause pattern already found and fixed twice earlier in this
+migration (staff-manager tab-switching): the star/select click handlers
+called `openModal({...m, ...})` to re-render without first reading the
+live `#eval-note-input` textarea back into `m`, so any note typed before
+picking a score or recommendation was silently discarded — the modal
+would re-render from stale `m.note`. Every click handler in the eval
+form now runs a `captureNote()` helper first and spreads `note:
+captureNote()` into the new modal state, so the note always survives.
+This was very likely the concrete "won't let me complete the
+evaluation" symptom — filling in a note first, then picking scores,
+looked like it worked until the note vanished on submit.
+
+Also checked, since this app has a history of stale-bundle reports that
+turned out to be caching (see "Add supervisor doesn't save" above): the
+Vercel cache-control fix from that earlier incident (`vercel.json` now
+sends `no-cache, must-revalidate` for `/`, `/index.html`, and
+`/lib/(.*)`) has been live for multiple deploys since, so it shouldn't
+be a factor here — but if evaluations still fail to submit after this
+fix ships, a hard refresh (or an incognito window) is the first thing to
+rule out.
+
+Verified with headless-Chromium tests: new score-scale buttons and
+recommendation cards render (old star row and `<select>` are gone),
+typing a note survives clicking through all three scores and a
+recommendation card, and the full submit payload (all scores, note,
+recommendation, `isManager`) reaches `submitEvaluation` correctly for a
+fresh manager submission. Separately verified the "needs revision"
+resubmission path used by team leads: the review-note banner renders,
+all three scores and the recommendation card come back pre-selected
+from the existing evaluation, the note textarea is pre-filled, and
+resubmitting sends the right payload with `isManager:false`.
+
 ## Suggested next step
 
 Every numbered step (3a through 8) is done, plus staff import, the
 team-lead access lock, Manage accounts, every extra screen from the
-"Phase 2 mockups" reference (now including the trend chart and kanban
-layout), the evaluation review workflow, and coverage sync — the board,
-staff/area edits, Rotate Now, evaluations, bulk onboarding, account
-provisioning, the audit trail, time off/blocked pairs/coverage, staff
-performance, and the team dashboard are all fully live against Supabase
-and visually match the mockup reference. There is no remaining
-local-only state that actively misleads a user the way coverage did, and
-no outstanding mockup-fidelity gaps.
+"Phase 2 mockups" reference (now including the trend chart, kanban
+layout, and the redesigned evaluation form), the evaluation review
+workflow, and coverage sync — the board, staff/area edits, Rotate Now,
+evaluations, bulk onboarding, account provisioning, the audit trail,
+time off/blocked pairs/coverage, staff performance, and the team
+dashboard are all fully live against Supabase and visually match the
+mockup reference. There is no remaining local-only state that actively
+misleads a user the way coverage did, and no outstanding mockup-fidelity
+gaps.
 
 From here, further work is genuinely open-ended rather than "finish the
 mockup" — candidates worth considering next: pagination on the audit log

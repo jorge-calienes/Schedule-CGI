@@ -6816,6 +6816,27 @@
   .eval-history-evaluator{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);}
   .eval-history-note{font-size:var(--md-sys-typescale-body-small-size);font-style:italic;margin-top:4px;padding-top:4px;border-top:1px dashed var(--md-sys-color-outline-variant);}
 
+  /* ── Evaluation form (mockup screen 3) ── */
+  .eval-form-grid{display:grid;grid-template-columns:1fr;gap:var(--md-space-5);}
+  @media(min-width:600px){.eval-form-grid{grid-template-columns:1fr 1fr;}}
+  .eval-person{display:flex;align-items:center;gap:12px;margin-bottom:var(--md-space-4);}
+  .eval-person-av{width:44px;height:44px;border-radius:50%;background:#2F5FA8;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .eval-person-name{font-weight:700;font-size:16px;}
+  .eval-person-sub{font-size:12.5px;color:var(--md-sys-color-on-surface-variant);}
+  .score-row{margin-bottom:var(--md-space-4);}
+  .score-row label{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:13.5px;font-weight:600;margin-bottom:8px;}
+  .score-hint{font-weight:400;color:var(--md-sys-color-on-surface-variant);font-size:12px;}
+  .score-scale{display:flex;gap:6px;}
+  .score-scale-btn{flex:1;padding:10px 0;border-radius:9px;border:1.5px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface);font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;color:var(--md-sys-color-on-surface-variant);}
+  .score-scale-btn.sel{background:#2F5FA8;border-color:#2F5FA8;color:#fff;}
+  .rec-options{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+  .rec-opt{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:10px;cursor:pointer;}
+  .rec-opt.sel{border-color:#2F5FA8;background:var(--md-sys-color-primary-container);}
+  .rec-opt-dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--md-sys-color-outline-variant);margin-top:1px;flex-shrink:0;background:var(--md-sys-color-surface);}
+  .rec-opt.sel .rec-opt-dot{border-color:#2F5FA8;background:#2F5FA8;}
+  .rec-opt-t{font-weight:700;font-size:13.5px;}
+  .rec-opt-d{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
+
   /* ── Evaluation trend chart (staff performance profile) ── */
   .trend-chart{height:110px;display:flex;align-items:flex-end;gap:7px;padding:16px 4px 0;}
   .trend-bar{flex:1;min-width:0;background:linear-gradient(to top,#2F5FA8,#6E97D6);border-radius:5px 5px 0 0;position:relative;}
@@ -11347,47 +11368,70 @@ function renderEvalQueueModal(m){
 }
 
 // --- Evaluations: score form (1-5 productivity/performance/reliability + recommendation) ---
+// Recommendation options for the eval form's card picker — shares its
+// label/color with EVAL_RECOMMENDATION_META (used everywhere a submitted
+// recommendation is displayed: history, team dashboard, pending queue) so
+// the wording is consistent app-wide, with the mockup's descriptive
+// subtext added underneath each card.
+const EVAL_RECOMMENDATION_DESC = {
+  stay: 'Not ready to move yet — needs more time in this area',
+  advance: 'Move to next area in their rotation flow',
+  training: 'Flag for a specific skills session before continuing',
+};
 function renderEvalFormModal(m){
   const s = getStaffById(m.staffId);
   const area = m.areaId ? getAreaById(m.areaId) : null;
   const productivity = m.productivity||0;
   const performance = m.performance||0;
   const reliability = m.reliability||0;
-  const recOptions = [
-    {value:'stay', label:'Stay in current role'},
-    {value:'advance', label:'Ready to advance'},
-    {value:'training', label:'Needs more training'},
-  ];
+  const recommendation = m.recommendation||'stay';
   const canSubmit = productivity>0 && performance>0 && reliability>0 && !m.saving;
+  const initials = s ? s.name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
+  const scoreRow = (label, hint, key, value) => `
+    <div class="score-row">
+      <label>${label} <span class="score-hint">${hint}</span></label>
+      <div class="score-scale">
+        ${[1,2,3,4,5].map(n=>`<button type="button" class="score-scale-btn ${value===n?'sel':''}" data-score-key="${key}" data-score-val="${n}">${n}</button>`).join('')}
+      </div>
+    </div>`;
   return `
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-head">
-      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2><p>${area?escapeHtml(area.name):'No area'}</p></div>
+      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       ${m.reviewNote?`<div class="alert-box rust" style="margin-bottom:14px;"><b>Sent back for revision:</b> ${escapeHtml(m.reviewNote)}</div>`:''}
-      <div class="field">
-        <label>Productivity</label>
-        <div class="star-row">${renderStarRating(productivity,'eval-prod')}</div>
-      </div>
-      <div class="field">
-        <label>Performance</label>
-        <div class="star-row">${renderStarRating(performance,'eval-perf')}</div>
-      </div>
-      <div class="field">
-        <label>Reliability</label>
-        <div class="star-row">${renderStarRating(reliability,'eval-rel')}</div>
-      </div>
-      <div class="field">
-        <label>Recommendation</label>
-        <select id="eval-recommendation-input">
-          ${recOptions.map(o=>`<option value="${o.value}" ${(m.recommendation||'stay')===o.value?'selected':''}>${o.label}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label>Note (optional)</label>
-        <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+      <div class="eval-form-grid">
+        <div>
+          <div class="eval-person">
+            <div class="eval-person-av">${initials}</div>
+            <div>
+              <div class="eval-person-name">${s?escapeHtml(s.name):''}</div>
+              <div class="eval-person-sub">${area?escapeHtml(area.name):'No area'}${state.currentPeriod?' · Rotation period '+escapeHtml(state.currentPeriod):''}</div>
+            </div>
+          </div>
+          ${scoreRow('Productivity','Output vs. expected pace','productivity',productivity)}
+          ${scoreRow('Performance / quality','Accuracy, process adherence','performance',performance)}
+          ${scoreRow('Reliability','Attendance, punctuality','reliability',reliability)}
+          <div class="field">
+            <label>Note (optional)</label>
+            <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;box-sizing:border-box;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+          </div>
+        </div>
+        <div>
+          <div class="stats-prof-section-label" style="margin-top:0;">Recommendation</div>
+          <div class="small-muted" style="margin-bottom:2px;">Feeds directly into the next Rotate Now suggestion for this person.</div>
+          <div class="rec-options">
+            ${['stay','advance','training'].map(key=>{
+              const meta = EVAL_RECOMMENDATION_META[key];
+              return `<div class="rec-opt ${recommendation===key?'sel':''}" data-rec-opt="${key}">
+                <div class="rec-opt-dot"></div>
+                <div><div class="rec-opt-t">${meta.label}</div><div class="rec-opt-d">${EVAL_RECOMMENDATION_DESC[key]}</div></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -15633,12 +15677,22 @@ function attachHandlers(){
   // --- evaluations: score form ---
   if(activeModal.type==='eval-form'){
     const m = activeModal;
-    document.querySelectorAll('.star-btn').forEach(btn=>btn.addEventListener('click', ()=>{
-      const val = parseInt(btn.dataset.star,10);
-      const prefix = btn.dataset.prefix;
-      if(prefix==='eval-prod') openModal({...m, productivity:val});
-      else if(prefix==='eval-perf') openModal({...m, performance:val});
-      else if(prefix==='eval-rel') openModal({...m, reliability:val});
+    // Every score/recommendation click re-renders the whole modal — snapshot
+    // whatever's currently typed in the note field first, or it gets wiped
+    // (same class of bug as the staff-manager tab-switch issue fixed
+    // earlier: a click handler re-rendering from stale `m` state clobbers
+    // whatever the DOM has that `m` doesn't know about yet).
+    const captureNote = () => {
+      const el = document.getElementById('eval-note-input');
+      return el ? el.value : m.note;
+    };
+    document.querySelectorAll('.score-scale-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+      const key = btn.dataset.scoreKey;
+      const val = parseInt(btn.dataset.scoreVal,10);
+      openModal({...m, note:captureNote(), [key]:val});
+    }));
+    document.querySelectorAll('[data-rec-opt]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, note:captureNote(), recommendation:el.dataset.recOpt});
     }));
     on('eval-form-cancel', ()=>{
       if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
@@ -15647,8 +15701,8 @@ function attachHandlers(){
     });
     on('eval-form-submit', async ()=>{
       if(!(m.productivity>0 && m.performance>0 && m.reliability>0) || m.saving) return;
-      const note = document.getElementById('eval-note-input')?.value||'';
-      const recommendation = document.getElementById('eval-recommendation-input')?.value||'stay';
+      const note = captureNote()||'';
+      const recommendation = m.recommendation||'stay';
       openModal({...m, saving:true});
       const isManager = authState.account.role!=='team_lead';
       const sync = await syncCrudWrite(()=>window.RC.submitEvaluation({
