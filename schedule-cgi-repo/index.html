@@ -5647,7 +5647,11 @@
   }
   .roster-card-shift{font-size:12px;color:var(--c-text-2);font-weight:500;}
   .roster-card-badges{display:flex;gap:4px;align-items:center;}
-  .roster-card-cert{font-size:13px;}
+  .roster-card-cert{
+    display:inline-block;font-size:10px;font-weight:700;
+    background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;
+    padding:1px 6px;border-radius:99px;margin:1px;
+  }
   .roster-card-out{
     font-size:10px;font-weight:700;
     background:#FEF2F2;color:#DC2626;
@@ -5774,6 +5778,22 @@
     color:var(--c-text-2);width:100%;
   }
   .roster-sup-select:focus{outline:none;}
+
+  /* CA / AGS roster toggles — colored pill badges matching the ones used on
+     board chips and the staff profile (.cert-badge/.roster-card-ags), so
+     these read the same way in the dense roster table instead of a bare
+     checkmark and an easy-to-miss checkbox. */
+  .roster-tag-toggle{
+    display:inline-flex;align-items:center;gap:2px;
+    font-size:10px;font-weight:700;font-family:var(--mono);
+    padding:3px 8px;border-radius:99px;
+    border:1px dashed var(--c-border);
+    cursor:pointer;background:none;color:var(--c-text-2);
+    white-space:nowrap;transition:transform .1s;
+  }
+  .roster-tag-toggle:hover{transform:scale(1.05);}
+  .roster-tag-toggle.ca.on{background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;}
+  .roster-tag-toggle.ags.on{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;}
 
   /* Toolbar */
   .roster-toolbar{
@@ -10108,7 +10128,7 @@ function renderRoster(){
           <div class="roster-card-right">
             <span class="roster-card-shift">${escapeHtml(s.shiftHours||'—')}</span>
             <div class="roster-card-badges">
-              ${s.counterCert?'<span class="roster-card-cert" title="CA Certified">✅</span>':''}
+              ${s.counterCert?'<span class="roster-card-cert" title="Counter Acceptance certified">✅ CA</span>':''}
               ${langs.length?`<span class="lang-pill-sm">${langs[0]}</span>`:''}
               ${s.isSubcontractor?'<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>':''}
               ${isOut?'<span class="roster-card-out">Out</span>':''}
@@ -10127,13 +10147,13 @@ function renderRoster(){
           <col style="width:110px">
           <col style="width:98px">
           <col style="width:90px">
-          <col style="width:44px">
+          <col style="width:58px">
           <col style="width:78px">
           <col style="width:70px">
           <col style="width:88px">
           <col style="width:130px">
           <col style="width:46px">
-          <col style="width:46px">
+          <col style="width:58px">
           <col style="width:52px">
         </colgroup>
         <thead>
@@ -10211,7 +10231,7 @@ function renderRosterRow(s, i){
       </select>
     </td>
     <td style="text-align:center;">
-      <button class="cert-toggle-btn ${s.counterCert?'on':''}" data-toggle-cert="${s.id}" title="${s.counterCert?'Certified':'Not certified'}">${s.counterCert?'✅':'○'}</button>
+      <button class="roster-tag-toggle ca ${s.counterCert?'on':''}" data-toggle-cert="${s.id}" title="${s.counterCert?'Counter Acceptance certified':'Not certified'}">${s.counterCert?'✅ CA':'CA'}</button>
     </td>
     <td>${langs.length?langs.map(l=>`<span class="lang-pill-sm">${escapeHtml(l)}</span>`).join(''):'<span class="cell-dim">—</span>'}</td>
     <td class="cell-edit" data-edit-cell="tags" data-staff-id="${s.id}">${escapeHtml(s.tags||'')}</td>
@@ -10239,7 +10259,7 @@ function renderRosterRow(s, i){
       <input type="checkbox" class="roster-flag-checkbox roster-flag-lead" data-toggle-lead="${s.id}" ${s.isTeamLead?'checked':''} title="Team Lead"/>
     </td>
     <td style="text-align:center;">
-      <input type="checkbox" class="roster-flag-checkbox roster-flag-ags" data-toggle-ags="${s.id}" ${s.isSubcontractor?'checked':''} title="AGS / Sub-contractor"/>
+      <button class="roster-tag-toggle ags ${s.isSubcontractor?'on':''}" data-toggle-ags="${s.id}" title="${s.isSubcontractor?'AGS / Sub-contractor':'In-house'}">${s.isSubcontractor?'🏷 AGS':'AGS'}</button>
     </td>
     <td style="padding:4px;">
       <button class="btn btn-sm btn-light act-edit" data-id="${s.id}" style="padding:4px 8px;font-size:11px;">Edit</button>
@@ -13417,8 +13437,8 @@ function attachHandlers(){
       render();
     }));
 
-    // CA Cert toggle button
-    document.querySelectorAll('.cert-toggle-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+    // CA Cert toggle pill
+    document.querySelectorAll('.roster-tag-toggle.ca').forEach(btn=>btn.addEventListener('click', ()=>{
       const s = getStaffById(btn.dataset.toggleCert);
       if(!s) return;
       s.counterCert = !s.counterCert;
@@ -13428,11 +13448,11 @@ function attachHandlers(){
       render();
     }));
 
-    // AGS (sub-contractor) toggle checkbox
-    document.querySelectorAll('[data-toggle-ags]').forEach(cb=>cb.addEventListener('change', ()=>{
-      const s = getStaffById(cb.dataset.toggleAgs);
+    // AGS (sub-contractor) toggle pill
+    document.querySelectorAll('.roster-tag-toggle.ags').forEach(btn=>btn.addEventListener('click', ()=>{
+      const s = getStaffById(btn.dataset.toggleAgs);
       if(!s) return;
-      s.isSubcontractor = cb.checked;
+      s.isSubcontractor = !s.isSubcontractor;
       saveState();
       syncRosterStaffEdit(s, 'AGS status');
       showToast(`${s.name.split(' ')[0]} ${s.isSubcontractor?'marked as AGS / sub-contractor':'marked as in-house'}`, 'teal');
