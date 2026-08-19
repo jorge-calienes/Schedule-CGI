@@ -159,6 +159,7 @@ export async function loadBoard() {
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
+    { data: coverageAssignments },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -173,11 +174,12 @@ export async function loadBoard() {
     supabase.from('rotation_flow_stages').select('*').order('stage_order'),
     supabase.from('time_off').select('*').order('start_date'),
     supabase.from('blocked_pairs').select('*'),
+    supabase.from('coverage_assignments').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs,
+    timeOff, blockedPairs, coverageAssignments,
   };
 }
 
@@ -500,12 +502,7 @@ export async function resetAreasAndDepartments({ actingAccountId }) {
 }
 
 // ---------------------------------------------------------------------------
-// Time off entries and blocked pairs. state.coverage (linking a returning
-// staff member's covering assignment back to an area/date) stays local-only
-// for now — it has ~15 call sites threaded through board rendering and chip
-// badges, and deserves its own pass rather than being rushed in here. Just
-// the time-off entries themselves (dates/label) and the blocked-pairs table
-// (brand new — see 0005_blocked_pairs_time_off_index.sql) are synced below.
+// Time off entries and blocked pairs.
 // ---------------------------------------------------------------------------
 
 export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId }) {
@@ -534,6 +531,62 @@ export async function createBlockedPair({ staffAId, staffBId }) {
 }
 export async function deleteBlockedPair({ blockedPairId }) {
   const { error } = await supabase.from('blocked_pairs').delete().eq('id', blockedPairId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Coverage — who is currently covering someone else's area (from a manual
+// callout or a scheduled time off) and where they return to. Was local-only
+// before this (see 0007_coverage_sync.sql for the schema and
+// PHASE2_ROADMAP.md for the bugs that caused). assignCoverage()/
+// returnFromCoverage() do both the coverage-tracking write AND the actual
+// board-position move (the assignments table) together, since from the
+// caller's perspective starting/ending coverage IS one action — same
+// reasoning as submitEvaluation()'s two sequential writes.
+// ---------------------------------------------------------------------------
+
+export async function assignCoverage({ staffId, coverAreaId, returnToAreaId, actingAccountId, staffName, coverAreaName }) {
+  const now = new Date().toISOString();
+  const { error: covErr } = await supabase.from('coverage_assignments').upsert({
+    staff_id: staffId, return_to_area_id: returnToAreaId,
+    started_date: now.slice(0, 10), created_by: actingAccountId,
+  });
+  if (covErr) throw covErr;
+
+  const { error: moveErr } = await supabase.from('assignments').upsert({
+    staff_id: staffId, area_id: coverAreaId, updated_by: actingAccountId, updated_at: now,
+  });
+  if (moveErr) throw moveErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `${staffName || staffId} started covering ${coverAreaName || 'an area'}`,
+    staff_id: staffId,
+    metadata: { coverAreaId, returnToAreaId },
+  });
+}
+
+export async function returnFromCoverage({ staffId, returnToAreaId, actingAccountId, staffName }) {
+  const { error: delErr } = await supabase.from('coverage_assignments').delete().eq('staff_id', staffId);
+  if (delErr) throw delErr;
+
+  const { error: moveErr } = await supabase.from('assignments').upsert({
+    staff_id: staffId, area_id: returnToAreaId, updated_by: actingAccountId, updated_at: new Date().toISOString(),
+  });
+  if (moveErr) throw moveErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `${staffName || staffId} returned from covering`,
+    staff_id: staffId,
+    metadata: { returnToAreaId },
+  });
+}
+
+export async function setTimeOffCoverage({ timeOffId, coveringStaffId }) {
+  const { error } = await supabase.from('time_off').update({ covering_staff_id: coveringStaffId }).eq('id', timeOffId);
   if (error) throw error;
 }
 
@@ -771,6 +824,9 @@ window.RC = {
   deleteTimeOff,
   createBlockedPair,
   deleteBlockedPair,
+  assignCoverage,
+  returnFromCoverage,
+  setTimeOffCoverage,
   fetchStaffEvaluationHistory,
   fetchTeamPerformanceOverview,
 };

@@ -9201,6 +9201,14 @@ function staffOnBreakOrLunch(selectedBreakLabels, selectedLunchLabels, areaIds){
 
 let dragStaffId = null;
 let activeModal = null; // {type, ...payload}
+// Guards the auto-derived coverage/callout syncs in _applyTodayTimeOff()/
+// applyScheduledTimeOff() — those run against whatever's in state.staff/
+// state.timeOff at the moment, which during the brief window between
+// loadState() and bootApp()'s Supabase fetch resolving can still be stale
+// local/demo data with ids that don't exist server-side. Set true once the
+// real board has loaded from Supabase; local mutations still happen
+// immediately either way, only the network sync waits.
+let boardLoadedFromServer = false;
 let _prevModalType = null; // tracks last-rendered modal type, so we only re-play the modal-pop entrance animation on a genuinely new modal, not on internal updates (tab switch, toggle, search, etc.)
 let _prevStaffManagerTab = null; // tracks last-rendered staff-manager tab, so we know direction + whether to slide
 let _prevStaffManagerEditId = undefined;
@@ -14082,61 +14090,26 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
-    // NOTE: this links a time-off entry to a covering staff member's board
-    // move — that's `state.coverage`, which is still local-only (see NOTE on
-    // assignCoverage() above). The time-off entry itself is synced elsewhere.
     document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-          // If today is in range and person is out, sync to board immediately
-          const _today=todayLabel();
-          if(_today>=entry.startDate&&_today<=entry.endDate){
-            if(!state.callouts[sid]) state.callouts[sid]=true; // mark out
-            const _aId=state.assignments[sid];
-            if(_aId&&covId&&!((state.coverage||{})[covId])){
-              if(!state.coverage) state.coverage={};
-              state.coverage[covId]={returnToAreaId:state.assignments[covId],date:_today};
-              state.assignments[covId]=_aId;
-            }
-          }
-        saveState();
-        showToast(`${getStaffById(covId)?.name} assigned to cover ${getAreaById(state.assignments[sid])?.name||'area'}`,'teal');
-        render();
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      render();
     }));
 
     // "Others…" dropdown
     document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-          // If today is in range and person is out, sync to board immediately
-          const _today=todayLabel();
-          if(_today>=entry.startDate&&_today<=entry.endDate){
-            if(!state.callouts[sid]) state.callouts[sid]=true; // mark out
-            const _aId=state.assignments[sid];
-            if(_aId&&covId&&!((state.coverage||{})[covId])){
-              if(!state.coverage) state.coverage={};
-              state.coverage[covId]={returnToAreaId:state.assignments[covId],date:_today};
-              state.assignments[covId]=_aId;
-            }
-          }
-        saveState();
-        showToast(`${getStaffById(covId)?.name} assigned`,'teal');
-        render();
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      render();
     }));
 
     // remove coverage
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){ delete entry.coverageStaffId; saveState(); render(); }
+      removeTimeOffCoverage(sid, rid);
+      render();
     }));
 
     // edit / delete from list
@@ -14893,36 +14866,18 @@ function attachHandlers(){
     }));
 
     // coverage assignment dropdown
-    // NOTE: this is the state.coverage link, still local-only — see NOTE on the .to-sug-card handler above.
     document.querySelectorAll('.to-assign-cov').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-        // If today falls within this time-off range, apply to board immediately
-        const today=todayLabel();
-        if(today>=entry.startDate&&today<=entry.endDate&&state.callouts[sid]){
-          const aId=state.assignments[sid];
-          if(aId&&!((state.coverage||{})[covId])){
-            if(!state.coverage) state.coverage={};
-            state.coverage[covId]={returnToAreaId:state.assignments[covId],date:today};
-            state.assignments[covId]=aId;
-          }
-        }
-        saveState();
-        const covName=getStaffById(covId)?.name||'?';
-        const areaName=getAreaById(state.assignments[sid])?.name||'their area';
-        showToast(`${covName} assigned to cover ${areaName}`,'teal');
-        openModal({...m});
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      openModal({...m});
     }));
 
     // remove coverage
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){ delete entry.coverageStaffId; saveState(); openModal({...m}); }
+      removeTimeOffCoverage(sid, rid);
+      openModal({...m});
     }));
 
     // detail view: row edit/delete
@@ -16168,12 +16123,11 @@ function logCallout(staffId, reason=''){
 
 
 // ── Coverage helpers ──
-// NOTE: `state.coverage` (the live covering-assignment linkage) is still
-// fully local — it has ~15 call sites threaded through board rendering and
-// deserves its own migration pass. `state.timeOff` entries themselves (the
-// dates/label, not the coverage link) ARE synced now — see
-// syncTimeOffCreate/syncTimeOffUpdate/syncTimeOffDelete below. See
-// PHASE2_ROADMAP.md.
+// state.coverage is synced now (0007_coverage_sync.sql) — assignCoverage()/
+// returnFromCoverage() mutate local state immediately (same "don't block
+// the UI on network latency" pattern as every other board write) and fire
+// the Supabase write in the background via syncBoardWrite, covering both
+// the coverage_assignments row and the actual board-position move.
 function assignCoverage(staffId, coverAreaId){
   const returnTo = state.assignments[staffId];
   state.coverage[staffId] = {returnToAreaId: returnTo, date: todayLabel()};
@@ -16183,6 +16137,10 @@ function assignCoverage(staffId, coverAreaId){
   const name = getStaffById(staffId)?.name||'?';
   const area = getAreaById(coverAreaId)?.name||'?';
   showToast(`${name} covering ${area} — returns automatically tomorrow`, 'teal');
+  syncBoardWrite(()=>window.RC.assignCoverage({
+    staffId, coverAreaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+    staffName: name, coverAreaName: area,
+  }), 'coverage assign');
 }
 
 function returnFromCoverage(staffId){
@@ -16193,6 +16151,10 @@ function returnFromCoverage(staffId){
   delete state.coverage[staffId];
   saveState(); render();
   showToast(`${getStaffById(staffId)?.name||'?'} returned to original area`, 'teal');
+  syncBoardWrite(()=>window.RC.returnFromCoverage({
+    staffId, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+    staffName: getStaffById(staffId)?.name,
+  }), 'coverage return');
 }
 
 function endAllCoverage(){
@@ -16200,8 +16162,49 @@ function endAllCoverage(){
   Object.keys(state.coverage).forEach(sid => {
     const cov = state.coverage[sid];
     state.assignments[sid] = cov.returnToAreaId||null;
+    syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: sid, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(sid)?.name,
+    }), 'coverage return');
   });
   state.coverage = {};
+}
+
+// Shared by the Time Off screen's coverage-assignment UI (best-fit
+// suggestion card, "Others…" dropdown, and the equivalent controls in the
+// per-person detail view) — links a time-off entry to whoever is covering
+// it, and if that absence is already in effect today, also performs the
+// actual board move via assignCoverage() (which handles its own sync).
+function applyTimeOffCoverage(sid, rid, covId){
+  const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+  if(!entry) return;
+  entry.coverageStaffId = covId;
+  syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:covId}), 'time off coverage');
+  const today = todayLabel();
+  if(today>=entry.startDate && today<=entry.endDate){
+    if(!state.callouts[sid]) state.callouts[sid] = true;
+    const areaId = state.assignments[sid];
+    if(areaId && !(state.coverage||{})[covId]){
+      assignCoverage(covId, areaId); // handles state.coverage + the move + its own save/toast/sync
+      return;
+    }
+  }
+  saveState();
+  const covName = getStaffById(covId)?.name||'?';
+  showToast(`${covName} assigned to cover ${getAreaById(state.assignments[sid])?.name||'their area'}`, 'teal');
+}
+
+// Clears the coverage link on a time-off entry. Deliberately does NOT
+// return the covering person from their board position — same as the
+// pre-existing local-only behavior this replaces; the two are separate
+// actions (undo the plan vs. undo the actual move) and conflating them
+// here would change existing behavior, not just sync it.
+function removeTimeOffCoverage(sid, rid){
+  const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+  if(!entry) return;
+  delete entry.coverageStaffId;
+  syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:null}), 'time off coverage');
+  saveState();
 }
 
 // ── Scheduled time off helpers ──
@@ -16236,10 +16239,15 @@ function _applyTodayTimeOff(){
 
   state.staff.forEach(s=>{
     const scheduledOff = isScheduledOut(s.id, today);
-    
-    // 1. Mark as out (use 'scheduled' to distinguish from manual callout)
+
+    // 1. Mark as out (use 'scheduled' to distinguish from manual callout).
+    // Guarded on !state.callouts[s.id], so this only fires once per
+    // transition even though _applyTodayTimeOff() runs on every render.
     if(scheduledOff && !state.callouts[s.id]){
       state.callouts[s.id] = 'scheduled';
+      if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.setCallout({
+        staffId: s.id, actingAccountId: authState.account.id, staffName: s.name, reason: 'Scheduled time off',
+      }), 'callout');
     }
 
     // 2. Move coverage person if assigned, not yet moved, and staff has an area
@@ -16250,11 +16258,20 @@ function _applyTodayTimeOff(){
       );
       if(rec && areaId){
         const covId = rec.coverageStaffId;
-        // Only move if not already in coverage state
+        // Only move if not already in coverage state — same guard keeps
+        // this to a single sync per transition.
         if(!state.coverage[covId]){
           const returnTo = state.assignments[covId] || null;
           state.coverage[covId] = {returnToAreaId: returnTo, date: today};
           state.assignments[covId] = areaId;
+          if(boardLoadedFromServer){
+            const covName = getStaffById(covId)?.name;
+            const areaName = getAreaById(areaId)?.name;
+            syncBoardWrite(()=>window.RC.assignCoverage({
+              staffId: covId, coverAreaId: areaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+              staffName: covName, coverAreaName: areaName,
+            }), 'coverage assign');
+          }
         }
       }
     }
@@ -16273,6 +16290,9 @@ function applyScheduledTimeOff(){
   state.staff.forEach(s=>{
     if(isScheduledOut(s.id, today) && !state.callouts[s.id]){
       state.callouts[s.id] = true;
+      if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.setCallout({
+        staffId: s.id, actingAccountId: authState.account.id, staffName: s.name, reason: 'Scheduled time off',
+      }), 'callout');
     }
   });
 
@@ -16298,6 +16318,14 @@ function applyScheduledTimeOff(){
     const returnTo = state.assignments[covId];
     state.coverage[covId] = { returnToAreaId: returnTo, date: today };
     state.assignments[covId] = areaId;
+    if(boardLoadedFromServer){
+      const covName = getStaffById(covId)?.name;
+      const areaName = getAreaById(areaId)?.name;
+      syncBoardWrite(()=>window.RC.assignCoverage({
+        staffId: covId, coverAreaId: areaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+        staffName: covName, coverAreaName: areaName,
+      }), 'coverage assign');
+    }
   });
 }
 
@@ -16311,10 +16339,12 @@ function on(id, fn){
 // Maps the Supabase tables' snake_case/relational shape onto the app's
 // existing in-memory field names, so the rest of the app (which was written
 // against the localStorage shape) doesn't need to change.
-// NOTE: state.coverage/history/calloutHistory/etc. are still local-only,
-// so ids referenced there may not line up with these Supabase-sourced
-// staff/area ids until the rest of the migration lands — expected during a
-// one-slice-at-a-time migration, not a bug to chase now.
+// NOTE: state.history/calloutHistory/proficiency/etc. are still
+// local-only, so ids referenced there may not line up with these
+// Supabase-sourced staff/area ids until the rest of the migration lands —
+// expected during a one-slice-at-a-time migration, not a bug to chase now.
+// state.coverage is synced (see mapSupabaseBoard()'s coverage field and
+// bootApp()/reconcileStaleCoverage() below).
 function mapSupabaseBoard(board){
   const deptById = {};
   (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
@@ -16379,12 +16409,39 @@ function mapSupabaseBoard(board){
   const timeOff = {};
   (board.timeOff||[]).forEach(row=>{
     if(!timeOff[row.staff_id]) timeOff[row.staff_id] = [];
-    timeOff[row.staff_id].push({ id: row.id, startDate: row.start_date, endDate: row.end_date, label: row.label || '' });
+    timeOff[row.staff_id].push({
+      id: row.id, startDate: row.start_date, endDate: row.end_date, label: row.label || '',
+      coverageStaffId: row.covering_staff_id || undefined,
+    });
   });
 
   const blocks = (board.blockedPairs||[]).map(bp=>({ id: bp.id, a: bp.staff_a_id, b: bp.staff_b_id }));
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows, timeOff, blocks };
+  const coverage = {};
+  (board.coverageAssignments||[]).forEach(row=>{
+    coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
+  });
+
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows, timeOff, blocks, coverage };
+}
+
+// Coverage auto-returns the next day (assignCoverage()'s "returns
+// automatically tomorrow" promise) — this is what actually keeps that
+// promise now that coverage is synced: run once after each fresh
+// Supabase board load, so it reconciles against the real started_date
+// rather than whatever this one device happened to have cached.
+function reconcileStaleCoverage(){
+  const today = todayLabel();
+  Object.keys(state.coverage||{}).forEach(sid=>{
+    const cov = state.coverage[sid];
+    if(!cov.date || cov.date===today) return;
+    state.assignments[sid] = cov.returnToAreaId || null;
+    delete state.coverage[sid];
+    syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: sid, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(sid)?.name,
+    }), 'coverage return');
+  });
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
@@ -16412,6 +16469,9 @@ async function bootApp(){
       state.callouts = mapped.callouts;
       state.timeOff = mapped.timeOff;
       state.blocks = mapped.blocks;
+      state.coverage = mapped.coverage;
+      boardLoadedFromServer = true;
+      reconcileStaleCoverage();
       render();
     }
   }catch(e){

@@ -26,12 +26,13 @@ here should be built in one giant rewrite.
 | Manage accounts (grant/request) | **Done** |
 | Manage accounts edit/revoke on active accounts | **Done** |
 | Supervisors/shifts/languages/rotation flows sync | **Done** |
-| Time off entries / blocked pairs sync | **Done** — `state.coverage` still local-only |
+| Time off entries / blocked pairs sync | **Done** |
 | Staff performance profile, Team dashboard | **Done** |
 | Evaluation review workflow (team lead → supervisor accept/reject) | **Done** |
 | Audit log filters (action type, date) | **Done** |
 | Static asset caching fix (Vercel preview served stale JS) | **Done** |
 | Admin reset: rotation flows, areas & departments | **Done** |
+| Coverage sync (`state.coverage` + time-off coverage link) | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -282,7 +283,7 @@ No audit_log entries for the four catalog CRUD functions — the
 this felt like more schema churn than the win was worth. Worth revisiting
 if these need an audit trail later.
 
-### Time off entries and blocked pairs — now synced, coverage still local
+### Time off entries and blocked pairs — now synced (coverage followed later, see below)
 
 `state.timeOff` (scheduled leave: start/end date + label) and
 `state.blocks` (mutual "don't place these two together" pairs) were both
@@ -299,20 +300,10 @@ handlers and the blocks-manager's add/remove handlers, following the same
 `syncCrudWrite()` "saved to database ✓" pattern as staff/area/catalog
 saves.
 
-**Deliberately NOT synced in this pass: `state.coverage`.** That's the
-live link between a time-off entry and the staff member currently
-covering the vacated area (assigned via the "best-fit suggestion" card or
-the "Others…" dropdown on the Time Off screen), plus the matching
-return-to-area bookkeeping. It has upwards of a dozen call sites threaded
-through board rendering, chip badges, and the daily-reset logic that
-auto-returns a covering staff member — migrating it safely means also
-deciding how `state.coverage` should even be represented in the schema
-(no `covering_staff_id` column exists on `time_off` yet), which is a
-bigger, separate slice rather than something to rush in alongside the
-entries themselves. The coverage-linking handlers (`.to-sug-card`,
-`.to-sug-more`, `.to-remove-cov`, `.to-assign-cov`) are untouched and
-still work exactly as before — just local-only, same as `state.coverage`
-was before this pass and same as `state.calloutHistory` still is.
+`state.coverage` (the live link between a time-off entry and whoever's
+covering the vacated area) was deliberately left local-only in this pass
+— see the "Coverage sync" section further down for why that turned out
+to be a real bug, not just a missing feature, and how it was fixed.
 
 ### Staff performance profile and Team dashboard — now live
 
@@ -460,20 +451,88 @@ rows. `resetRotationFlows()`/`resetAreasAndDepartments()` in
 `supabaseClient.js` also clear the one non-FK-linked flag
 (`staff.flow_enrolled`) that the cascade wouldn't touch on its own.
 
+### Coverage sync — the biggest real (not just missing) gap, now fixed
+
+`state.coverage` was flagged repeatedly through this document as
+deliberately local-only, on the theory that it was "just" an unsynced
+feature. Investigating it properly turned up something worse: it was
+actively corrupting state, not merely failing to share it.
+
+Reproduced directly (seeded local storage with a coverage link, booted
+the app, inspected the result): a supervisor assigns someone to cover a
+colleague's time off, it works — until the next reload, at which point
+`bootApp()` had already been overwriting `state.timeOff` wholesale from
+Supabase (which had no column for the coverage link at all), silently
+erasing it. Separately, `assignCoverage()`/`returnFromCoverage()` moved
+the covering person's board position in local state only — the
+`assignments` table never heard about it — so on a second device, or
+after a refresh, the covering person visibly snapped back to their
+original spot while `state.coverage` still insisted they were out
+covering. A live repro showed this producing an actually self-contradictory
+state: the app believed someone was covering a position that, on the
+board, was empty. Scheduled-leave callouts and Rotate Now's callout reset
+had the same shape of bug — computed or cleared locally, never written to
+the `callouts` table, so a different device wouldn't see it.
+
+Migration `0007_coverage_sync.sql` adds `covering_staff_id` to `time_off`
+and a new `coverage_assignments` table (`staff_id` primary key — mirrors
+`state.coverage`'s shape exactly, one active coverage per person). New
+`assignCoverage()`/`returnFromCoverage()` in `supabaseClient.js` do both
+the coverage-tracking write and the actual board-position move together,
+since starting or ending coverage is one action from the caller's
+perspective — same reasoning as `submitEvaluation()`'s two sequential
+writes. `setTimeOffCoverage()` handles just the link on a time-off entry.
+
+Every call site that used to mutate `state.coverage`/`state.callouts`
+directly now goes through these — the callout dashboard's assign/undo
+buttons, the Time Off screen's suggestion card and "Others…" dropdown
+(unified into two shared helpers, `applyTimeOffCoverage()`/
+`removeTimeOffCoverage()`, replacing four near-duplicate inline blocks),
+Rotate Now's `endAllCoverage()`, and the auto-derived logic in
+`_applyTodayTimeOff()`/`applyScheduledTimeOff()` that marks someone out
+and moves their coverage the moment their leave starts.
+
+That last one needed care: `_applyTodayTimeOff()` runs on *every*
+render(), so syncing from inside it naively would fire a network request
+constantly. It's guarded on the same `if(!state.callouts[s.id])` /
+`if(!state.coverage[covId])` checks that already gated the local
+mutation — since those flip true after the first pass, the sync only
+ever fires once per actual transition. A second guard,
+`boardLoadedFromServer` (true only after `bootApp()`'s Supabase fetch
+resolves), stops these auto-derived syncs from firing during the brief
+window right after `loadState()` when `state.staff`/`state.timeOff` are
+still whatever was cached locally — otherwise a sync could fire against
+stale local ids that don't exist in the real `staff` table. Manual,
+button-triggered coverage actions aren't gated this way, same as every
+other manual board write in the app.
+
+`reconcileStaleCoverage()` (called once right after the Supabase board
+load) keeps `assignCoverage()`'s "returns automatically tomorrow" promise
+for real now: any coverage row whose `started_date` isn't today gets
+returned to its original area and the return is synced, instead of that
+logic living only in a pre-Supabase-fetch local check that got overwritten
+moments later anyway.
+
+Verified end-to-end with headless-Chromium tests: a stale coverage
+assignment auto-returns and syncs on boot, a scheduled-leave callout and
+its linked coverage move both apply and sync exactly once (not once per
+render), and the manual assign/return/link/unlink paths all sync the
+right payload.
+
 ## Suggested next step
 
 Every numbered step (3a through 8) is done, plus staff import, the
-team-lead access lock, Manage accounts, and every extra screen from the
-"Phase 2 mockups" reference — the board, staff/area edits, Rotate Now,
-evaluations, bulk onboarding, account provisioning, the audit trail, time
-off/blocked pairs, staff performance, and the team dashboard are all fully
-live against Supabase, including the evaluation review workflow (team
-lead submissions now need supervisor acceptance). Three things remain
-deliberately deferred:
-- `state.coverage` (see above) — the live covering-assignment link, still
-  local-only pending its own schema/scope decision.
+team-lead access lock, Manage accounts, every extra screen from the
+"Phase 2 mockups" reference, the evaluation review workflow, and coverage
+sync — the board, staff/area edits, Rotate Now, evaluations, bulk
+onboarding, account provisioning, the audit trail, time off/blocked
+pairs/coverage, staff performance, and the team dashboard are all fully
+live against Supabase. Two things remain deliberately deferred, both
+cosmetic (the underlying data is already correct and synced):
 - The staff-performance "trend over time" bar chart (mockup screen 4).
 - The team dashboard's 3-column kanban-by-recommendation layout (mockup
   screen 5) — currently a searchable/filterable list instead, same data.
 
-Otherwise the original mockup reference is fully wired up.
+Otherwise the original mockup reference is fully wired up, and there's no
+remaining local-only state that actively misleads a user the way coverage
+did.
