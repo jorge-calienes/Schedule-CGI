@@ -348,6 +348,16 @@ export async function archiveStaff({ staffId, staffName, actingAccountId }) {
   const { error } = await supabase.from('staff').update({ active: false }).eq('id', staffId);
   if (error) throw error;
 
+  // loadBoard() only fetches active=true staff, so an archived person drops
+  // out of state.staff on the next load — but a live callout or coverage
+  // row for them doesn't clean itself up, and getStaffById() then can't
+  // resolve it. That left a ghost "?" entry in the callout banner and
+  // crashed the "Assign coverage" dashboard (it reads s.name on every
+  // callout row unconditionally). Clear both here so archiving never
+  // leaves a dangling reference behind.
+  await supabase.from('callouts').delete().eq('staff_id', staffId);
+  await supabase.from('coverage_assignments').delete().eq('staff_id', staffId);
+
   await supabase.from('audit_log').insert({
     actor_id: actingAccountId,
     action: 'archive_staff',

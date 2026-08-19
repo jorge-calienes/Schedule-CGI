@@ -9691,7 +9691,11 @@ function renderSelectionBanner(){
 }
 
 function renderCalloutBanner(){
-  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
+  // getStaffById(id) can come back empty for a callout left behind by
+  // someone who's since been removed — filter those out here too (on top
+  // of the mapSupabaseBoard() filter) so a stale local copy of state can't
+  // still show a "?" or crash the coverage dashboard below.
+  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   if(outIds.length===0) return ''; // nobody out → no banner
 
   const coveredAreaIds = new Set(
@@ -10999,7 +11003,10 @@ function renderHistoryModal(m){
 
 // --- 5. Call-out dashboard ---
 function renderCalloutDashModal(m){
-  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
+  // same guard as renderCalloutBanner() — a callout with no matching staff
+  // record used to crash this modal outright (every row below assumes
+  // s.name exists), which looked like "nothing shows" when opening it.
+  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   const searchQ = (m.search||'').toLowerCase().trim();
   const rows = outIds.map(sid=>{
     const s      = getStaffById(sid);
@@ -16632,9 +16639,18 @@ function mapSupabaseBoard(board){
     assignments[row.staff_id] = row.area_id || null;
   });
 
+  // board.staff only ever contains active=true rows (loadBoard()'s query
+  // filters that server-side) — a callout row left behind for someone who
+  // was since archived would otherwise become a "ghost" entry that
+  // getStaffById() can't resolve, breaking anything that reads
+  // state.callouts directly (the callout banner, "Assign coverage"
+  // dashboard). archiveStaff() now cleans its own callout row up, but
+  // filter here too as a backstop against any other way a stale one could
+  // show up.
+  const activeStaffIds = new Set((board.staff||[]).map(s=>s.id));
   const callouts = {};
   (board.callouts||[]).forEach(row=>{
-    callouts[row.staff_id] = true;
+    if(activeStaffIds.has(row.staff_id)) callouts[row.staff_id] = true;
   });
 
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
