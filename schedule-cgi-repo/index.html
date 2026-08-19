@@ -6801,6 +6801,65 @@
   .stats-never-label{font-size:var(--md-sys-typescale-label-medium-size);text-transform:uppercase;letter-spacing:.04em;color:var(--md-sys-color-on-surface-variant);font-weight:700;margin:var(--md-space-3) 0 var(--md-space-2);}
   .stats-never-chip{display:inline-flex;align-items:center;gap:4px;font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);border-radius:var(--md-sys-shape-corner-full);padding:3px 10px;margin:3px;}
 
+  /* ── Performance evaluations (Stats tab + team dashboard) ── */
+  .eval-summary-grid{display:flex;gap:var(--md-space-4);flex-wrap:wrap;margin-bottom:var(--md-space-2);}
+  .eval-summary-stat{display:flex;flex-direction:column;gap:2px;}
+  .eval-summary-label{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-weight:600;}
+  .eval-summary-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:var(--md-space-3);}
+  .eval-rec-badge{font-size:11px;font-weight:700;color:#fff;padding:3px 10px;border-radius:var(--md-sys-shape-corner-full);white-space:nowrap;}
+  .eval-rec-badge.small{font-size:9.5px;padding:2px 8px;}
+  .eval-history-list{display:flex;flex-direction:column;gap:var(--md-space-2);}
+  .eval-history-row{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);}
+  .eval-history-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+  .eval-history-date{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);}
+  .eval-history-scores{font-family:var(--mono);font-size:var(--md-sys-typescale-body-small-size);margin-bottom:2px;}
+  .eval-history-evaluator{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);}
+  .eval-history-note{font-size:var(--md-sys-typescale-body-small-size);font-style:italic;margin-top:4px;padding-top:4px;border-top:1px dashed var(--md-sys-color-outline-variant);}
+
+  /* ── Evaluation form (mockup screen 3) ── */
+  .eval-form-grid{display:grid;grid-template-columns:1fr;gap:var(--md-space-5);}
+  @media(min-width:600px){.eval-form-grid{grid-template-columns:1fr 1fr;}}
+  .eval-person{display:flex;align-items:center;gap:12px;margin-bottom:var(--md-space-4);}
+  .eval-person-av{width:44px;height:44px;border-radius:50%;background:#2F5FA8;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .eval-person-name{font-weight:700;font-size:16px;}
+  .eval-person-sub{font-size:12.5px;color:var(--md-sys-color-on-surface-variant);}
+  .score-row{margin-bottom:var(--md-space-4);}
+  .score-row label{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:13.5px;font-weight:600;margin-bottom:8px;}
+  .score-hint{font-weight:400;color:var(--md-sys-color-on-surface-variant);font-size:12px;}
+  .score-scale{display:flex;gap:6px;}
+  .score-scale-btn{flex:1;padding:10px 0;border-radius:9px;border:1.5px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface);font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;color:var(--md-sys-color-on-surface-variant);}
+  .score-scale-btn.sel{background:#2F5FA8;border-color:#2F5FA8;color:#fff;}
+  .rec-options{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+  .rec-opt{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:10px;cursor:pointer;}
+  .rec-opt.sel{border-color:#2F5FA8;background:var(--md-sys-color-primary-container);}
+  .rec-opt-dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--md-sys-color-outline-variant);margin-top:1px;flex-shrink:0;background:var(--md-sys-color-surface);}
+  .rec-opt.sel .rec-opt-dot{border-color:#2F5FA8;background:#2F5FA8;}
+  .rec-opt-t{font-weight:700;font-size:13.5px;}
+  .rec-opt-d{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
+
+  /* ── Evaluation trend chart (staff performance profile) ── */
+  .trend-chart{height:110px;display:flex;align-items:flex-end;gap:7px;padding:16px 4px 0;}
+  .trend-bar{flex:1;min-width:0;background:linear-gradient(to top,#2F5FA8,#6E97D6);border-radius:5px 5px 0 0;position:relative;}
+  .trend-bar-v{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);}
+  .trend-labels{display:flex;gap:7px;margin-top:6px;margin-bottom:var(--md-space-4);}
+  .trend-labels span{flex:1;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
+
+  /* ── Team dashboard ── */
+  .team-dash-summary{display:flex;gap:var(--md-space-5);flex-wrap:wrap;margin-bottom:var(--md-space-4);padding-bottom:var(--md-space-4);border-bottom:1px solid var(--md-sys-color-outline-variant);}
+  .team-dash-stat{display:flex;flex-direction:column;gap:2px;}
+  .team-dash-stat-label{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-weight:600;}
+  .team-dash-search{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-small);font-family:inherit;font-size:14px;margin-bottom:var(--md-space-4);}
+  .team-dash-filter-count{font-family:var(--mono);font-size:10.5px;opacity:.85;margin-left:auto;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);padding:1px 8px;border-radius:var(--md-sys-shape-corner-full);}
+  .team-dash-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--md-space-4);max-height:56vh;overflow-y:auto;}
+  .team-dash-col-head{display:flex;align-items:center;gap:8px;margin-bottom:var(--md-space-2);}
+  .team-dash-col-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .team-dash-col-head h3{font-size:13.5px;margin:0;}
+  .team-dash-card{display:block;width:100%;text-align:left;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);cursor:pointer;font-family:inherit;margin-bottom:var(--md-space-2);}
+  .team-dash-card:hover{border-color:var(--md-sys-color-primary);}
+  .team-dash-card-name{font-weight:700;font-size:13px;margin-bottom:4px;}
+  .team-dash-card-scores{display:flex;gap:5px;flex-wrap:wrap;}
+  .mini-score{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);}
+
   /* ---------- certifications & language badges ---------- */
   .chip-certs{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
   .cert-badge{
@@ -9171,6 +9230,14 @@ function staffOnBreakOrLunch(selectedBreakLabels, selectedLunchLabels, areaIds){
 
 let dragStaffId = null;
 let activeModal = null; // {type, ...payload}
+// Guards the auto-derived coverage/callout syncs in _applyTodayTimeOff()/
+// applyScheduledTimeOff() — those run against whatever's in state.staff/
+// state.timeOff at the moment, which during the brief window between
+// loadState() and bootApp()'s Supabase fetch resolving can still be stale
+// local/demo data with ids that don't exist server-side. Set true once the
+// real board has loaded from Supabase; local mutations still happen
+// immediately either way, only the network sync waits.
+let boardLoadedFromServer = false;
 let _prevModalType = null; // tracks last-rendered modal type, so we only re-play the modal-pop entrance animation on a genuinely new modal, not on internal updates (tab switch, toggle, search, etc.)
 let _prevStaffManagerTab = null; // tracks last-rendered staff-manager tab, so we know direction + whether to slide
 let _prevStaffManagerEditId = undefined;
@@ -9562,9 +9629,12 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Administration</div>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
+      ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
@@ -10350,6 +10420,9 @@ function renderModal(){
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
+  else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
+  else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
+  else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -10589,7 +10662,7 @@ function renderStaffManagerModal(m){
     </div>
     <div class="field"><label>Supervisor</label>
       <select id="staff-supervisor-input"><option value="">—</option>
-        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+(editing&&editing.supervisorId===sv.id?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
+        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
       </select>
     </div>
     <div class="field">
@@ -10611,7 +10684,7 @@ function renderStaffManagerModal(m){
   const rotationTab = `
     <div class="field"><label>Rotation flow</label>
       <select id="staff-flow-input"><option value="">No flow / rotates freely</option>
-        ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+(editing&&editing.flowId===f.id?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
+        ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+((m.flowId!==undefined ? m.flowId===f.id : editing&&editing.flowId===f.id)?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
       </select>
     </div>
     <div class="sw-group">
@@ -10635,27 +10708,84 @@ function renderStaffManagerModal(m){
 
   const statsTab = (() => {
     if(!editing) return '<div class="small-muted">Save first to see stats.</div>';
+
+    // star display helper: filled/empty stars for 1-5 rating
+    const stars = renderProficiencyStars;
+
+    // ── Performance evaluations (Phase 2 mockup screen 4) ── fetched
+    // on-demand when this tab is opened — see the fetch trigger in the
+    // 'staff-manager' event-wiring block below. Shown above the rotation
+    // stats since it's not gated on rotation history existing at all.
+    const evalSection = (() => {
+      const hist = m.evalHistory;
+      const err = m.evalHistoryError;
+      let body;
+      if(err){
+        body = '<div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>';
+      } else if(hist===undefined || m._evalHistoryLoading){
+        body = '<div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>';
+      } else if(hist.length===0){
+        body = '<div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
+      } else {
+        // Only approved evaluations move the averages/latest recommendation —
+        // a team_lead's still-pending/needs-revision submission is listed
+        // below but doesn't count until a supervisor accepts it.
+        const approved = hist.filter(r=>r.status==='approved');
+        const awaiting = hist.filter(r=>r.status==='pending'||r.status==='needs_revision');
+        const avg = key => approved.length ? approved.reduce((sum,r)=>sum+r[key],0)/approved.length : 0;
+        const summary = approved.length ? (()=>{
+          const latest = approved[0];
+          const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
+          return '<div class="eval-summary-grid">'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Productivity</span>'+stars(avg('productivity'))+'</div>'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Performance</span>'+stars(avg('performance'))+'</div>'+
+              '<div class="eval-summary-stat"><span class="eval-summary-label">Reliability</span>'+stars(avg('reliability'))+'</div>'+
+            '</div>'+
+            '<div class="eval-summary-meta">'+
+              '<span class="eval-rec-badge" style="background:'+(recMeta?.color||'#999')+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
+              '<span class="small-muted"> · latest recommendation · '+approved.length+' approved evaluation'+(approved.length===1?'':'s')+'</span>'+
+            '</div>';
+        })() : '<div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
+        const awaitingBanner = awaiting.length
+          ? '<div class="small-muted" style="margin-bottom:10px;">⏳ '+awaiting.length+' evaluation'+(awaiting.length===1?'':'s')+' awaiting supervisor review</div>'
+          : '';
+        const trendChart = renderEvalTrendChart(approved);
+        body = summary + awaitingBanner + trendChart +
+          '<div class="eval-history-list">'+
+          hist.slice(0,8).map(r=>{
+            const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
+            const areaName = r.area&&r.area.name;
+            const periodLabel = r.period&&r.period.period_label;
+            const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+            const statusBadge = r.status==='approved'
+              ? (()=>{ const rm=EVAL_RECOMMENDATION_META[r.recommendation]; return '<span class="eval-rec-badge small" style="background:'+(rm?.color||'#999')+'">'+(rm?.label||r.recommendation)+'</span>'; })()
+              : r.status==='needs_revision'
+                ? '<span class="eval-rec-badge small" style="background:'+EVAL_RECOMMENDATION_META.training.color+'">Needs revision</span>'
+                : '<span class="eval-rec-badge small" style="background:#8B6F47;">Pending review</span>';
+            return '<div class="eval-history-row">'+
+              '<div class="eval-history-row-head">'+
+                '<span class="eval-history-date">'+escapeHtml(dateStr)+(periodLabel?' · '+escapeHtml(periodLabel):'')+'</span>'+
+                statusBadge+
+              '</div>'+
+              '<div class="eval-history-scores">P '+r.productivity+' · Pf '+r.performance+' · R '+r.reliability+(areaName?' · '+escapeHtml(areaName):'')+'</div>'+
+              '<div class="eval-history-evaluator">by '+escapeHtml(evaluatorName)+'</div>'+
+              (r.note ? '<div class="eval-history-note">'+escapeHtml(r.note)+'</div>' : '')+
+              (r.review_note ? '<div class="eval-history-note" style="font-style:normal;"><b>Review note:</b> '+escapeHtml(r.review_note)+'</div>' : '')+
+            '</div>';
+          }).join('')+
+          '</div>';
+      }
+      return '<div class="stats-prof-section-label" style="margin-top:0;">Performance evaluations</div>'+body;
+    })();
+
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
-    if(totalCompletedRotations===0) return '<div class="small-muted" style="line-height:1.6;padding:8px 0;">No rotations recorded yet. Stats will appear after the first Rotate Now.</div>';
+    if(totalCompletedRotations===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet. Stats will appear after the first Rotate Now.</div>';
     const worked = rows.filter(r=>r.hasExperience);
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
-    // star display helper: filled/empty stars for 1-5 rating
-    const stars = (rating) => {
-      if(!rating) return '<span class="prof-stars unrated">Not yet rated</span>';
-      const full = Math.floor(rating);
-      const half = rating - full >= 0.5;
-      let s = '';
-      for(let i=1;i<=5;i++){
-        if(i<=full) s+='<span class="prof-star filled">★</span>';
-        else if(i===full+1&&half) s+='<span class="prof-star half">★</span>';
-        else s+='<span class="prof-star empty">☆</span>';
-      }
-      return '<span class="prof-stars">'+s+'</span>';
-    };
-
     return (
+      evalSection+
       // ── Overall progress ──
       '<div class="stats-overall-bar-wrap">'+
       '<div class="stats-overall-label"><span>Areas covered</span><span class="stats-overall-pct">'+pct+'%</span></div>'+
@@ -11174,24 +11304,47 @@ function renderMarkCalloutModal(m){
 }
 
 // --- Evaluations: team-lead "my queue" ---
+// Data attrs carrying the on-file scores/note/recommendation so reopening
+// the eval form for a revision pre-fills instead of starting from a blank
+// slate — the team lead shouldn't have to re-enter everything just to fix
+// what the supervisor flagged.
+function evalPrefillAttrs(i){
+  return `data-eval-prod="${i.existing_productivity||0}" data-eval-perf="${i.existing_performance||0}" `+
+    `data-eval-rel="${i.existing_reliability||0}" data-eval-rec="${escapeHtml(i.existing_recommendation||'stay')}" `+
+    `data-eval-note="${escapeHtml(i.existing_note||'')}" data-eval-review-note="${escapeHtml(i.existing_evaluation_review_note||'')}"`;
+}
 function renderEvalQueueModal(m){
   const items = m.items||[];
-  const pending = items.filter(i=>!i.existing_evaluation_id);
-  const done = items.filter(i=>i.existing_evaluation_id);
+  const needsFeedback = items.filter(i=>!i.existing_evaluation_id);
+  const needsRevision = items.filter(i=>i.existing_evaluation_status==='needs_revision');
+  const submitted = items.filter(i=>i.existing_evaluation_id && i.existing_evaluation_status!=='needs_revision');
+  const actionCount = needsFeedback.length + needsRevision.length;
   return `
   <div class="modal">
     <div class="modal-head">
-      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':pending.length+' need feedback this period')}</p></div>
+      <div><h2>My evaluations</h2><p>${m.loading?'Loading…':(items.length===0?'Nobody currently in your area':actionCount+' need'+(actionCount===1?'s':'')+' your attention this period')}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       ${m.loading?`<div class="small-muted">Loading your queue…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load your queue: ${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error && items.length===0?`<div class="small-muted">Nobody is currently assigned to your area.</div>`:''}
-      ${!m.loading && pending.length>0?`
+      ${!m.loading && needsRevision.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;color:${EVAL_RECOMMENDATION_META.training.color};">⚠ Sent back for revision</div>
+        <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
+          ${needsRevision.map(i=>`
+            <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}" ${evalPrefillAttrs(i)}>
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+                ${i.existing_evaluation_review_note?`<span class="oc-sub" style="font-style:italic;">"${escapeHtml(i.existing_evaluation_review_note)}"</span>`:''}
+              </div>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && needsFeedback.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback</div>
         <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
-          ${pending.map(i=>`
+          ${needsFeedback.map(i=>`
             <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}">
               <div class="oc-left">
                 <span class="oc-name">${escapeHtml(i.name)}</span>
@@ -11199,14 +11352,14 @@ function renderEvalQueueModal(m){
               </div>
             </div>`).join('')}
         </div>` : ''}
-      ${!m.loading && done.length>0?`
+      ${!m.loading && submitted.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Already submitted</div>
         <div class="option-list" style="max-height:200px;overflow-y:auto;">
-          ${done.map(i=>`
+          ${submitted.map(i=>`
             <div class="option-card" style="opacity:.65;">
               <div class="oc-left">
-                <span class="oc-name">✓ ${escapeHtml(i.name)}</span>
-                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
+                <span class="oc-name">${i.existing_evaluation_status==='approved'?'✓':'⏳'} ${escapeHtml(i.name)}</span>
+                <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''} · ${i.existing_evaluation_status==='approved'?'approved':'awaiting supervisor review'}</span>
               </div>
             </div>`).join('')}
         </div>` : ''}
@@ -11215,46 +11368,70 @@ function renderEvalQueueModal(m){
 }
 
 // --- Evaluations: score form (1-5 productivity/performance/reliability + recommendation) ---
+// Recommendation options for the eval form's card picker — shares its
+// label/color with EVAL_RECOMMENDATION_META (used everywhere a submitted
+// recommendation is displayed: history, team dashboard, pending queue) so
+// the wording is consistent app-wide, with the mockup's descriptive
+// subtext added underneath each card.
+const EVAL_RECOMMENDATION_DESC = {
+  stay: 'Not ready to move yet — needs more time in this area',
+  advance: 'Move to next area in their rotation flow',
+  training: 'Flag for a specific skills session before continuing',
+};
 function renderEvalFormModal(m){
   const s = getStaffById(m.staffId);
   const area = m.areaId ? getAreaById(m.areaId) : null;
   const productivity = m.productivity||0;
   const performance = m.performance||0;
   const reliability = m.reliability||0;
-  const recOptions = [
-    {value:'stay', label:'Stay in current role'},
-    {value:'advance', label:'Ready to advance'},
-    {value:'training', label:'Needs more training'},
-  ];
+  const recommendation = m.recommendation||'stay';
   const canSubmit = productivity>0 && performance>0 && reliability>0 && !m.saving;
+  const initials = s ? s.name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
+  const scoreRow = (label, hint, key, value) => `
+    <div class="score-row">
+      <label>${label} <span class="score-hint">${hint}</span></label>
+      <div class="score-scale">
+        ${[1,2,3,4,5].map(n=>`<button type="button" class="score-scale-btn ${value===n?'sel':''}" data-score-key="${key}" data-score-val="${n}">${n}</button>`).join('')}
+      </div>
+    </div>`;
   return `
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-head">
-      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2><p>${area?escapeHtml(area.name):'No area'}</p></div>
+      <div><h2>Evaluate ${s?escapeHtml(s.name):''}</h2></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Productivity</label>
-        <div class="star-row">${renderStarRating(productivity,'eval-prod')}</div>
-      </div>
-      <div class="field">
-        <label>Performance</label>
-        <div class="star-row">${renderStarRating(performance,'eval-perf')}</div>
-      </div>
-      <div class="field">
-        <label>Reliability</label>
-        <div class="star-row">${renderStarRating(reliability,'eval-rel')}</div>
-      </div>
-      <div class="field">
-        <label>Recommendation</label>
-        <select id="eval-recommendation-input">
-          ${recOptions.map(o=>`<option value="${o.value}" ${(m.recommendation||'stay')===o.value?'selected':''}>${o.label}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label>Note (optional)</label>
-        <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+      ${m.reviewNote?`<div class="alert-box rust" style="margin-bottom:14px;"><b>Sent back for revision:</b> ${escapeHtml(m.reviewNote)}</div>`:''}
+      <div class="eval-form-grid">
+        <div>
+          <div class="eval-person">
+            <div class="eval-person-av">${initials}</div>
+            <div>
+              <div class="eval-person-name">${s?escapeHtml(s.name):''}</div>
+              <div class="eval-person-sub">${area?escapeHtml(area.name):'No area'}${state.currentPeriod?' · Rotation period '+escapeHtml(state.currentPeriod):''}</div>
+            </div>
+          </div>
+          ${scoreRow('Productivity','Output vs. expected pace','productivity',productivity)}
+          ${scoreRow('Performance / quality','Accuracy, process adherence','performance',performance)}
+          ${scoreRow('Reliability','Attendance, punctuality','reliability',reliability)}
+          <div class="field">
+            <label>Note (optional)</label>
+            <textarea id="eval-note-input" rows="3" placeholder="Anything specific worth noting?" style="width:100%;box-sizing:border-box;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;">${escapeHtml(m.note||'')}</textarea>
+          </div>
+        </div>
+        <div>
+          <div class="stats-prof-section-label" style="margin-top:0;">Recommendation</div>
+          <div class="small-muted" style="margin-bottom:2px;">Feeds directly into the next Rotate Now suggestion for this person.</div>
+          <div class="rec-options">
+            ${['stay','advance','training'].map(key=>{
+              const meta = EVAL_RECOMMENDATION_META[key];
+              return `<div class="rec-opt ${recommendation===key?'sel':''}" data-rec-opt="${key}">
+                <div class="rec-opt-dot"></div>
+                <div><div class="rec-opt-t">${meta.label}</div><div class="rec-opt-d">${EVAL_RECOMMENDATION_DESC[key]}</div></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -11458,6 +11635,7 @@ function renderManageAccountsModal(m){
   const accounts = m.accounts||[];
   const pending = accounts.filter(a=>a.status==='pending');
   const active = accounts.filter(a=>a.status==='active');
+  const revoked = accounts.filter(a=>a.status==='revoked');
   const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&a.assigned_area_id?' · '+escapeHtml(getAreaById(a.assigned_area_id)?.name||''):''}`;
   return `
   <div class="modal" style="max-width:560px;">
@@ -11482,12 +11660,24 @@ function renderManageAccountsModal(m){
         </div>` : ''}
       ${!m.loading && !m.error && active.length>0?`
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Active accounts</div>
-        <div class="option-list" style="max-height:260px;overflow-y:auto;">
+        <div class="option-list" style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
           ${active.map(a=>`
-            <div class="option-card">
-              <div class="oc-left">
+            <div class="option-card" style="cursor:default;">
+              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-area="${a.assigned_area_id||''}" style="cursor:pointer;flex:1;">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)}</span>
+              </div>
+              <button class="btn btn-light btn-sm" data-revoke-account="${a.id}" data-revoke-name="${escapeHtml(a.name)}" style="flex-shrink:0;color:var(--c-red);">Revoke</button>
+            </div>`).join('')}
+        </div>` : ''}
+      ${!m.loading && !m.error && revoked.length>0?`
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Revoked</div>
+        <div class="option-list" style="max-height:200px;overflow-y:auto;">
+          ${revoked.map(a=>`
+            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-area="${a.assigned_area_id||''}" style="opacity:.65;">
+              <div class="oc-left">
+                <span class="oc-name">${escapeHtml(a.name)}</span>
+                <span class="oc-sub">${rowSub(a)} · access revoked</span>
               </div>
             </div>`).join('')}
         </div>` : ''}
@@ -11496,20 +11686,31 @@ function renderManageAccountsModal(m){
   </div>`;
 }
 
+const ACCOUNT_FORM_COPY = {
+  create: {title:'Add account', sub:'Creates the account and activates it in one step.', submit:'Create & grant'},
+  grant:  {title:'Grant access', sub:'Requested by', submit:'Grant access'},
+  edit:   {title:'Edit account', sub:'Leave PIN blank to keep their current one.', submit:'Save changes'},
+  restore:{title:'Restore access', sub:'access was revoked — granting again reactivates it.', submit:'Restore access'},
+};
 function renderAccountGrantFormModal(m){
+  const mode = m.mode||'create';
+  const copy = ACCOUNT_FORM_COPY[mode];
   const role = m.role||'team_lead';
   const pin = m.pin||'';
-  const canSubmit = m.name.trim() && /^\d{4}$/.test(pin) && (role!=='team_lead' || m.assignedAreaId) && !m.saving;
+  const pinRequired = mode!=='edit';
+  const pinValid = pinRequired ? /^\d{4}$/.test(pin) : (pin==='' || /^\d{4}$/.test(pin));
+  const canSubmit = m.name.trim() && pinValid && (role!=='team_lead' || m.assignedAreaId) && !m.saving;
   if(m.result){
+    const noPinToShow = mode==='edit' && !pin;
     return `
     <div class="modal" style="max-width:440px;">
       <div class="modal-head">
-        <div><h2>${escapeHtml(m.name)} can sign in</h2><p>Share this PIN with them now — it won't be shown again.</p></div>
+        <div><h2>${escapeHtml(m.name)}${noPinToShow?"'s account was updated":' can sign in'}</h2>${noPinToShow?'':'<p>Share this PIN with them now — it won\'t be shown again.</p>'}</div>
       </div>
       <div class="modal-body">
-        <div class="rc-pin-dots" style="justify-content:center;gap:12px;margin:8px 0 20px;">
+        ${noPinToShow?'':`<div class="rc-pin-dots" style="justify-content:center;gap:12px;margin:8px 0 20px;">
           ${pin.split('').map(d=>`<span style="font-size:32px;font-weight:800;font-family:var(--mono);">${d}</span>`).join('')}
-        </div>
+        </div>`}
         <div class="small-muted" style="text-align:center;">Name: <b>${escapeHtml(m.name)}</b> · Role: <b>${ACCOUNT_ROLE_LABELS[role]}</b>${role==='team_lead'?` · Area: <b>${escapeHtml(getAreaById(m.assignedAreaId)?.name||'')}</b>`:''}</div>
       </div>
       <div class="modal-foot">
@@ -11520,13 +11721,13 @@ function renderAccountGrantFormModal(m){
   return `
   <div class="modal" style="max-width:440px;">
     <div class="modal-head">
-      <div><h2>${m.accountId?'Grant access':'Add account'}</h2><p>${m.accountId?`Requested by ${escapeHtml(m.name)}`:'Creates the account and activates it in one step.'}</p></div>
+      <div><h2>${copy.title}</h2><p>${mode==='grant'?`${copy.sub} ${escapeHtml(m.name)}`:mode==='restore'?`${escapeHtml(m.name)}'s ${copy.sub}`:copy.sub}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       <div class="field">
         <label>Name</label>
-        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}" ${m.accountId?'disabled':''}/>
+        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}" ${mode!=='create'?'disabled':''}/>
       </div>
       <div class="field">
         <label>Role</label>
@@ -11543,7 +11744,7 @@ function renderAccountGrantFormModal(m){
         </select>
       </div>`:''}
       <div class="field">
-        <label>PIN (4 digits)</label>
+        <label>${pinRequired?'PIN (4 digits)':'New PIN (optional)'}</label>
         <div style="display:flex;gap:8px;">
           <input type="text" id="grant-pin-input" inputmode="numeric" maxlength="4" placeholder="1234" value="${escapeHtml(pin)}" style="font-family:var(--mono);letter-spacing:.1em;"/>
           <button class="btn btn-light btn-sm" id="grant-random-pin" type="button">Generate</button>
@@ -11553,7 +11754,7 @@ function renderAccountGrantFormModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="grant-cancel-btn">Cancel</button>
-      <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':(m.accountId?'Grant access':'Create & grant')}</button>
+      <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':copy.submit}</button>
     </div>
   </div>`;
 }
@@ -11564,13 +11765,23 @@ const AUDIT_ACTION_ICONS = {
   archive_staff:'🗑', edit_area:'🏷', add_area:'➕', rotate_period:'🔁', evaluation:'📝',
   account_request:'🔑', account_grant:'🔓', account_revoke:'🔒', time_off:'📅',
 };
+const AUDIT_ACTION_LABELS = {
+  move:'Move', swap:'Swap', callout:'Callout', clear_callout:'Clear callout', edit_staff:'Edit staff',
+  add_staff:'Add staff', archive_staff:'Remove staff', edit_area:'Edit area', add_area:'Add area',
+  rotate_period:'Rotate', evaluation:'Evaluation', account_request:'Account request',
+  account_grant:'Account grant', account_revoke:'Account revoke', time_off:'Time off',
+};
 function renderAuditLogModal(m){
   const q = (m.search||'').trim().toLowerCase();
-  const entries = q
-    ? (m.entries||[]).filter(e=>
-        (e.description||'').toLowerCase().includes(q) ||
-        (e.accounts?.name||'').toLowerCase().includes(q))
-    : (m.entries||[]);
+  const actionFilter = m.actionFilter||'';
+  const dateFilter = m.dateFilter||'';
+  const entries = (m.entries||[]).filter(e=>{
+    if(actionFilter && e.action!==actionFilter) return false;
+    if(dateFilter && (!e.created_at || e.created_at.slice(0,10)!==dateFilter)) return false;
+    if(q && !(e.description||'').toLowerCase().includes(q) && !(e.accounts?.name||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const actionsPresent = [...new Set((m.entries||[]).map(e=>e.action))];
   return `
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -11579,6 +11790,14 @@ function renderAuditLogModal(m){
     </div>
     <div class="modal-body">
       ${!m.loading?`
+      <div class="log-filters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <select id="audit-action-filter" style="border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12.5px;background:var(--md-sys-color-surface);">
+          <option value="">All action types</option>
+          ${actionsPresent.map(a=>`<option value="${a}" ${actionFilter===a?'selected':''}>${AUDIT_ACTION_LABELS[a]||a}</option>`).join('')}
+        </select>
+        <input type="date" id="audit-date-filter" value="${escapeHtml(dateFilter)}" style="border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12.5px;background:var(--md-sys-color-surface);"/>
+        ${(actionFilter||dateFilter)?'<button class="btn btn-light btn-sm" id="audit-filters-clear">Clear filters</button>':''}
+      </div>
       <div class="roster-search-wrap" style="margin-bottom:12px;">
         <span class="roster-search-icon">🔍</span>
         <input type="text" id="audit-search" class="roster-search" placeholder="Search by action or who did it…" value="${escapeHtml(m.search||'')}"/>
@@ -11587,7 +11806,7 @@ function renderAuditLogModal(m){
       ${m.loading?`<div class="small-muted">Loading audit log…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load the audit log: ${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error && (m.entries||[]).length===0?`<div class="small-muted" style="line-height:1.6;">No activity recorded yet. Moves, edits, rotations, and evaluations will show up here as people use the app.</div>`:''}
-      ${!m.loading && !m.error && (m.entries||[]).length>0 && entries.length===0?`<div class="small-muted">No entries match "${escapeHtml(m.search)}".</div>`:''}
+      ${!m.loading && !m.error && (m.entries||[]).length>0 && entries.length===0?`<div class="small-muted">No entries match the current filters.</div>`:''}
       ${entries.length>0?`
       <div class="option-list" style="max-height:420px;overflow-y:auto;">
         ${entries.map(e=>`
@@ -11602,6 +11821,131 @@ function renderAuditLogModal(m){
   </div>`;
 }
 
+// --- Team dashboard (Phase 2 mockup screen 5) — aggregated evaluations
+// across the whole team, admin/supervisor only. ---
+// Team dashboard columns — mirrors the mockup's 3-column kanban grouped by
+// latest recommendation (stay/advance/training), plus a 4th "Not yet
+// evaluated" column that wasn't in the mockup but was worth keeping: it's
+// the one place a manager can see who's never been reviewed at all, not
+// just how the reviewed people scored.
+const TEAM_DASH_COLUMNS = [
+  {id:'stay',     label:'Keep on rotation',    dot:'#B45309', match:r=>r.latestRecommendation==='stay'},
+  {id:'advance',  label:'Ready to advance',    dot:'#2D6E5E', match:r=>r.latestRecommendation==='advance'},
+  {id:'training', label:'Flagged for training',dot:'#B91C1C', match:r=>r.latestRecommendation==='training'},
+  {id:'unrated',  label:'Not yet evaluated',   dot:'#9E9E9E', match:r=>r.count===0},
+];
+function renderTeamDashboardModal(m){
+  const search = (m.search||'').trim().toLowerCase();
+  const rows = m.loading ? [] : aggregateTeamPerformance(m.raw);
+  const visible = search ? rows.filter(r=>r.name.toLowerCase().includes(search)) : rows;
+  const evaluatedRows = rows.filter(r=>r.count>0);
+  const teamAvg = key => evaluatedRows.length ? evaluatedRows.reduce((sum,r)=>sum+r[key],0)/evaluatedRows.length : 0;
+
+  const renderCard = r => {
+    const recMeta = r.latestRecommendation ? EVAL_RECOMMENDATION_META[r.latestRecommendation] : null;
+    return `<button class="team-dash-card" data-team-staff="${r.staffId}">
+      <div class="team-dash-card-name">${escapeHtml(r.name)}</div>
+      ${r.count>0 ? `
+        <div class="team-dash-card-scores">
+          <span class="mini-score">P ${r.avgProductivity.toFixed(1)}</span>
+          <span class="mini-score">Pf ${r.avgPerformance.toFixed(1)}</span>
+          <span class="mini-score">R ${r.avgReliability.toFixed(1)}</span>
+        </div>
+      ` : `<div class="small-muted" style="font-size:11.5px;">No approved evaluation yet</div>`}
+      ${r.pendingCount>0?`<span class="eval-rec-badge small" style="background:#8B6F47;margin-top:4px;">⏳ ${r.pendingCount} pending</span>`:''}
+    </button>`;
+  };
+
+  return `
+  <div class="modal" style="max-width:820px;">
+    <div class="modal-head">
+      <div><h2>📊 Team performance</h2><p>Where each person stands, based on their latest approved evaluation</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading ? `<div class="small-muted">Loading team performance…</div>` : ''}
+      ${!m.loading && m.error ? `<div class="alert-box rust">Couldn't load team performance: ${escapeHtml(m.error)}</div>` : ''}
+      ${!m.loading && !m.error ? `
+        ${evaluatedRows.length===0 ? `<div class="small-muted" style="line-height:1.6;margin-bottom:12px;">No evaluations approved yet — team-wide stats will appear here once staff have been evaluated.</div>` : `
+        <div class="team-dash-summary">
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Productivity</span>${renderProficiencyStars(teamAvg('avgProductivity'))}</div>
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Performance</span>${renderProficiencyStars(teamAvg('avgPerformance'))}</div>
+          <div class="team-dash-stat"><span class="team-dash-stat-label">Reliability</span>${renderProficiencyStars(teamAvg('avgReliability'))}</div>
+        </div>`}
+        <input type="text" id="team-dash-search" class="team-dash-search" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
+        <div class="team-dash-cols">
+          ${TEAM_DASH_COLUMNS.map(col=>{
+            const colRows = visible.filter(col.match);
+            return `<div class="team-dash-col">
+              <div class="team-dash-col-head">
+                <span class="team-dash-col-dot" style="background:${col.dot};"></span>
+                <h3>${col.label}</h3>
+                <span class="team-dash-filter-count">${colRows.length}</span>
+              </div>
+              ${colRows.length===0 ? `<div class="small-muted" style="font-size:12px;padding:8px 0;">Nobody here.</div>` : colRows.map(renderCard).join('')}
+            </div>`;
+          }).join('')}
+        </div>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Pending evaluations review queue (admin/supervisor) — the
+// supervisor-must-accept-it half of the evaluation workflow. A team_lead's
+// submission lands here as 'pending' (see 0006_evaluation_review_workflow.sql)
+// and only counts toward the staff performance profile / team dashboard
+// once approved. ---
+function renderPendingEvalsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>📝 Pending evaluations</h2><p>Submitted by team leads, awaiting your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending evaluations…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending evaluations: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every team-lead evaluation has been reviewed.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const staffName = (row.staff&&row.staff.name)||'Unknown';
+          const evaluatorName = (row.evaluator&&row.evaluator.name)||'Unknown';
+          const areaName = row.area&&row.area.name;
+          const periodLabel = row.period&&row.period.period_label;
+          const recMeta = EVAL_RECOMMENDATION_META[row.recommendation];
+          const isRejecting = m.rejectingId===row.id;
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(staffName)}${periodLabel?' · '+escapeHtml(periodLabel):''}</span>
+              <span class="eval-rec-badge small" style="background:${recMeta?recMeta.color:'#999'}">${recMeta?recMeta.label:row.recommendation}</span>
+            </div>
+            <div class="eval-history-scores">P ${row.productivity} · Pf ${row.performance} · R ${row.reliability}${areaName?' · '+escapeHtml(areaName):''}</div>
+            <div class="eval-history-evaluator">submitted by ${escapeHtml(evaluatorName)}</div>
+            ${row.note?`<div class="eval-history-note">${escapeHtml(row.note)}</div>`:''}
+            ${isRejecting ? `
+              <div style="margin-top:10px;">
+                <textarea id="reject-note-input" rows="2" placeholder="What needs to change before this can be approved?" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <button class="btn btn-primary btn-sm" id="confirm-reject-btn" data-confirm-reject="${row.id}" data-confirm-reject-staff="${row.staff_id}">Send back</button>
+                  <button class="btn btn-light btn-sm" id="cancel-reject-btn">Cancel</button>
+                </div>
+              </div>
+            ` : `
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn btn-primary btn-sm" data-approve-eval="${row.id}" data-approve-staff="${row.staff_id}">✓ Approve</button>
+                <button class="btn btn-light btn-sm" data-reject-eval="${row.id}">↩ Send back</button>
+              </div>
+            `}
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
 
 // --- Department order (board layout) ---
 function renderDeptReorderModal(m){
@@ -11910,6 +12254,50 @@ function renderFlowManagerModal(m){
             <span class="oc-sub">${f.stages.length} stage${f.stages.length===1?'':'s'} · ${state.staff.filter(s=>s.flowId===f.id&&s.flowEnrolled).length} staff enrolled</span>
           </div>
         </div>`).join('')}
+      ${state.rotationFlows.length>0 && authState.account?.role==='admin' ? `
+        <button class="btn btn-danger btn-sm" id="btn-reset-flows" style="width:100%;margin-top:var(--md-space-4);">🗑 Reset all flows — start from scratch</button>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
+// --- Generic destructive-reset confirmation (admin only) ---
+// Requires typing the confirm phrase, not just a button tap — these wipe
+// shared structure the whole team depends on (every device's board or
+// rotation flows), not one record, so the usual single-click delete
+// confirmation used elsewhere isn't enough friction here.
+const RESET_CONFIRM_COPY = {
+  flows: {
+    title: 'Reset all rotation flows',
+    phrase: 'RESET FLOWS',
+    warning: () => `This permanently deletes all ${state.rotationFlows.length} rotation flow${state.rotationFlows.length===1?'':'s'} and their stages, for every device. Anyone currently enrolled in a flow will be un-enrolled. This can't be undone.`,
+  },
+  areas: {
+    title: 'Reset all areas and departments',
+    phrase: 'RESET AREAS',
+    warning: () => `This permanently deletes all ${state.areas.length} area${state.areas.length===1?'':'s'} and ${state.departments.length} department${state.departments.length===1?'':'s'}, for every device. Everyone currently placed on the board will become unassigned. This can't be undone.`,
+  },
+};
+function renderResetConfirmModal(m){
+  const copy = RESET_CONFIRM_COPY[m.kind];
+  const typed = (m.typed||'').trim();
+  const canConfirm = typed===copy.phrase && !m.saving;
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>⚠️ ${copy.title}</h2></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert-box rust" style="margin-bottom:16px;line-height:1.5;">${copy.warning()}</div>
+      <div class="field">
+        <label>Type <span style="font-family:var(--mono);font-weight:700;">${copy.phrase}</span> to confirm</label>
+        <input type="text" id="reset-confirm-input" placeholder="${copy.phrase}" value="${escapeHtml(m.typed||'')}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--md-sys-color-outline);border-radius:8px;font-family:inherit;"/>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="reset-cancel-btn">Cancel</button>
+      <button class="btn btn-danger" id="reset-confirm-btn" ${canConfirm?'':'disabled'}>${m.saving?'Resetting…':copy.title}</button>
     </div>
   </div>`;
 }
@@ -12044,6 +12432,100 @@ function renderStarRating(rating, prefix){
   return [1,2,3,4,5].map(n=>`
     <button class="star-btn ${rating>=n?'filled':''}" data-star="${n}" data-prefix="${prefix}" title="${n} star${n>1?'s':''}">★</button>
   `).join('');
+}
+
+// Read-only star display (filled/half/empty) for a 1-5 rating — shared by
+// the Stats tab's proficiency cards, the performance-evaluation summary,
+// and the team dashboard.
+function renderProficiencyStars(rating){
+  if(!rating) return '<span class="prof-stars unrated">Not yet rated</span>';
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  let s = '';
+  for(let i=1;i<=5;i++){
+    if(i<=full) s+='<span class="prof-star filled">★</span>';
+    else if(i===full+1&&half) s+='<span class="prof-star half">★</span>';
+    else s+='<span class="prof-star empty">☆</span>';
+  }
+  return '<span class="prof-stars">'+s+'</span>';
+}
+
+const EVAL_RECOMMENDATION_META = {
+  stay:     { label: 'Stay in current role', color: '#5E9A3A' },
+  advance:  { label: 'Ready to advance',     color: '#2F5FA8' },
+  training: { label: 'Needs more training',  color: '#C9722A' },
+};
+
+// Combined-score trend chart for the staff performance profile (mockup
+// screen 4) — groups approved evaluations by rotation period, averages
+// productivity/performance/reliability into one 0-5 "combined score" per
+// period (multiple evaluators in the same period just average together),
+// and shows the last 6 periods oldest-to-newest. Evaluations with no
+// period_id (submitted outside a formal rotation) aren't plottable on a
+// period timeline, so they're excluded here — they still show in the
+// history list above.
+function renderEvalTrendChart(approvedRows){
+  const byPeriod = {};
+  approvedRows.forEach(r=>{
+    if(!r.period_id) return;
+    if(!byPeriod[r.period_id]) byPeriod[r.period_id] = { label: (r.period&&r.period.period_label)||'?', scores: [], earliest: r.created_at };
+    byPeriod[r.period_id].scores.push((r.productivity+r.performance+r.reliability)/3);
+    if(r.created_at < byPeriod[r.period_id].earliest) byPeriod[r.period_id].earliest = r.created_at;
+  });
+  const periods = Object.values(byPeriod)
+    .map(p=>({ label: p.label, combined: p.scores.reduce((a,b)=>a+b,0)/p.scores.length, earliest: p.earliest }))
+    .sort((a,b)=> a.earliest < b.earliest ? -1 : (a.earliest > b.earliest ? 1 : 0))
+    .slice(-6);
+  if(periods.length===0) return '';
+  const shortLabel = label => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(label);
+    if(!m) return label;
+    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[Number(m[2])-1]+' '+Number(m[3]);
+  };
+  return '<div class="stats-prof-section-label" style="margin-top:0;">Trend over time</div>'+
+    '<div class="small-muted" style="margin-bottom:6px;">Combined score, last '+periods.length+' rotation period'+(periods.length===1?'':'s')+'</div>'+
+    '<div class="trend-chart">'+
+      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
+    '</div>'+
+    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div>';
+}
+
+// Groups raw evaluation rows (as returned by fetchTeamPerformanceOverview)
+// by staff_id and computes per-person averages, plus fills in any active
+// staff member who has zero evaluations — visible team-wide gaps are as
+// useful here as the scores themselves. Rows arrive newest-first from the
+// query, so each group's first APPROVED row is already the latest one that
+// counts — a team_lead's still-'pending'/'needs_revision' submission
+// doesn't move the averages or the recommendation until a supervisor
+// accepts it, only shows up as a pendingCount badge.
+function aggregateTeamPerformance(raw){
+  const byStaff = {};
+  (raw||[]).forEach(r=>{
+    if(!byStaff[r.staff_id]) byStaff[r.staff_id] = { staffId:r.staff_id, name:(r.staff&&r.staff.name)||getStaffById(r.staff_id)?.name||'Unknown', rows:[] };
+    byStaff[r.staff_id].rows.push(r);
+  });
+  const evaluated = Object.values(byStaff).map(entry=>{
+    const approvedRows = entry.rows.filter(r=>r.status==='approved');
+    const pendingCount = entry.rows.filter(r=>r.status==='pending'||r.status==='needs_revision').length;
+    if(!approvedRows.length){
+      return { staffId: entry.staffId, name: entry.name, count: 0, pendingCount,
+        avgProductivity: 0, avgPerformance: 0, avgReliability: 0, latestRecommendation: null, latestDate: null };
+    }
+    const avg = key => approvedRows.reduce((sum,row)=>sum+row[key],0)/approvedRows.length;
+    return {
+      staffId: entry.staffId, name: entry.name, count: approvedRows.length, pendingCount,
+      avgProductivity: avg('productivity'), avgPerformance: avg('performance'), avgReliability: avg('reliability'),
+      latestRecommendation: approvedRows[0].recommendation, latestDate: approvedRows[0].created_at,
+    };
+  });
+  const evaluatedIds = new Set(evaluated.map(e=>e.staffId));
+  const notEvaluated = state.staff.filter(s=>!evaluatedIds.has(s.id)).map(s=>({
+    staffId: s.id, name: s.name, count: 0, pendingCount: 0,
+    avgProductivity: 0, avgPerformance: 0, avgReliability: 0,
+    latestRecommendation: null, latestDate: null,
+  }));
+  return evaluated.concat(notEvaluated).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
 function renderFeedbackModal(m){
@@ -12261,6 +12743,25 @@ async function syncCrudWrite(fn){
   }
 }
 
+// Roster table inline edits (shift/lunch/flow selects, CA-cert toggle, AGS
+// toggle, team-lead toggle, tags cell) mutate a single field on `s`, but
+// updateStaff() writes every staffRow() column — so the sync must resend
+// the record's current full state, not just the one field that changed.
+// Fire-and-forget like syncBoardWrite(): frequent, low-friction edits, not
+// a deliberate CRUD save that deserves an awaited "saved to database ✓".
+function syncRosterStaffEdit(s, label){
+  syncBoardWrite(async ()=>{
+    const departmentId = s.department ? await window.RC.ensureDepartment(s.department) : null;
+    return window.RC.updateStaff({
+      staffId: s.id, name: s.name, tdisNumber: s.tdisNumber, departmentId, homeAreaId: s.homeAreaId,
+      isTeamLead: s.isTeamLead, isSubcontractor: s.isSubcontractor, needsAccommodations: s.needsAccommodations,
+      tags: s.tags, counterCert: s.counterCert, hireDate: s.hireDate,
+      supervisorId: s.supervisorId, flowId: s.flowId, flowEnrolled: s.flowEnrolled,
+      shiftHoursLabel: s.shiftHours, breakTimesLabel: s.breakTimes, actingAccountId: authState.account.id,
+    });
+  }, label);
+}
+
 async function openAuditLog(){
   openModal({type:'audit-log', loading:true, entries:[], search:''});
   try{
@@ -12268,6 +12769,16 @@ async function openAuditLog(){
     openModal({type:'audit-log', loading:false, entries: entries||[], search:''});
   }catch(e){
     openModal({type:'audit-log', loading:false, entries:[], search:'', error: (e && e.message) || 'Could not load the audit log.'});
+  }
+}
+
+async function openTeamDashboard(){
+  openModal({type:'team-dashboard', loading:true, raw:[], search:''});
+  try{
+    const raw = await window.RC.fetchTeamPerformanceOverview();
+    openModal({type:'team-dashboard', loading:false, raw: raw||[], search:''});
+  }catch(e){
+    openModal({type:'team-dashboard', loading:false, raw:[], search:'', error: (e && e.message) || 'Could not load team performance.'});
   }
 }
 
@@ -12288,6 +12799,19 @@ async function openEvalQueue(){
     openModal({type:'eval-queue', loading:false, items: items||[]});
   }catch(e){
     openModal({type:'eval-queue', loading:false, items:[], error: (e && e.message) || 'Could not load your queue.'});
+  }
+}
+
+// Admin/supervisor review queue — team-lead-submitted evaluations awaiting
+// acceptance before they count anywhere (staff performance profile, team
+// dashboard). See PHASE2_ROADMAP.md.
+async function openPendingEvals(){
+  openModal({type:'pending-evals', loading:true, items:[], rejectingId:null});
+  try{
+    const items = await window.RC.fetchPendingEvaluations();
+    openModal({type:'pending-evals', loading:false, items: items||[], rejectingId:null});
+  }catch(e){
+    openModal({type:'pending-evals', loading:false, items:[], rejectingId:null, error: (e && e.message) || 'Could not load pending evaluations.'});
   }
 }
 
@@ -12782,12 +13306,14 @@ function attachHandlers(){
         s.flowId = flowId;
         s.flowEnrolled = !!flowId;
         saveState();
+        syncRosterStaffEdit(s, 'flow enrollment');
         showToast(flowId ? `${s.name.split(' ')[0]} enrolled in ${getFlowById(flowId)?.name||'flow'}` : `${s.name.split(' ')[0]} removed from flow`, 'teal');
         render();
         return;
       }
       s[sel.dataset.field] = sel.value;
       saveState();
+      syncRosterStaffEdit(s, 'roster edit');
       showToast(`${s.name.split(' ')[0]} updated`, 'teal');
       render();
     }));
@@ -12798,6 +13324,7 @@ function attachHandlers(){
       if(!s) return;
       s.counterCert = !s.counterCert;
       saveState();
+      syncRosterStaffEdit(s, 'CA cert');
       showToast(`${s.name.split(' ')[0]} CA Cert ${s.counterCert?'added':'removed'}`, 'teal');
       render();
     }));
@@ -12808,6 +13335,7 @@ function attachHandlers(){
       if(!s) return;
       s.isSubcontractor = cb.checked;
       saveState();
+      syncRosterStaffEdit(s, 'AGS status');
       showToast(`${s.name.split(' ')[0]} ${s.isSubcontractor?'marked as AGS / sub-contractor':'marked as in-house'}`, 'teal');
       render();
     }));
@@ -12817,6 +13345,7 @@ function attachHandlers(){
       s.isTeamLead = cb.checked;
       if(s.isTeamLead && !s.homeAreaId) s.homeAreaId = state.assignments[s.id] || null;
       saveState();
+      syncRosterStaffEdit(s, 'team lead status');
       showToast(s.isTeamLead ? s.name+' is now a Team Lead' : s.name+' is no longer a Team Lead', 'teal');
       render();
     }));
@@ -12833,6 +13362,7 @@ function attachHandlers(){
       const commit = ()=>{
         s[field] = input.value.trim();
         saveState();
+        syncRosterStaffEdit(s, 'roster edit');
         render();
       };
       input.addEventListener('blur', commit);
@@ -13653,61 +14183,26 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
-    // NOTE: time-off coverage moves aren't synced to Supabase yet — Step 3
-    // covers direct move/swap/callout only; time off is still fully local
-    // (PHASE2_ROADMAP.md).
     document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-          // If today is in range and person is out, sync to board immediately
-          const _today=todayLabel();
-          if(_today>=entry.startDate&&_today<=entry.endDate){
-            if(!state.callouts[sid]) state.callouts[sid]=true; // mark out
-            const _aId=state.assignments[sid];
-            if(_aId&&covId&&!((state.coverage||{})[covId])){
-              if(!state.coverage) state.coverage={};
-              state.coverage[covId]={returnToAreaId:state.assignments[covId],date:_today};
-              state.assignments[covId]=_aId;
-            }
-          }
-        saveState();
-        showToast(`${getStaffById(covId)?.name} assigned to cover ${getAreaById(state.assignments[sid])?.name||'area'}`,'teal');
-        render();
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      render();
     }));
 
     // "Others…" dropdown
     document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-          // If today is in range and person is out, sync to board immediately
-          const _today=todayLabel();
-          if(_today>=entry.startDate&&_today<=entry.endDate){
-            if(!state.callouts[sid]) state.callouts[sid]=true; // mark out
-            const _aId=state.assignments[sid];
-            if(_aId&&covId&&!((state.coverage||{})[covId])){
-              if(!state.coverage) state.coverage={};
-              state.coverage[covId]={returnToAreaId:state.assignments[covId],date:_today};
-              state.assignments[covId]=_aId;
-            }
-          }
-        saveState();
-        showToast(`${getStaffById(covId)?.name} assigned`,'teal');
-        render();
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      render();
     }));
 
     // remove coverage
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){ delete entry.coverageStaffId; saveState(); render(); }
+      removeTimeOffCoverage(sid, rid);
+      render();
     }));
 
     // edit / delete from list
@@ -13715,10 +14210,12 @@ function attachHandlers(){
       openModal({type:'time-off-manager', staffId:el.dataset.toEditStaff, editId:el.dataset.toEditId,
                  _returnModal:{type:'noop'} });
     }));
-    document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click',()=>{
+    document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
       saveState(); render();
+      if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
     }));
   }
 
@@ -13740,7 +14237,10 @@ function attachHandlers(){
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
+  on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
+  on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
+  on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
@@ -13785,6 +14285,7 @@ function attachHandlers(){
     const s = getStaffById(sel.dataset.supSelect);
     s.supervisorId = sel.value || null;
     saveState();
+    syncRosterStaffEdit(s, 'supervisor assignment');
     render();
   }));
 
@@ -13912,6 +14413,28 @@ function attachHandlers(){
 
   if(activeModal.type==='staff-manager'){
     const editing = activeModal.editId ? getStaffById(activeModal.editId) : null;
+
+    // Lazy-load evaluation history the first time the Stats tab is opened
+    // for this staff member. Guarded on activeModal._evalHistoryStaffId so
+    // it doesn't refire on every render — only when the tab is active AND
+    // the loaded (or in-flight) history doesn't already belong to this
+    // person. Mutates activeModal directly to set the loading flag (no
+    // render needed for that), same pattern as the switch handlers above.
+    if((activeModal.staffTab||'profile')==='stats' && editing && window.RC
+        && typeof window.RC.fetchStaffEvaluationHistory==='function'
+        && activeModal._evalHistoryStaffId!==editing.id && !activeModal._evalHistoryLoading){
+      const forStaffId = editing.id;
+      activeModal._evalHistoryLoading = true;
+      window.RC.fetchStaffEvaluationHistory(forStaffId).then(rows=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forStaffId){
+          openModal({...activeModal, evalHistory:rows||[], evalHistoryError:undefined, _evalHistoryStaffId:forStaffId, _evalHistoryLoading:false});
+        }
+      }).catch(e=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forStaffId){
+          openModal({...activeModal, evalHistoryError:(e&&e.message)||'try again', _evalHistoryStaffId:forStaffId, _evalHistoryLoading:false});
+        }
+      });
+    }
 
     const tdisInput = document.getElementById('staff-tdis-input');
     if(tdisInput) tdisInput.addEventListener('input', ()=>{
@@ -14068,11 +14591,14 @@ function attachHandlers(){
         const homeAreaId = (isTeamLead&&!s.homeAreaId) ? (state.assignments[s.id]||null) : s.homeAreaId;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
-          return window.RC.updateStaff({
+          const result = await window.RC.updateStaff({
             staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
+            supervisorId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
+          await window.RC.setStaffLanguageCerts({staffId: s.id, languageIds: finalLangCerts});
+          return result;
         });
         Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
@@ -14087,9 +14613,11 @@ function attachHandlers(){
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
+            supervisorId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           createdId = row.id;
+          if(finalLangCerts.length) await window.RC.setStaffLanguageCerts({staffId: row.id, languageIds: finalLangCerts});
           return row;
         });
         // Use the real Supabase-generated id when the sync succeeded, so the
@@ -14124,19 +14652,27 @@ function attachHandlers(){
 
   // --- blocks manager modal ---
   if(activeModal.type==='blocks-manager'){
-    on('add-block-btn', ()=>{
+    on('add-block-btn', async ()=>{
       const a = document.getElementById('block-a-select').value;
       const b = document.getElementById('block-b-select').value;
       if(a===b){ showToast('Pick two different people', 'rust'); return; }
       const exists = state.blocks.some(bl=>(bl.a===a&&bl.b===b)||(bl.a===b&&bl.b===a));
       if(exists){ showToast('That pair is already blocked', 'rust'); return; }
-      state.blocks.push({id:uid('block'), a, b});
+      const addBtn = document.getElementById('add-block-btn');
+      if(addBtn){ addBtn.disabled=true; }
+      const sync = await syncCrudWrite(()=>window.RC.createBlockedPair({staffAId:a, staffBId:b}));
+      state.blocks.push({id: sync.ok ? sync.result.id : uid('block'), a, b});
       saveState(); render();
+      showToast(sync.ok ? 'Block added — saved to database ✓' : `Block added here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({type:'blocks-manager'});
     });
-    document.querySelectorAll('[data-remove-block]').forEach(el=>el.addEventListener('click', ()=>{
-      state.blocks = state.blocks.filter(b=>b.id!==el.dataset.removeBlock);
+    document.querySelectorAll('[data-remove-block]').forEach(el=>el.addEventListener('click', async ()=>{
+      const blockId = el.dataset.removeBlock;
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.deleteBlockedPair({blockedPairId:blockId}));
+      state.blocks = state.blocks.filter(b=>b.id!==blockId);
       saveState();
+      if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({type:'blocks-manager'});
     }));
   }
@@ -14315,22 +14851,30 @@ function attachHandlers(){
   if(activeModal.type==='shifts-manager'){
     on('btn-new-shift', ()=>openModal({type:'shifts-manager', editId:'__new__'}));
     on('shift-cancel-btn', ()=>openModal({type:'shifts-manager'}));
-    on('shift-save-btn', ()=>{
+    on('shift-save-btn', async ()=>{
       const start = document.getElementById('shift-start-input').value.trim();
       const end   = document.getElementById('shift-end-input').value.trim();
       if(!start||!end){ showToast('Enter start and end time','rust'); return; }
       const label = `${start} – ${end}`;
       if(activeModal.editId==='__new__'){
-        state.shifts.push({id:uid('sh'), label, start, end});
+        const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
+        state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
+        showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const sh = state.shifts.find(s=>s.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
         if(sh){ sh.start=start; sh.end=end; sh.label=label; }
+        showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState(); openModal({type:'shifts-manager'});
     });
-    on('shift-delete-btn', ()=>{
-      state.shifts = state.shifts.filter(s=>s.id!==activeModal.editId);
-      saveState(); openModal({type:'shifts-manager'});
+    on('shift-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
+      state.shifts = state.shifts.filter(s=>s.id!==id);
+      saveState();
+      showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'shifts-manager'});
     });
     document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
       openModal({type:'shifts-manager', editId:el.dataset.editShift});
@@ -14341,22 +14885,29 @@ function attachHandlers(){
   if(activeModal.type==='languages-manager'){
     on('btn-new-lang', ()=>openModal({type:'languages-manager', editId:'__new__'}));
     on('lang-cancel-btn', ()=>openModal({type:'languages-manager'}));
-    on('lang-save-btn', ()=>{
+    on('lang-save-btn', async ()=>{
       const name = document.getElementById('lang-name-input').value.trim();
       if(!name){ showToast('Enter a language name','rust'); return; }
       if(activeModal.editId==='__new__'){
-        state.languages.push({id:uid('lang'), name});
+        const sync = await syncCrudWrite(()=>window.RC.createLanguage({name}));
+        state.languages.push({id: sync.ok ? sync.result.id : uid('lang'), name});
+        showToast(sync.ok ? 'Language added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const l = state.languages.find(x=>x.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateLanguage({languageId: l.id, name}));
         if(l) l.name = name;
+        showToast(sync.ok ? 'Language updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState(); openModal({type:'languages-manager'});
     });
-    on('lang-delete-btn', ()=>{
+    on('lang-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteLanguage({languageId:id}));
       state.languages = state.languages.filter(l=>l.id!==id);
       state.staff.forEach(s=>{ if(s.languageCerts) s.languageCerts = s.languageCerts.filter(x=>x!==id); });
-      saveState(); openModal({type:'languages-manager'});
+      saveState();
+      showToast(sync.ok ? 'Language removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'languages-manager'});
     });
     document.querySelectorAll('[data-edit-lang]').forEach(el=>el.addEventListener('click',()=>{
       openModal({type:'languages-manager', editId:el.dataset.editLang});
@@ -14398,43 +14949,28 @@ function attachHandlers(){
     }));
 
     // delete entry (from list)
-    document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click',()=>{
+    document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
-      saveState(); openModal({...m});
+      saveState();
+      if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      openModal({...m});
     }));
 
     // coverage assignment dropdown
-    // NOTE: not synced to Supabase yet — see NOTE on the .to-sug-card handler above.
     document.querySelectorAll('.to-assign-cov').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){
-        entry.coverageStaffId=covId;
-        // If today falls within this time-off range, apply to board immediately
-        const today=todayLabel();
-        if(today>=entry.startDate&&today<=entry.endDate&&state.callouts[sid]){
-          const aId=state.assignments[sid];
-          if(aId&&!((state.coverage||{})[covId])){
-            if(!state.coverage) state.coverage={};
-            state.coverage[covId]={returnToAreaId:state.assignments[covId],date:today};
-            state.assignments[covId]=aId;
-          }
-        }
-        saveState();
-        const covName=getStaffById(covId)?.name||'?';
-        const areaName=getAreaById(state.assignments[sid])?.name||'their area';
-        showToast(`${covName} assigned to cover ${areaName}`,'teal');
-        openModal({...m});
-      }
+      applyTimeOffCoverage(sid, rid, covId);
+      openModal({...m});
     }));
 
     // remove coverage
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      const entry=(state.timeOff[sid]||[]).find(r=>r.id===rid);
-      if(entry){ delete entry.coverageStaffId; saveState(); openModal({...m}); }
+      removeTimeOffCoverage(sid, rid);
+      openModal({...m});
     }));
 
     // detail view: row edit/delete
@@ -14442,10 +14978,14 @@ function attachHandlers(){
     document.querySelectorAll('.to-row-edit').forEach(el=>el.addEventListener('click',()=>{
       openModal({...m, editId:el.dataset.toId});
     }));
-    document.querySelectorAll('.to-row-del').forEach(el=>el.addEventListener('click',()=>{
+    document.querySelectorAll('.to-row-del').forEach(el=>el.addEventListener('click', async ()=>{
       if(!state.timeOff[m.staffId]) return;
-      state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==el.dataset.toId);
-      saveState(); openModal({type:'time-off-manager', staffId:m.staffId, _returnModal:m._returnModal});
+      const rid = el.dataset.toId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
+      state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==rid);
+      saveState();
+      if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      openModal({type:'time-off-manager', staffId:m.staffId, _returnModal:m._returnModal});
     }));
 
     // back button — return to staff profile if came from there, else to list view
@@ -14462,21 +15002,24 @@ function attachHandlers(){
     });
 
     // detail view: save → after saving, go to list (not back to profile)
-    on('to-save', ()=>{
+    on('to-save', async ()=>{
       const start = document.getElementById('to-start')?.value;
       const end   = document.getElementById('to-end')?.value;
       const label = document.getElementById('to-label')?.value?.trim()||'';
       if(!start||!end){ showToast('Pick a start and end date','rust'); return; }
       if(end < start){ showToast('End date must be after start','rust'); return; }
       if(!state.timeOff[m.staffId]) state.timeOff[m.staffId]=[];
+      let sync;
       if(m.editId){
         const r=state.timeOff[m.staffId].find(x=>x.id===m.editId);
+        sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label}));
         if(r){ r.startDate=start; r.endDate=end; r.label=label; }
       } else {
-        state.timeOff[m.staffId].push({id:uid('to'), startDate:start, endDate:end, label});
+        sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id}));
+        state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label});
       }
       saveState();
-      showToast('Time off saved — tap + Add to schedule another person','teal');
+      showToast(sync.ok ? 'Time off saved — tap + Add to schedule another person' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       // Go to list view so supervisor can immediately pick next person
       openModal({type:'time-off-manager', searchQ:m.searchQ||'', _saved:true});
     });
@@ -14577,26 +15120,30 @@ function attachHandlers(){
     }));
     on('sup-new-btn', ()=>openModal({type:'supervisor-manager'}));
     on('sup-view-org-link', ()=>openModal({type:'org-diagram'}));
-    on('sup-save-btn', ()=>{
+    on('sup-save-btn', async ()=>{
       const name = document.getElementById('sup-name-input').value.trim();
       const color = document.getElementById('sup-color-input').value;
       if(!name){ showToast('Enter a name', 'rust'); return; }
       if(activeModal.editId){
         const sv = getSupervisorById(activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color}));
         sv.name = name; sv.color = color;
-        showToast('Supervisor updated', 'teal');
+        showToast(sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
-        state.supervisors.push({id:uid('sup'), name, color});
+        const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color}));
+        state.supervisors.push({id: sync.ok ? sync.result.id : uid('sup'), name, color});
+        showToast(sync.ok ? 'Supervisor added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
       closeModal();
     });
-    on('sup-delete-btn', ()=>{
+    on('sup-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteSupervisor({supervisorId:id}));
       state.supervisors = state.supervisors.filter(sv=>sv.id!==id);
       state.staff.forEach(s=>{ if(s.supervisorId===id) s.supervisorId = null; });
       saveState();
-      showToast('Supervisor removed', 'rust');
+      showToast(sync.ok ? 'Supervisor removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -15117,7 +15664,12 @@ function attachHandlers(){
         staffId: el.dataset.openEvalForm,
         areaId: el.dataset.evalArea || null,
         periodId: el.dataset.evalPeriod || null,
-        productivity:0, performance:0, reliability:0, recommendation:'stay', note:'',
+        productivity: Number(el.dataset.evalProd)||0,
+        performance: Number(el.dataset.evalPerf)||0,
+        reliability: Number(el.dataset.evalRel)||0,
+        recommendation: el.dataset.evalRec || 'stay',
+        note: el.dataset.evalNote || '',
+        reviewNote: el.dataset.evalReviewNote || '',
         _returnModal:{type:'eval-queue'}});
     }));
   }
@@ -15125,12 +15677,22 @@ function attachHandlers(){
   // --- evaluations: score form ---
   if(activeModal.type==='eval-form'){
     const m = activeModal;
-    document.querySelectorAll('.star-btn').forEach(btn=>btn.addEventListener('click', ()=>{
-      const val = parseInt(btn.dataset.star,10);
-      const prefix = btn.dataset.prefix;
-      if(prefix==='eval-prod') openModal({...m, productivity:val});
-      else if(prefix==='eval-perf') openModal({...m, performance:val});
-      else if(prefix==='eval-rel') openModal({...m, reliability:val});
+    // Every score/recommendation click re-renders the whole modal — snapshot
+    // whatever's currently typed in the note field first, or it gets wiped
+    // (same class of bug as the staff-manager tab-switch issue fixed
+    // earlier: a click handler re-rendering from stale `m` state clobbers
+    // whatever the DOM has that `m` doesn't know about yet).
+    const captureNote = () => {
+      const el = document.getElementById('eval-note-input');
+      return el ? el.value : m.note;
+    };
+    document.querySelectorAll('.score-scale-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+      const key = btn.dataset.scoreKey;
+      const val = parseInt(btn.dataset.scoreVal,10);
+      openModal({...m, note:captureNote(), [key]:val});
+    }));
+    document.querySelectorAll('[data-rec-opt]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, note:captureNote(), recommendation:el.dataset.recOpt});
     }));
     on('eval-form-cancel', ()=>{
       if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
@@ -15139,9 +15701,10 @@ function attachHandlers(){
     });
     on('eval-form-submit', async ()=>{
       if(!(m.productivity>0 && m.performance>0 && m.reliability>0) || m.saving) return;
-      const note = document.getElementById('eval-note-input')?.value||'';
-      const recommendation = document.getElementById('eval-recommendation-input')?.value||'stay';
+      const note = captureNote()||'';
+      const recommendation = m.recommendation||'stay';
       openModal({...m, saving:true});
+      const isManager = authState.account.role!=='team_lead';
       const sync = await syncCrudWrite(()=>window.RC.submitEvaluation({
         staffId: m.staffId,
         periodId: m.periodId||null,
@@ -15152,9 +15715,10 @@ function attachHandlers(){
         reliability: m.reliability,
         note,
         recommendation,
+        isManager,
       }));
       if(sync.ok){
-        showToast('Evaluation saved to database ✓', 'teal');
+        showToast(isManager ? 'Evaluation saved to database ✓' : 'Evaluation sent to your supervisor for review ✓', 'teal');
         if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
         else if(m._returnModal) openModal(m._returnModal);
         else closeModal();
@@ -15252,10 +15816,31 @@ function attachHandlers(){
   // --- manage accounts ---
   if(activeModal.type==='manage-accounts'){
     on('btn-add-account', ()=>{
-      openModal({type:'account-grant-form', accountId:null, name:'', role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaId:null, pin:''});
     });
     document.querySelectorAll('[data-grant-account]').forEach(el=>el.addEventListener('click', ()=>{
-      openModal({type:'account-grant-form', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
+    }));
+    document.querySelectorAll('[data-edit-account]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'account-grant-form', mode:'edit', accountId:el.dataset.editAccount, name:el.dataset.editName,
+        role:el.dataset.editRole||'team_lead', assignedAreaId:el.dataset.editArea||null, pin:''});
+    }));
+    document.querySelectorAll('[data-restore-account]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'account-grant-form', mode:'restore', accountId:el.dataset.restoreAccount, name:el.dataset.restoreName,
+        role:el.dataset.restoreRole||'team_lead', assignedAreaId:el.dataset.restoreArea||null, pin:''});
+    }));
+    document.querySelectorAll('[data-revoke-account]').forEach(el=>el.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const accountId = el.dataset.revokeAccount, name = el.dataset.revokeName;
+      el.disabled = true; el.textContent = 'Revoking…';
+      try{
+        await window.RC.revokeAccess({accountId, actingAccountId: authState.account.id});
+        showToast(`${name}'s access revoked`, 'rust');
+        openManageAccounts();
+      }catch(err){
+        showToast(`Could not revoke access: ${(err&&err.message)||'try again'}`, 'rust');
+        el.disabled = false; el.textContent = 'Revoke';
+      }
     }));
   }
 
@@ -15275,6 +15860,57 @@ function attachHandlers(){
       });
     }
     on('audit-search-clear', ()=>{ openModal({...m, search:''}); });
+    const actionFilterSel = document.getElementById('audit-action-filter');
+    if(actionFilterSel) actionFilterSel.addEventListener('change', ()=>{ openModal({...m, actionFilter:actionFilterSel.value}); });
+    const dateFilterInput = document.getElementById('audit-date-filter');
+    if(dateFilterInput) dateFilterInput.addEventListener('change', ()=>{ openModal({...m, dateFilter:dateFilterInput.value}); });
+    on('audit-filters-clear', ()=>{ openModal({...m, actionFilter:'', dateFilter:''}); });
+  }
+
+  // --- team dashboard ---
+  if(activeModal.type==='team-dashboard'){
+    const m = activeModal;
+    const searchInput = document.getElementById('team-dash-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('team-dash-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    document.querySelectorAll('[data-team-staff]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'staff-manager', editId:el.dataset.teamStaff, staffTab:'stats'});
+    }));
+  }
+
+  // --- pending evaluations review queue ---
+  if(activeModal.type==='pending-evals'){
+    const m = activeModal;
+    document.querySelectorAll('[data-approve-eval]').forEach(el=>el.addEventListener('click', async ()=>{
+      const id = el.dataset.approveEval, staffId = el.dataset.approveStaff;
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId:id, staffId, status:'approved', reviewNote:'', reviewerId:authState.account.id}));
+      showToast(sync.ok ? 'Evaluation approved ✓' : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      if(sync.ok) openPendingEvals(); else el.disabled = false;
+    }));
+    document.querySelectorAll('[data-reject-eval]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, rejectingId: el.dataset.rejectEval});
+    }));
+    on('cancel-reject-btn', ()=>openModal({...m, rejectingId:null}));
+    on('confirm-reject-btn', async ()=>{
+      const btn = document.getElementById('confirm-reject-btn');
+      const note = document.getElementById('reject-note-input')?.value?.trim();
+      if(!note){ showToast('Add a note so they know what to fix', 'rust'); return; }
+      const evaluationId = btn.dataset.confirmReject, staffId = btn.dataset.confirmRejectStaff;
+      btn.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId, staffId, status:'needs_revision', reviewNote:note, reviewerId:authState.account.id}));
+      showToast(sync.ok ? 'Sent back for revision' : `Could not send back — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      if(sync.ok) openPendingEvals(); else btn.disabled = false;
+    });
   }
 
   // --- account grant / add form ---
@@ -15293,13 +15929,15 @@ function attachHandlers(){
       });
       const areaSel = document.getElementById('grant-area-input');
       if(areaSel) areaSel.addEventListener('change', ()=>{ activeModal.assignedAreaId = areaSel.value; });
+      const pinRequired = m.mode!=='edit';
+      const pinIsValid = p => pinRequired ? /^\d{4}$/.test(p) : (p==='' || /^\d{4}$/.test(p));
       const pinInput = document.getElementById('grant-pin-input');
       if(pinInput) pinInput.addEventListener('input', ()=>{
         const cleaned = pinInput.value.replace(/\D/g,'').slice(0,4);
         if(cleaned!==pinInput.value) pinInput.value = cleaned;
         activeModal.pin = cleaned;
         const btn = document.getElementById('grant-submit-btn');
-        if(btn) btn.disabled = !(activeModal.name.trim() && /^\d{4}$/.test(cleaned) && (activeModal.role!=='team_lead' || activeModal.assignedAreaId) && !activeModal.saving);
+        if(btn) btn.disabled = !(activeModal.name.trim() && pinIsValid(cleaned) && (activeModal.role!=='team_lead' || activeModal.assignedAreaId) && !activeModal.saving);
       });
       on('grant-random-pin', ()=>{ openModal({...m, name: nameInput?nameInput.value:m.name, pin: randomPin()}); });
       on('grant-cancel-btn', ()=>openManageAccounts());
@@ -15308,7 +15946,7 @@ function attachHandlers(){
         const role = roleSel?roleSel.value:m.role;
         const assignedAreaId = role==='team_lead' ? (areaSel?areaSel.value:m.assignedAreaId) : null;
         const pin = pinInput?pinInput.value:m.pin;
-        if(!name || !/^\d{4}$/.test(pin) || (role==='team_lead'&&!assignedAreaId)) return;
+        if(!name || !pinIsValid(pin) || (role==='team_lead'&&!assignedAreaId)) return;
         openModal({...m, name, role, assignedAreaId, pin, saving:true, error:''});
         try{
           let accountId = m.accountId;
@@ -15317,8 +15955,8 @@ function attachHandlers(){
             if(!reqResult.accountId) throw new Error(reqResult.message || 'Could not create that account — a person with that name may already exist.');
             accountId = reqResult.accountId;
           }
-          await window.RC.grantAccess({accountId, role, assignedAreaId, pin});
-          openModal({type:'account-grant-form', accountId, name, role, assignedAreaId, pin, result:true});
+          await window.RC.grantAccess({accountId, role, assignedAreaId, pin: pin||undefined});
+          openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaId, pin, result:true});
         }catch(e){
           openModal({...m, name, role, assignedAreaId, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
         }
@@ -15332,6 +15970,54 @@ function attachHandlers(){
     document.querySelectorAll('[data-edit-flow]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'flow-editor', editId:el.dataset.editFlow});
     }));
+    on('btn-reset-flows', ()=>openModal({type:'reset-confirm', kind:'flows', typed:''}));
+  }
+
+  // --- destructive reset confirmation ---
+  if(activeModal.type==='reset-confirm'){
+    const m = activeModal;
+    const input = document.getElementById('reset-confirm-input');
+    if(input){
+      input.addEventListener('input', ()=>{
+        m.typed = input.value;
+        const focused = document.activeElement === input;
+        render();
+        if(focused){
+          const el = document.getElementById('reset-confirm-input');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    on('reset-cancel-btn', closeModal);
+    on('reset-confirm-btn', async ()=>{
+      const copy = RESET_CONFIRM_COPY[m.kind];
+      if((m.typed||'').trim()!==copy.phrase || m.saving) return;
+      openModal({...m, saving:true});
+      let sync;
+      if(m.kind==='flows'){
+        sync = await syncCrudWrite(()=>window.RC.resetRotationFlows({actingAccountId:authState.account.id}));
+        if(sync.ok){
+          state.rotationFlows = [];
+          state.staff.forEach(s=>{ s.flowId=null; s.flowEnrolled=false; });
+        }
+      } else if(m.kind==='areas'){
+        sync = await syncCrudWrite(()=>window.RC.resetAreasAndDepartments({actingAccountId:authState.account.id}));
+        if(sync.ok){
+          state.areas = [];
+          state.departments = [];
+          state.staff.forEach(s=>{ s.homeAreaId=null; s.department=''; });
+          state.assignments = {};
+        }
+      }
+      if(sync.ok){
+        saveState();
+        showToast(copy.title+' — saved to database ✓', 'teal');
+        closeModal();
+      } else {
+        showToast(`Could not reset — ${sync.error?.message||'try again'}`, 'rust');
+        openModal({...m, saving:false});
+      }
+    });
   }
 
   // --- flow editor modal ---
@@ -15410,28 +16096,32 @@ function attachHandlers(){
     });
 
     on('flow-cancel-btn', ()=>{ closeModal(); });
-    on('flow-save-btn', ()=>{
+    on('flow-save-btn', async ()=>{
       const name = document.getElementById('flow-name-input').value.trim();
       const color = document.getElementById('flow-color-input').value;
       if(!name){ showToast('Enter a flow name','rust'); return; }
       if(currentStages.length===0){ showToast('Add at least one stage','rust'); return; }
       if(editingFlow){
+        const sync = await syncCrudWrite(()=>window.RC.updateRotationFlow({flowId: editingFlow.id, name, color, stages: currentStages}));
         editingFlow.name=name; editingFlow.color=color; editingFlow.stages=currentStages;
-        showToast('Flow updated','teal');
+        showToast(sync.ok ? 'Flow updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
-        state.rotationFlows.push({id:uid('flow'), name, color, stages:currentStages});
+        const sync = await syncCrudWrite(()=>window.RC.createRotationFlow({name, color, stages: currentStages}));
+        state.rotationFlows.push({id: sync.ok ? sync.result.id : uid('flow'), name, color, stages:currentStages});
+        showToast(sync.ok ? 'Flow added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
       openModal({type:'flow-manager'});
       render();
-    });;
+    });
 
-    on('flow-delete-btn', ()=>{
+    on('flow-delete-btn', async ()=>{
       const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteRotationFlow({flowId:id}));
       state.rotationFlows = state.rotationFlows.filter(f=>f.id!==id);
       state.staff.forEach(s=>{ if(s.flowId===id){ s.flowId=null; s.flowEnrolled=false; } });
       saveState();
-      showToast('Flow deleted','rust');
+      showToast(sync.ok ? 'Flow deleted — saved to database ✓' : `Deleted here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       openModal({type:'flow-manager'});
     });
   }
@@ -15449,8 +16139,8 @@ function snapshotStaffForm(){
       hireDate:      v('staff-hiredate-input'),
       lateStart:     v('staff-latestart-input'),
     lunchVal:      v('staff-lunch-input'),
-    supervisorId:  v('staff-supervisor-input') || null,
-    flowId:        v('staff-flow-input')       || null,
+    supervisorId:  v('staff-supervisor-input'),
+    flowId:        v('staff-flow-input'),
     swTags:        sw('sw-tags'),
     swTeamLead:    sw('sw-team-lead'),
     swAccom:       sw('sw-accom'),
@@ -15458,6 +16148,13 @@ function snapshotStaffForm(){
     swLang:        sw('sw-lang'),
     swSubcontractor: sw('sw-subcontractor'),
     swLateStart: sw('sw-late-start'),
+    // undefined when the checkboxes aren't in the current tab's DOM at all
+    // (so it doesn't clobber a value captured from a previous tab visit);
+    // an array (possibly empty) when they are, so explicitly unchecking
+    // every cert and switching tabs still saves that as "no certs".
+    langCerts: document.querySelector('.staff-lang-cert')
+      ? Array.from(document.querySelectorAll('.staff-lang-cert:checked')).map(el=>el.dataset.langId)
+      : undefined,
   };
 }
 
@@ -15526,11 +16223,11 @@ function logCallout(staffId, reason=''){
 
 
 // ── Coverage helpers ──
-// NOTE: coverage/time-off assignment moves are NOT synced to Supabase yet
-// (Step 3 covers direct move/swap/callout only) — `state.coverage` and
-// `state.timeOff` are still fully local, and syncing these would need that
-// feature migrated first so the ids involved are consistent. See
-// PHASE2_ROADMAP.md.
+// state.coverage is synced now (0007_coverage_sync.sql) — assignCoverage()/
+// returnFromCoverage() mutate local state immediately (same "don't block
+// the UI on network latency" pattern as every other board write) and fire
+// the Supabase write in the background via syncBoardWrite, covering both
+// the coverage_assignments row and the actual board-position move.
 function assignCoverage(staffId, coverAreaId){
   const returnTo = state.assignments[staffId];
   state.coverage[staffId] = {returnToAreaId: returnTo, date: todayLabel()};
@@ -15540,6 +16237,10 @@ function assignCoverage(staffId, coverAreaId){
   const name = getStaffById(staffId)?.name||'?';
   const area = getAreaById(coverAreaId)?.name||'?';
   showToast(`${name} covering ${area} — returns automatically tomorrow`, 'teal');
+  syncBoardWrite(()=>window.RC.assignCoverage({
+    staffId, coverAreaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+    staffName: name, coverAreaName: area,
+  }), 'coverage assign');
 }
 
 function returnFromCoverage(staffId){
@@ -15550,6 +16251,10 @@ function returnFromCoverage(staffId){
   delete state.coverage[staffId];
   saveState(); render();
   showToast(`${getStaffById(staffId)?.name||'?'} returned to original area`, 'teal');
+  syncBoardWrite(()=>window.RC.returnFromCoverage({
+    staffId, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+    staffName: getStaffById(staffId)?.name,
+  }), 'coverage return');
 }
 
 function endAllCoverage(){
@@ -15557,8 +16262,49 @@ function endAllCoverage(){
   Object.keys(state.coverage).forEach(sid => {
     const cov = state.coverage[sid];
     state.assignments[sid] = cov.returnToAreaId||null;
+    syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: sid, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(sid)?.name,
+    }), 'coverage return');
   });
   state.coverage = {};
+}
+
+// Shared by the Time Off screen's coverage-assignment UI (best-fit
+// suggestion card, "Others…" dropdown, and the equivalent controls in the
+// per-person detail view) — links a time-off entry to whoever is covering
+// it, and if that absence is already in effect today, also performs the
+// actual board move via assignCoverage() (which handles its own sync).
+function applyTimeOffCoverage(sid, rid, covId){
+  const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+  if(!entry) return;
+  entry.coverageStaffId = covId;
+  syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:covId}), 'time off coverage');
+  const today = todayLabel();
+  if(today>=entry.startDate && today<=entry.endDate){
+    if(!state.callouts[sid]) state.callouts[sid] = true;
+    const areaId = state.assignments[sid];
+    if(areaId && !(state.coverage||{})[covId]){
+      assignCoverage(covId, areaId); // handles state.coverage + the move + its own save/toast/sync
+      return;
+    }
+  }
+  saveState();
+  const covName = getStaffById(covId)?.name||'?';
+  showToast(`${covName} assigned to cover ${getAreaById(state.assignments[sid])?.name||'their area'}`, 'teal');
+}
+
+// Clears the coverage link on a time-off entry. Deliberately does NOT
+// return the covering person from their board position — same as the
+// pre-existing local-only behavior this replaces; the two are separate
+// actions (undo the plan vs. undo the actual move) and conflating them
+// here would change existing behavior, not just sync it.
+function removeTimeOffCoverage(sid, rid){
+  const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+  if(!entry) return;
+  delete entry.coverageStaffId;
+  syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:null}), 'time off coverage');
+  saveState();
 }
 
 // ── Scheduled time off helpers ──
@@ -15593,10 +16339,15 @@ function _applyTodayTimeOff(){
 
   state.staff.forEach(s=>{
     const scheduledOff = isScheduledOut(s.id, today);
-    
-    // 1. Mark as out (use 'scheduled' to distinguish from manual callout)
+
+    // 1. Mark as out (use 'scheduled' to distinguish from manual callout).
+    // Guarded on !state.callouts[s.id], so this only fires once per
+    // transition even though _applyTodayTimeOff() runs on every render.
     if(scheduledOff && !state.callouts[s.id]){
       state.callouts[s.id] = 'scheduled';
+      if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.setCallout({
+        staffId: s.id, actingAccountId: authState.account.id, staffName: s.name, reason: 'Scheduled time off',
+      }), 'callout');
     }
 
     // 2. Move coverage person if assigned, not yet moved, and staff has an area
@@ -15607,11 +16358,20 @@ function _applyTodayTimeOff(){
       );
       if(rec && areaId){
         const covId = rec.coverageStaffId;
-        // Only move if not already in coverage state
+        // Only move if not already in coverage state — same guard keeps
+        // this to a single sync per transition.
         if(!state.coverage[covId]){
           const returnTo = state.assignments[covId] || null;
           state.coverage[covId] = {returnToAreaId: returnTo, date: today};
           state.assignments[covId] = areaId;
+          if(boardLoadedFromServer){
+            const covName = getStaffById(covId)?.name;
+            const areaName = getAreaById(areaId)?.name;
+            syncBoardWrite(()=>window.RC.assignCoverage({
+              staffId: covId, coverAreaId: areaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+              staffName: covName, coverAreaName: areaName,
+            }), 'coverage assign');
+          }
         }
       }
     }
@@ -15630,6 +16390,9 @@ function applyScheduledTimeOff(){
   state.staff.forEach(s=>{
     if(isScheduledOut(s.id, today) && !state.callouts[s.id]){
       state.callouts[s.id] = true;
+      if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.setCallout({
+        staffId: s.id, actingAccountId: authState.account.id, staffName: s.name, reason: 'Scheduled time off',
+      }), 'callout');
     }
   });
 
@@ -15655,6 +16418,14 @@ function applyScheduledTimeOff(){
     const returnTo = state.assignments[covId];
     state.coverage[covId] = { returnToAreaId: returnTo, date: today };
     state.assignments[covId] = areaId;
+    if(boardLoadedFromServer){
+      const covName = getStaffById(covId)?.name;
+      const areaName = getAreaById(areaId)?.name;
+      syncBoardWrite(()=>window.RC.assignCoverage({
+        staffId: covId, coverAreaId: areaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
+        staffName: covName, coverAreaName: areaName,
+      }), 'coverage assign');
+    }
   });
 }
 
@@ -15668,10 +16439,12 @@ function on(id, fn){
 // Maps the Supabase tables' snake_case/relational shape onto the app's
 // existing in-memory field names, so the rest of the app (which was written
 // against the localStorage shape) doesn't need to change.
-// NOTE: state.blocks/history/timeOff/etc. are still local-only (Step 3+),
-// so ids referenced there may not line up with these Supabase-sourced
-// staff/area ids until the rest of the migration lands — expected during a
-// one-slice-at-a-time migration, not a bug to chase now.
+// NOTE: state.history/calloutHistory/proficiency/etc. are still
+// local-only, so ids referenced there may not line up with these
+// Supabase-sourced staff/area ids until the rest of the migration lands —
+// expected during a one-slice-at-a-time migration, not a bug to chase now.
+// state.coverage is synced (see mapSupabaseBoard()'s coverage field and
+// bootApp()/reconcileStaleCoverage() below).
 function mapSupabaseBoard(board){
   const deptById = {};
   (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
@@ -15684,6 +16457,12 @@ function mapSupabaseBoard(board){
     department: deptById[a.department_id] || '',
     fixed: false,
   }));
+
+  const langCertsByStaff = {};
+  (board.staffLanguageCerts||[]).forEach(row=>{
+    if(!langCertsByStaff[row.staff_id]) langCertsByStaff[row.staff_id] = [];
+    langCertsByStaff[row.staff_id].push(row.language_id);
+  });
 
   const staff = (board.staff||[]).map(s=>({
     id: s.id,
@@ -15703,7 +16482,7 @@ function mapSupabaseBoard(board){
     tdisNumber: s.tdis_number || '',
     counterCert: !!s.counter_cert,
     hireDate: s.hire_date || '',
-    languageCerts: [],
+    languageCerts: langCertsByStaff[s.id] || [],
   }));
 
   const assignments = {};
@@ -15716,7 +16495,53 @@ function mapSupabaseBoard(board){
     callouts[row.staff_id] = true;
   });
 
-  return { areas, staff, assignments, callouts };
+  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
+  const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
+  const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+
+  const stagesByFlow = {};
+  (board.rotationFlowStages||[]).forEach(st=>{
+    if(!stagesByFlow[st.flow_id]) stagesByFlow[st.flow_id] = [];
+    stagesByFlow[st.flow_id].push({ id: st.id, areaId: st.area_id, label: st.label || '', requiredRotations: st.min_periods });
+  });
+  const rotationFlows = (board.rotationFlows||[]).map(f=>({ id: f.id, name: f.name, color: f.color, stages: stagesByFlow[f.id]||[] }));
+
+  const timeOff = {};
+  (board.timeOff||[]).forEach(row=>{
+    if(!timeOff[row.staff_id]) timeOff[row.staff_id] = [];
+    timeOff[row.staff_id].push({
+      id: row.id, startDate: row.start_date, endDate: row.end_date, label: row.label || '',
+      coverageStaffId: row.covering_staff_id || undefined,
+    });
+  });
+
+  const blocks = (board.blockedPairs||[]).map(bp=>({ id: bp.id, a: bp.staff_a_id, b: bp.staff_b_id }));
+
+  const coverage = {};
+  (board.coverageAssignments||[]).forEach(row=>{
+    coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
+  });
+
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows, timeOff, blocks, coverage };
+}
+
+// Coverage auto-returns the next day (assignCoverage()'s "returns
+// automatically tomorrow" promise) — this is what actually keeps that
+// promise now that coverage is synced: run once after each fresh
+// Supabase board load, so it reconciles against the real started_date
+// rather than whatever this one device happened to have cached.
+function reconcileStaleCoverage(){
+  const today = todayLabel();
+  Object.keys(state.coverage||{}).forEach(sid=>{
+    const cov = state.coverage[sid];
+    if(!cov.date || cov.date===today) return;
+    state.assignments[sid] = cov.returnToAreaId || null;
+    delete state.coverage[sid];
+    syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: sid, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(sid)?.name,
+    }), 'coverage return');
+  });
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
@@ -15736,8 +16561,17 @@ async function bootApp(){
       const mapped = mapSupabaseBoard(board);
       state.areas = mapped.areas;
       state.staff = mapped.staff;
+      state.supervisors = mapped.supervisors;
+      state.shifts = mapped.shifts;
+      state.languages = mapped.languages;
+      state.rotationFlows = mapped.rotationFlows;
       state.assignments = mapped.assignments;
       state.callouts = mapped.callouts;
+      state.timeOff = mapped.timeOff;
+      state.blocks = mapped.blocks;
+      state.coverage = mapped.coverage;
+      boardLoadedFromServer = true;
+      reconcileStaleCoverage();
       render();
     }
   }catch(e){

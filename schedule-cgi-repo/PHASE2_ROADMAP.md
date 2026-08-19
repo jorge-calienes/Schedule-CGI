@@ -24,7 +24,16 @@ here should be built in one giant rewrite.
 | Team lead access lock (evaluations + read-only board) | **Done** |
 | Audit log screen | **Done** |
 | Manage accounts (grant/request) | **Done** |
-| Staff performance profile, Team dashboard | Not built, no client functions yet either |
+| Manage accounts edit/revoke on active accounts | **Done** |
+| Supervisors/shifts/languages/rotation flows sync | **Done** |
+| Time off entries / blocked pairs sync | **Done** |
+| Staff performance profile, Team dashboard | **Done** |
+| Evaluation review workflow (team lead → supervisor accept/reject) | **Done** |
+| Audit log filters (action type, date) | **Done** |
+| Static asset caching fix (Vercel preview served stale JS) | **Done** |
+| Admin reset: rotation flows, areas & departments | **Done** |
+| Coverage sync (`state.coverage` + time-off coverage link) | **Done** |
+| Staff performance trend chart, team dashboard kanban layout | **Done** |
 
 The mockup you shared is UI reference only — none of its screens are wired
 to anything yet. This roadmap is how we get from "reference" to "real."
@@ -164,14 +173,25 @@ two parts:
   reminder that it won't be shown again — it's hashed via `set_pin`
   immediately after and unrecoverable from then on, same as every other
   PIN in this app.
+- **Edit + revoke on active accounts** — active rows now have an Edit
+  action (same form, same `grantAccess()`) for changing role/area or
+  resetting a forgotten PIN, and a Revoke button. `grant.js`'s PIN
+  requirement is now conditional: required for a pending/revoked → active
+  transition (that's the only way the account could ever sign in), optional
+  for editing an already-active account so a role/area change doesn't force
+  a PIN reset nobody asked for. Revoke needed no new API route — RLS's
+  `accounts_admin_write` policy already lets a signed-in admin update any
+  account row directly, so `revokeAccess()` just flips `status` to
+  `'revoked'` and logs it; `pin-login.js`'s existing "not active yet" check
+  already blocks sign-in for anything but `'active'`. A revoked account
+  shows in a third "Revoked" section with a "Restore access" action
+  (same form, `mode:'restore'`, pin required again since reactivating is
+  the same trust decision as a first grant).
 
-### 8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)
+### ~~8. Staff performance profile, then Team dashboard (mockup screens 4 & 5)~~ ✅ Done
 Read-only aggregations over `evaluations` (avg scores, trend over time,
-latest recommendation per person). No client functions exist yet — will
-need something like `fetchStaffEvaluationHistory(staffId)` and
-`fetchTeamPerformanceOverview()`. Do these last: they're only useful once
-there's real evaluation history to show, which means Step 5 needs to have
-been live for at least one rotation period first.
+latest recommendation per person), via `fetchStaffEvaluationHistory(staffId)`
+and `fetchTeamPerformanceOverview()`.
 
 ## Cross-cutting decision (already settled)
 
@@ -205,13 +225,409 @@ the real enforcement. Verified with headless-Chromium tests for both a
 team_lead session (no tab bar, minimal nav, no chip/area actions, name
 click opens read-only stats) and an admin session (fully unaffected).
 
+### Supervisors, shifts, languages, rotation flows — now synced
+
+These four tables existed in the schema from the start but `loadBoard()`
+never fetched them and no write functions existed — every manager screen
+(`supervisor-manager`, `shifts-manager`, `languages-manager`,
+`flow-manager`/`flow-editor`) mutated `state.supervisors`/`shifts`/
+`languages`/`rotationFlows` locally only. `createSupervisor()`/
+`updateSupervisor()`/`deleteSupervisor()` and the equivalent trio for
+shifts and languages are straightforward CRUD; rotation flow stages have
+no independent identity worth diffing, so `updateRotationFlow()` deletes
+and reinserts the full stage list on every save, same reasoning as
+`setStaffLanguageCerts()`. `rotation_flows` was also missing a `color`
+column entirely (migration `0004_flow_color.sql`) — same class of gap as
+`counter_cert`/`hire_date` in migration 0003.
+
+Fixing the catalogs alone wouldn't have fixed the actual complaint
+("a supervisor assignment set on one device doesn't show up on another"),
+since that's a **staff-level** field. `staffRow()` already had
+`supervisor_id`/`flow_id`/`flow_enrolled` columns and `mapSupabaseBoard()`
+already read them back — `createStaff()`/`updateStaff()` just never sent
+them. Now they do, plus a new `setStaffLanguageCerts()` (delete + reinsert
+into the `staff_language_certs` join table) called alongside every staff
+save.
+
+This surfaced two real pre-existing bugs in the staff-manager modal,
+unrelated to Supabase but directly undermining this fix if left alone:
+- `snapshotStaffForm()` normalized `supervisorId`/`flowId` to `null` when
+  those fields weren't in the *current* tab's DOM (every other field
+  correctly returned `undefined`, which the tab-switch handler filters
+  out) — so switching from Profile to Rotation and back silently nulled
+  out whatever supervisor had just been picked.
+- Language cert checkboxes were only ever read live from the DOM at save
+  time, with no snapshot capture at all — switching away from the
+  Rotation tab lost the selection entirely before Save could see it.
+- The Supervisor and Rotation-flow `<select>`s in `staff-manager` also
+  only checked `editing.supervisorId`/`editing.flowId` (the original,
+  unsaved record) when deciding which `<option>` is `selected`, never the
+  in-progress draft — so the dropdown visually reset to the old value on
+  a tab round-trip even though the draft itself was still correct in
+  memory. Fixed those two selects to prefer the draft; the same pattern
+  likely affects other Profile-tab fields (name, TDIS, shift, lunch) but
+  that's a wider pre-existing modal-state bug, not a sync gap — left
+  alone here.
+
+Also fixed: the Roster table's inline editors (shift/lunch/flow selects,
+CA-cert toggle, AGS toggle, team-lead toggle, tags cell, supervisor
+select) bypassed `staff-save-btn` entirely and never synced *any* field to
+Supabase — arguably the more likely place an admin sets a supervisor
+day-to-day than the modal. `syncRosterStaffEdit()` resends the full
+current record through `updateStaff()` (required, since it overwrites
+every `staffRow()` column) via the existing fire-and-forget
+`syncBoardWrite()`, since these are frequent low-friction edits, not
+deliberate CRUD saves.
+
+No audit_log entries for the four catalog CRUD functions — the
+`audit_action` enum has no catalog-edit values, and adding four just for
+this felt like more schema churn than the win was worth. Worth revisiting
+if these need an audit trail later.
+
+### Time off entries and blocked pairs — now synced (coverage followed later, see below)
+
+`state.timeOff` (scheduled leave: start/end date + label) and
+`state.blocks` (mutual "don't place these two together" pairs) were both
+fully local — `time_off` already existed in the schema (RLS included,
+`timeoff_write` policy from 0001) but had zero read/write callers
+anywhere in the app; `blocked_pairs` had no table at all. Migration
+`0005_blocked_pairs_time_off_index.sql` adds `blocked_pairs` (with an
+order-independent unique index on `least/greatest(staff_a_id,
+staff_b_id)`, since a plain table `unique(...)` constraint can't use
+function expressions). `createTimeOff()`/`updateTimeOff()`/
+`deleteTimeOff()` and `createBlockedPair()`/`deleteBlockedPair()` are
+straightforward CRUD, wired into the time-off manager's save/delete
+handlers and the blocks-manager's add/remove handlers, following the same
+`syncCrudWrite()` "saved to database ✓" pattern as staff/area/catalog
+saves.
+
+`state.coverage` (the live link between a time-off entry and whoever's
+covering the vacated area) was deliberately left local-only in this pass
+— see the "Coverage sync" section further down for why that turned out
+to be a real bug, not just a missing feature, and how it was fixed.
+
+### Staff performance profile and Team dashboard — now live
+
+Both screens are read-only aggregations over `evaluations`
+(`fetchStaffEvaluationHistory(staffId)` and
+`fetchTeamPerformanceOverview()`); RLS (`eval_select`) already scopes what
+each caller can see — managers get everyone, team leads only the
+evaluations they personally authored — so the client just selects and
+lets the database enforce it rather than re-checking the role client-side.
+
+**Staff performance profile** turned out not to need a new modal at all.
+`staff-manager` already had a third "Stats" tab showing rotation
+experience/proficiency (`state.history`/`state.proficiency`, both a
+separate, still-local rating system unrelated to `evaluations`) — the new
+"Performance evaluations" section was added at the top of that same tab:
+average productivity/performance/reliability as star ratings, the latest
+recommendation badge, and up to 8 recent evaluations with evaluator, date,
+scores, and note. Fetched lazily the first time the Stats tab is opened
+for a given staff member (guarded on a `_evalHistoryStaffId` field on
+`activeModal` so switching tabs and back doesn't refetch), independent of
+whether that person has any rotation history yet — a brand-new hire with
+zero rotations but an evaluation on file still sees it.
+
+**Team dashboard** is a new modal (`openTeamDashboard()`, nav item under
+Administration, admin/supervisor only) that fetches every evaluation once
+and aggregates client-side by `staff_id`: team-wide average scores, a
+searchable/filterable staff list (All / Needs training / Ready to
+advance / Not yet evaluated), and per-row scores + latest recommendation.
+The "Not yet evaluated" bucket is deliberately included — it's computed
+by diffing `state.staff` against whoever has at least one evaluation row,
+since knowing who's *never* been reviewed is at least as useful as seeing
+scores for who has. Clicking a row jumps straight to that person's
+Stats tab (the profile above), so the two screens share one code path
+for the actual per-person detail instead of duplicating it.
+
+Both share a hoisted `renderProficiencyStars()` (same filled/half/empty
+star markup the existing proficiency cards used, previously a local
+closure duplicated per call site) and an `EVAL_RECOMMENDATION_META`
+lookup for the recommendation badge label/color, so the three
+recommendation values (`stay`/`advance`/`training`) render identically
+everywhere they show up.
+
+### Evaluation review workflow — a team lead's evaluation now needs a supervisor to accept it
+
+Confirmed against the actual mockup file (`39277bd8-phase2mockup.html`):
+admin/supervisor already had access to nearly everything, "Manage accounts"
+was already admin-only, and team leads were already locked to a read-only
+board plus their own evaluation queue — that permission model matched what
+was asked for. What genuinely didn't exist: a team lead's submitted
+evaluation went straight into the `evaluations` table as a final record,
+immediately visible on the staff performance profile and team dashboard,
+with no one else's sign-off.
+
+Migration `0006_evaluation_review_workflow.sql` adds `status`
+(`pending`/`approved`/`needs_revision`), `review_note`, `reviewed_by`, and
+`reviewed_at` to `evaluations`. The landing status is enforced in the
+`eval_insert`/`eval_update_own` RLS policies, not just trusted from the
+client: a manager's own submission must self-land as `approved` (no one
+reviews a manager); a team lead's must land as `pending`, and if a team
+lead edits their own row afterward it can only ever land back at
+`pending` — they can't flip themselves to `approved` by re-saving.
+Evaluations that already existed before this migration were grandfathered
+in as `approved` rather than surfacing years of history as suddenly
+pending.
+
+New pieces:
+- `reviewEvaluation()` / `fetchPendingEvaluations()` in `supabaseClient.js`.
+- A **Pending evaluations** review queue (`openPendingEvals()`, nav item
+  under Administration, admin/supervisor only) — approve, or send back
+  with a required note.
+- "My evaluations" (the team-lead queue) now has three buckets instead of
+  two: **Sent back for revision** (shows the supervisor's note, clicking
+  it reopens the eval form pre-filled with the original scores/note so
+  the team lead isn't retyping from scratch — the `my_evaluation_queue`
+  view was extended with a lateral join to surface those columns),
+  **Needs feedback**, and **Already submitted** (now distinguishes
+  "approved" from "awaiting supervisor review").
+- Staff performance profile and team dashboard now only average
+  `approved` evaluations — a still-pending or sent-back-for-revision
+  submission shows up (with a status badge instead of a recommendation
+  badge, and a "⏳ N pending" indicator on the team dashboard row) but
+  doesn't move anyone's numbers until it's actually accepted.
+
+Also added while cross-checking the mockup: the audit log's single search
+box is now backed by an action-type dropdown and a date filter too,
+matching the mockup's filter row more closely (a per-supervisor filter
+was left out — the existing search already matches by actor name).
+
+**Not done in this pass, deliberately out of scope:** the mockup's
+Staff-performance "trend over time" bar chart (screen 4) and the team
+dashboard's 3-column kanban-by-recommendation layout (screen 5) — the
+current list+filter-tabs dashboard is functionally equivalent (same data,
+same three buckets) but visually different from the mockup, and the trend
+chart would need deciding what "one bar per period" means when someone
+has multiple evaluators per period. Worth a follow-up pass, not bundled
+into an already-large evaluation-workflow change.
+
+### "Add supervisor doesn't save" — stale Vercel/browser cache, not a code bug
+
+Reported: adding a supervisor showed no toast and didn't persist; language
+certs didn't stick either; the Rotation Flows list showed 3 leftover
+demo entries ("Agency Channel", "Courier Channel", "APS Channel") with 0
+staff enrolled. Checked the live database directly — `supervisors`,
+`languages`, `rotation_flows`, and `staff_language_certs` were all
+genuinely empty (0 rows), while `staff` had the real 64 people correctly
+synced. RLS policies on all four tables were correct, and the client save
+path (`sup-save-btn` → `createSupervisor()` → Supabase) matched the
+working code in this repo.
+
+The tell: no toast at all, not even the "Enter a name" validation toast
+for an empty field. That's not what the current code does — it's what the
+*old*, pre-sync, local-only version of this modal did (toasts on
+save/error were only added when the Supabase sync work landed). That
+means the browser was still running an old cached bundle, and every
+`+ Add supervisor` tap was silently saving to local state only, which the
+next real Supabase board load then overwrote — explaining both "doesn't
+save" and the phantom demo flows (old local seed data that never got
+synced in the first place).
+
+Root cause: `vercel.json` only set `Cache-Control: no-store` for
+`/api/*` — the static `index.html` and `/lib/*` had no explicit
+cache header, so Vercel's/Safari's default caching could keep serving a
+build from before the latest deploy. Added `no-cache, must-revalidate`
+for `/`, `/index.html`, and `/lib/(.*)` so every visit revalidates with
+the server instead of trusting a locally cached copy — this was a real
+gap that would have bitten every future deploy, not just this one.
+
+### Admin reset: rotation flows, areas & departments
+
+Two new destructive, admin-only actions for starting over: **Reset all
+flows** (in the Rotation Flows modal, only shown once flows exist) and
+**Reset areas & departments** (nav drawer, under Administration). Both
+require typing an exact confirm phrase (`RESET FLOWS` / `RESET AREAS`)
+before the button enables — the single-click delete confirmation used
+elsewhere in the app isn't enough friction for something that wipes
+shared structure the whole team depends on, on every device, not just
+one record.
+
+Safe by construction: every FK from `staff`/`assignments`/`evaluations`/
+`accounts`/etc. into `areas`/`departments`/`rotation_flows` is `ON DELETE
+SET NULL` (`rotation_flow_stages` → `rotation_flows` is `CASCADE`), so
+Postgres itself keeps everything consistent — staff just become
+unassigned/un-enrolled rather than the delete failing or leaving orphaned
+rows. `resetRotationFlows()`/`resetAreasAndDepartments()` in
+`supabaseClient.js` also clear the one non-FK-linked flag
+(`staff.flow_enrolled`) that the cascade wouldn't touch on its own.
+
+### Coverage sync — the biggest real (not just missing) gap, now fixed
+
+`state.coverage` was flagged repeatedly through this document as
+deliberately local-only, on the theory that it was "just" an unsynced
+feature. Investigating it properly turned up something worse: it was
+actively corrupting state, not merely failing to share it.
+
+Reproduced directly (seeded local storage with a coverage link, booted
+the app, inspected the result): a supervisor assigns someone to cover a
+colleague's time off, it works — until the next reload, at which point
+`bootApp()` had already been overwriting `state.timeOff` wholesale from
+Supabase (which had no column for the coverage link at all), silently
+erasing it. Separately, `assignCoverage()`/`returnFromCoverage()` moved
+the covering person's board position in local state only — the
+`assignments` table never heard about it — so on a second device, or
+after a refresh, the covering person visibly snapped back to their
+original spot while `state.coverage` still insisted they were out
+covering. A live repro showed this producing an actually self-contradictory
+state: the app believed someone was covering a position that, on the
+board, was empty. Scheduled-leave callouts and Rotate Now's callout reset
+had the same shape of bug — computed or cleared locally, never written to
+the `callouts` table, so a different device wouldn't see it.
+
+Migration `0007_coverage_sync.sql` adds `covering_staff_id` to `time_off`
+and a new `coverage_assignments` table (`staff_id` primary key — mirrors
+`state.coverage`'s shape exactly, one active coverage per person). New
+`assignCoverage()`/`returnFromCoverage()` in `supabaseClient.js` do both
+the coverage-tracking write and the actual board-position move together,
+since starting or ending coverage is one action from the caller's
+perspective — same reasoning as `submitEvaluation()`'s two sequential
+writes. `setTimeOffCoverage()` handles just the link on a time-off entry.
+
+Every call site that used to mutate `state.coverage`/`state.callouts`
+directly now goes through these — the callout dashboard's assign/undo
+buttons, the Time Off screen's suggestion card and "Others…" dropdown
+(unified into two shared helpers, `applyTimeOffCoverage()`/
+`removeTimeOffCoverage()`, replacing four near-duplicate inline blocks),
+Rotate Now's `endAllCoverage()`, and the auto-derived logic in
+`_applyTodayTimeOff()`/`applyScheduledTimeOff()` that marks someone out
+and moves their coverage the moment their leave starts.
+
+That last one needed care: `_applyTodayTimeOff()` runs on *every*
+render(), so syncing from inside it naively would fire a network request
+constantly. It's guarded on the same `if(!state.callouts[s.id])` /
+`if(!state.coverage[covId])` checks that already gated the local
+mutation — since those flip true after the first pass, the sync only
+ever fires once per actual transition. A second guard,
+`boardLoadedFromServer` (true only after `bootApp()`'s Supabase fetch
+resolves), stops these auto-derived syncs from firing during the brief
+window right after `loadState()` when `state.staff`/`state.timeOff` are
+still whatever was cached locally — otherwise a sync could fire against
+stale local ids that don't exist in the real `staff` table. Manual,
+button-triggered coverage actions aren't gated this way, same as every
+other manual board write in the app.
+
+`reconcileStaleCoverage()` (called once right after the Supabase board
+load) keeps `assignCoverage()`'s "returns automatically tomorrow" promise
+for real now: any coverage row whose `started_date` isn't today gets
+returned to its original area and the return is synced, instead of that
+logic living only in a pre-Supabase-fetch local check that got overwritten
+moments later anyway.
+
+Verified end-to-end with headless-Chromium tests: a stale coverage
+assignment auto-returns and syncs on boot, a scheduled-leave callout and
+its linked coverage move both apply and sync exactly once (not once per
+render), and the manual assign/return/link/unlink paths all sync the
+right payload.
+
+### Staff performance trend chart + team dashboard kanban — mockup fidelity closed out
+
+The two remaining visual gaps from the mockup, both built on data that
+was already correct and synced — this was purely presentation.
+
+**Trend chart** (`renderEvalTrendChart()`): groups a staff member's
+*approved* evaluations by `period_id`, averages productivity/performance/
+reliability into one 0–5 "combined score" per period (multiple
+evaluators in the same period just average together), and plots the last
+6 periods oldest-to-newest as bars — same visual as the mockup. Rendered
+above the evaluation history list on the Stats tab. Evaluations with no
+`period_id` (submitted outside a formal rotation) aren't plottable on a
+period timeline and are skipped here, though they still show in the
+history list below. Returns nothing (no chart section at all) when there
+isn't at least one approved, period-linked evaluation to plot.
+
+**Team dashboard**: replaced the filter-tabs-plus-list layout with the
+mockup's 3-column kanban grouped by latest recommendation (`stay` →
+"Keep on rotation", `advance` → "Ready to advance", `training` →
+"Flagged for training"), plus a 4th column that wasn't in the mockup but
+was worth keeping — "Not yet evaluated", the one place a manager can see
+who's never been reviewed at all rather than only how the reviewed people
+scored. Search still narrows within all columns at once; the filter tabs
+were removed since the columns already segment everything they filtered.
+Clicking a card still jumps to that person's Stats tab, unchanged.
+
+Verified with headless-Chromium tests: the trend chart renders the right
+bar count/values/period labels in chronological order, all four kanban
+columns place people correctly (including a zero-evaluation person
+landing in "Not yet evaluated"), card clicks navigate to the right
+profile, and search filters correctly across columns.
+
+### Evaluation form — rebuilt to match mockup screen 3, plus a real note-loss bug fixed
+
+User report: "the UI doesn't look like the mockup and also don't allow
+to complete the evaluation looks off." Two separate things were going
+on.
+
+**Visual mismatch.** The eval form (`renderEvalFormModal`) had been
+built earlier in this migration, before the actual mockup file was
+supplied, and reused two unrelated components as a stand-in: a 5-star
+`renderStarRating` widget (shared with the peer-feedback modal) for the
+three scores, and a plain `<select>` dropdown for the recommendation, in
+a single-column layout. The mockup uses neither — it's a 1–5
+numbered-button scale per score row, and the recommendation is a set of
+selectable cards (title + one-line description) in a two-column grid
+with a person header (avatar initials, name, area/period) on the left.
+Rewrote the modal to match: new `.score-scale-btn` row per score,
+`.rec-opt` cards driven by the existing `EVAL_RECOMMENDATION_META`
+labels plus a new `EVAL_RECOMMENDATION_DESC` map for the descriptive
+subtext, `.eval-person` header block, and a `max-width:720px` two-column
+grid (`.eval-form-grid`, single column under 600px). The submit button
+now reads "Submit evaluation" and stays disabled until all three scores
+are picked, matching the mockup's affordance instead of a dropdown that
+silently defaulted to a value.
+
+**Note field wiped on every score/recommendation click.** This was the
+same root-cause pattern already found and fixed twice earlier in this
+migration (staff-manager tab-switching): the star/select click handlers
+called `openModal({...m, ...})` to re-render without first reading the
+live `#eval-note-input` textarea back into `m`, so any note typed before
+picking a score or recommendation was silently discarded — the modal
+would re-render from stale `m.note`. Every click handler in the eval
+form now runs a `captureNote()` helper first and spreads `note:
+captureNote()` into the new modal state, so the note always survives.
+This was very likely the concrete "won't let me complete the
+evaluation" symptom — filling in a note first, then picking scores,
+looked like it worked until the note vanished on submit.
+
+Also checked, since this app has a history of stale-bundle reports that
+turned out to be caching (see "Add supervisor doesn't save" above): the
+Vercel cache-control fix from that earlier incident (`vercel.json` now
+sends `no-cache, must-revalidate` for `/`, `/index.html`, and
+`/lib/(.*)`) has been live for multiple deploys since, so it shouldn't
+be a factor here — but if evaluations still fail to submit after this
+fix ships, a hard refresh (or an incognito window) is the first thing to
+rule out.
+
+Verified with headless-Chromium tests: new score-scale buttons and
+recommendation cards render (old star row and `<select>` are gone),
+typing a note survives clicking through all three scores and a
+recommendation card, and the full submit payload (all scores, note,
+recommendation, `isManager`) reaches `submitEvaluation` correctly for a
+fresh manager submission. Separately verified the "needs revision"
+resubmission path used by team leads: the review-note banner renders,
+all three scores and the recommendation card come back pre-selected
+from the existing evaluation, the note textarea is pre-filled, and
+resubmitting sends the right payload with `isManager:false`.
+
 ## Suggested next step
 
-Every numbered step (3a through 6) is done, plus staff import, the
-team-lead access lock, and Manage accounts — the board, staff/area edits,
-Rotate Now, evaluations, bulk onboarding, account provisioning, and the
-audit trail are all fully live against Supabase. What's left from the
-original mockup reference is Staff performance profile and Team dashboard
-(step 8 above) — read-only aggregations over `evaluations` that are only
-useful once there's real evaluation history to show, so worth waiting
-until Step 5 has been live for at least one rotation period.
+Every numbered step (3a through 8) is done, plus staff import, the
+team-lead access lock, Manage accounts, every extra screen from the
+"Phase 2 mockups" reference (now including the trend chart, kanban
+layout, and the redesigned evaluation form), the evaluation review
+workflow, and coverage sync — the board, staff/area edits, Rotate Now,
+evaluations, bulk onboarding, account provisioning, the audit trail,
+time off/blocked pairs/coverage, staff performance, and the team
+dashboard are all fully live against Supabase and visually match the
+mockup reference. There is no remaining local-only state that actively
+misleads a user the way coverage did, and no outstanding mockup-fidelity
+gaps.
+
+From here, further work is genuinely open-ended rather than "finish the
+mockup" — candidates worth considering next: pagination on the audit log
+(currently caps at the most recent 100 entries with no "load more"),
+syncing the local-only proficiency-rating/position-change-request system
+(`state.proficiency`, `state.positionRequests` — separate from
+`evaluations`, same category of gap coverage was before this pass), or
+whatever surfaces from actual day-to-day use now that the app is fully
+wired up.

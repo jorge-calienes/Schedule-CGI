@@ -109,6 +109,25 @@ export async function fetchAccounts() {
   return data;
 }
 
+// Unlike grantAccess() this doesn't need the service-role API route — RLS's
+// accounts_admin_write policy already lets an authenticated admin update any
+// account row directly. Revoking just flips status; pin-login.js's "not
+// active yet" check already blocks sign-in for anything but 'active'.
+export async function revokeAccess({ accountId, actingAccountId }) {
+  const { data: account, error: fetchErr } = await supabase.from('accounts').select('name').eq('id', accountId).single();
+  if (fetchErr) throw fetchErr;
+
+  const { error } = await supabase.from('accounts').update({ status: 'revoked' }).eq('id', accountId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'account_revoke',
+    description: `revoked ${account.name}'s access`,
+    metadata: { accountId },
+  });
+}
+
 export async function signOut() {
   await supabase.auth.signOut();
 }
@@ -136,14 +155,32 @@ export async function getCurrentAccount() {
 // ---------------------------------------------------------------------------
 
 export async function loadBoard() {
-  const [{ data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts }] = await Promise.all([
+  const [
+    { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
+    { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
+    { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
+    { data: coverageAssignments },
+  ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
     supabase.from('assignments').select('*'),
     supabase.from('departments').select('*').order('sort_order'),
     supabase.from('callouts').select('*'),
+    supabase.from('supervisors').select('*').order('name'),
+    supabase.from('shifts').select('*'),
+    supabase.from('languages').select('*').order('name'),
+    supabase.from('staff_language_certs').select('*'),
+    supabase.from('rotation_flows').select('*').order('created_at'),
+    supabase.from('rotation_flow_stages').select('*').order('stage_order'),
+    supabase.from('time_off').select('*').order('start_date'),
+    supabase.from('blocked_pairs').select('*'),
+    supabase.from('coverage_assignments').select('*'),
   ]);
-  return { areas, staff, assignments, departments, callouts };
+  return {
+    areas, staff, assignments, departments, callouts,
+    supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
+    timeOff, blockedPairs, coverageAssignments,
+  };
 }
 
 export async function moveStaff({ staffId, areaId, actingAccountId, staffName, fromAreaName, toAreaName }) {
@@ -228,7 +265,7 @@ export async function ensureDepartment(name) {
   return data.id;
 }
 
-function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate }) {
+function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate, supervisorId, flowId, flowEnrolled }) {
   return {
     name,
     tdis_number: tdisNumber || null,
@@ -242,7 +279,24 @@ function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSu
     break_times_label: breakTimesLabel || null,
     counter_cert: !!counterCert,
     hire_date: hireDate || null,
+    supervisor_id: supervisorId || null,
+    flow_id: flowId || null,
+    flow_enrolled: !!flowEnrolled,
   };
+}
+
+// staff_language_certs is a many-to-many join table with no "which cert is
+// which" identity worth preserving — replacing the whole set for this staff
+// member on every save is simpler and just as correct as diffing.
+export async function setStaffLanguageCerts({ staffId, languageIds }) {
+  const { error: delErr } = await supabase.from('staff_language_certs').delete().eq('staff_id', staffId);
+  if (delErr) throw delErr;
+  if (languageIds && languageIds.length) {
+    const { error: insErr } = await supabase
+      .from('staff_language_certs')
+      .insert(languageIds.map(language_id => ({ staff_id: staffId, language_id })));
+    if (insErr) throw insErr;
+  }
 }
 
 export async function createStaff(fields) {
@@ -326,6 +380,217 @@ export async function deleteArea({ areaId, areaName, actingAccountId }) {
 }
 
 // ---------------------------------------------------------------------------
+// Catalog entities (supervisors, shifts, languages, rotation flows). These
+// were tables that existed in the schema but nothing ever read from or wrote
+// to them — loadBoard() didn't fetch them and every manager screen mutated
+// state.supervisors/shifts/languages/rotationFlows locally only, so none of
+// it synced across devices. No audit_log entries here (unlike staff/area
+// CRUD) — the audit_action enum has no catalog-edit values yet, and adding
+// four just for this felt like more schema churn than the win was worth;
+// worth revisiting if these turn out to need an audit trail too.
+// ---------------------------------------------------------------------------
+
+export async function createSupervisor({ name, color }) {
+  const { data, error } = await supabase.from('supervisors').insert({ name, color: color || '#2F5FA8' }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateSupervisor({ supervisorId, name, color }) {
+  const { error } = await supabase.from('supervisors').update({ name, color: color || '#2F5FA8' }).eq('id', supervisorId);
+  if (error) throw error;
+}
+export async function deleteSupervisor({ supervisorId }) {
+  const { error } = await supabase.from('supervisors').delete().eq('id', supervisorId);
+  if (error) throw error;
+}
+
+export async function createShift({ label, start, end }) {
+  const { data, error } = await supabase.from('shifts').insert({ label, start_time: start, end_time: end }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateShift({ shiftId, label, start, end }) {
+  const { error } = await supabase.from('shifts').update({ label, start_time: start, end_time: end }).eq('id', shiftId);
+  if (error) throw error;
+}
+export async function deleteShift({ shiftId }) {
+  const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+  if (error) throw error;
+}
+
+export async function createLanguage({ name }) {
+  const { data, error } = await supabase.from('languages').insert({ name }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateLanguage({ languageId, name }) {
+  const { error } = await supabase.from('languages').update({ name }).eq('id', languageId);
+  if (error) throw error;
+}
+export async function deleteLanguage({ languageId }) {
+  const { error } = await supabase.from('languages').delete().eq('id', languageId);
+  if (error) throw error;
+}
+
+// Stages have no independent identity worth diffing — delete-and-reinsert on
+// every save, same reasoning as setStaffLanguageCerts().
+async function replaceFlowStages(flowId, stages) {
+  const { error: delErr } = await supabase.from('rotation_flow_stages').delete().eq('flow_id', flowId);
+  if (delErr) throw delErr;
+  if (stages && stages.length) {
+    const { error: insErr } = await supabase.from('rotation_flow_stages').insert(
+      stages.map((s, i) => ({ flow_id: flowId, area_id: s.areaId, stage_order: i, min_periods: s.requiredRotations, label: s.label || null }))
+    );
+    if (insErr) throw insErr;
+  }
+}
+export async function createRotationFlow({ name, color, stages }) {
+  const { data: flow, error } = await supabase.from('rotation_flows').insert({ name, color: color || '#2F5FA8' }).select().single();
+  if (error) throw error;
+  await replaceFlowStages(flow.id, stages);
+  return flow;
+}
+export async function updateRotationFlow({ flowId, name, color, stages }) {
+  const { error } = await supabase.from('rotation_flows').update({ name, color: color || '#2F5FA8' }).eq('id', flowId);
+  if (error) throw error;
+  await replaceFlowStages(flowId, stages);
+}
+export async function deleteRotationFlow({ flowId }) {
+  const { error } = await supabase.from('rotation_flows').delete().eq('id', flowId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Admin reset utilities — wipe rotation flows, or areas + departments, to
+// start over from scratch. Deliberately admin-only client-side (see the
+// nav gating in index.html) since these affect the whole team's board, not
+// one record. Every FK from staff/assignments/evaluations/accounts/etc.
+// into areas/departments/rotation_flows is ON DELETE SET NULL
+// (rotation_flow_stages -> rotation_flows is CASCADE), so Postgres itself
+// keeps everything consistent — staff just become unassigned/un-enrolled
+// rather than the delete failing or leaving orphaned rows.
+// ---------------------------------------------------------------------------
+
+export async function resetRotationFlows({ actingAccountId }) {
+  const { error } = await supabase.from('rotation_flows').delete().not('id', 'is', null);
+  if (error) throw error;
+  // flow_id is already nulled by the FK, but flow_enrolled is a plain
+  // boolean with no FK to clean it up — clear it explicitly so no one is
+  // left "enrolled" in a flow that no longer exists.
+  await supabase.from('staff').update({ flow_enrolled: false }).eq('flow_enrolled', true);
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_area',
+    description: 'reset all rotation flows',
+    metadata: { reset: 'rotation_flows' },
+  });
+}
+
+export async function resetAreasAndDepartments({ actingAccountId }) {
+  const { error: areaErr } = await supabase.from('areas').delete().not('id', 'is', null);
+  if (areaErr) throw areaErr;
+  const { error: deptErr } = await supabase.from('departments').delete().not('id', 'is', null);
+  if (deptErr) throw deptErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_area',
+    description: 'reset all areas and departments',
+    metadata: { reset: 'areas_and_departments' },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Time off entries and blocked pairs.
+// ---------------------------------------------------------------------------
+
+export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId }) {
+  const { data, error } = await supabase.from('time_off').insert({
+    staff_id: staffId, start_date: startDate, end_date: endDate, label: label || null, created_by: actingAccountId,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateTimeOff({ timeOffId, startDate, endDate, label }) {
+  const { error } = await supabase.from('time_off')
+    .update({ start_date: startDate, end_date: endDate, label: label || null })
+    .eq('id', timeOffId);
+  if (error) throw error;
+}
+export async function deleteTimeOff({ timeOffId }) {
+  const { error } = await supabase.from('time_off').delete().eq('id', timeOffId);
+  if (error) throw error;
+}
+
+export async function createBlockedPair({ staffAId, staffBId }) {
+  const { data, error } = await supabase.from('blocked_pairs')
+    .insert({ staff_a_id: staffAId, staff_b_id: staffBId }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function deleteBlockedPair({ blockedPairId }) {
+  const { error } = await supabase.from('blocked_pairs').delete().eq('id', blockedPairId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Coverage — who is currently covering someone else's area (from a manual
+// callout or a scheduled time off) and where they return to. Was local-only
+// before this (see 0007_coverage_sync.sql for the schema and
+// PHASE2_ROADMAP.md for the bugs that caused). assignCoverage()/
+// returnFromCoverage() do both the coverage-tracking write AND the actual
+// board-position move (the assignments table) together, since from the
+// caller's perspective starting/ending coverage IS one action — same
+// reasoning as submitEvaluation()'s two sequential writes.
+// ---------------------------------------------------------------------------
+
+export async function assignCoverage({ staffId, coverAreaId, returnToAreaId, actingAccountId, staffName, coverAreaName }) {
+  const now = new Date().toISOString();
+  const { error: covErr } = await supabase.from('coverage_assignments').upsert({
+    staff_id: staffId, return_to_area_id: returnToAreaId,
+    started_date: now.slice(0, 10), created_by: actingAccountId,
+  });
+  if (covErr) throw covErr;
+
+  const { error: moveErr } = await supabase.from('assignments').upsert({
+    staff_id: staffId, area_id: coverAreaId, updated_by: actingAccountId, updated_at: now,
+  });
+  if (moveErr) throw moveErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `${staffName || staffId} started covering ${coverAreaName || 'an area'}`,
+    staff_id: staffId,
+    metadata: { coverAreaId, returnToAreaId },
+  });
+}
+
+export async function returnFromCoverage({ staffId, returnToAreaId, actingAccountId, staffName }) {
+  const { error: delErr } = await supabase.from('coverage_assignments').delete().eq('staff_id', staffId);
+  if (delErr) throw delErr;
+
+  const { error: moveErr } = await supabase.from('assignments').upsert({
+    staff_id: staffId, area_id: returnToAreaId, updated_by: actingAccountId, updated_at: new Date().toISOString(),
+  });
+  if (moveErr) throw moveErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `${staffName || staffId} returned from covering`,
+    staff_id: staffId,
+    metadata: { returnToAreaId },
+  });
+}
+
+export async function setTimeOffCoverage({ timeOffId, coveringStaffId }) {
+  const { error } = await supabase.from('time_off').update({ covering_staff_id: coveringStaffId }).eq('id', timeOffId);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
 // Rotate Now (Step 4). Snapshots the CLOSING period's assignments into
 // rotation_periods + rotation_period_assignments, mirroring the local
 // state.history.push() the app already does. This is deliberate/infrequent
@@ -405,27 +670,92 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
     }));
 }
 
-export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation }) {
+// `isManager` decides the row's landing status — a manager's own
+// evaluation is final immediately ('approved'), a team_lead's needs a
+// supervisor to accept it ('pending'). This mirrors the eval_insert/
+// eval_update_own RLS check in 0006_evaluation_review_workflow.sql, which
+// enforces the same rule server-side — the client value is what the RLS
+// check validates against, not what grants the access.
+export async function submitEvaluation({ staffId, periodId, areaId, evaluatorId, productivity, performance, reliability, note, recommendation, isManager }) {
   const { error } = await supabase.from('evaluations').upsert({
     staff_id: staffId,
     period_id: periodId,
     area_id: areaId,
     evaluator_id: evaluatorId,
     productivity, performance, reliability, note, recommendation,
+    status: isManager ? 'approved' : 'pending',
+    review_note: null, reviewed_by: null, reviewed_at: null,
   }, { onConflict: 'staff_id,evaluator_id,period_id' });
   if (error) throw error;
 
   await supabase.from('audit_log').insert({
     actor_id: evaluatorId,
     action: 'evaluation',
-    description: `submitted an evaluation — recommended "${recommendation}"`,
+    description: isManager
+      ? `submitted an evaluation — recommended "${recommendation}"`
+      : `submitted an evaluation for review — recommended "${recommendation}"`,
     staff_id: staffId,
-    metadata: { productivity, performance, reliability, recommendation },
+    metadata: { productivity, performance, reliability, recommendation, status: isManager ? 'approved' : 'pending' },
   });
+}
+
+// The supervisor/admin review action on a team_lead's pending evaluation —
+// approve it as-is, or send it back with a note for the team lead to
+// revise and resubmit (which returns it to 'pending', see submitEvaluation).
+export async function reviewEvaluation({ evaluationId, staffId, status, reviewNote, reviewerId }) {
+  const { error } = await supabase.from('evaluations').update({
+    status, review_note: reviewNote || null, reviewed_by: reviewerId, reviewed_at: new Date().toISOString(),
+  }).eq('id', evaluationId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: reviewerId,
+    action: 'evaluation',
+    description: status === 'approved' ? 'approved an evaluation' : 'sent an evaluation back for revision',
+    staff_id: staffId,
+    metadata: { evaluationId, status, reviewNote: reviewNote || null },
+  });
+}
+
+export async function fetchPendingEvaluations() {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('*, staff:staff_id(name), evaluator:evaluator_id(name), area:area_id(name), period:period_id(period_label)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
 export async function myEvaluationQueue() {
   const { data, error } = await supabase.from('my_evaluation_queue').select('*');
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
+// (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
+// visibility (eval_select: managers see everyone, team leads only their own
+// authored evaluations), so these just select and let the database enforce
+// it rather than re-implementing that check client-side.
+// ---------------------------------------------------------------------------
+
+export async function fetchStaffEvaluationHistory(staffId) {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('*, evaluator:evaluator_id(name), area:area_id(name), period:period_id(period_label)')
+    .eq('staff_id', staffId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchTeamPerformanceOverview() {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('staff_id, productivity, performance, reliability, recommendation, status, created_at, staff:staff_id(name)')
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
 }
@@ -467,9 +797,37 @@ window.RC = {
   createRotationPeriod,
   fetchRotationHistory,
   submitEvaluation,
+  reviewEvaluation,
+  fetchPendingEvaluations,
   myEvaluationQueue,
   fetchAuditLog,
   grantAccess,
   fetchAccounts,
+  revokeAccess,
+  setStaffLanguageCerts,
+  createSupervisor,
+  updateSupervisor,
+  deleteSupervisor,
+  createShift,
+  updateShift,
+  deleteShift,
+  createLanguage,
+  updateLanguage,
+  deleteLanguage,
+  createRotationFlow,
+  updateRotationFlow,
+  deleteRotationFlow,
+  resetRotationFlows,
+  resetAreasAndDepartments,
+  createTimeOff,
+  updateTimeOff,
+  deleteTimeOff,
+  createBlockedPair,
+  deleteBlockedPair,
+  assignCoverage,
+  returnFromCoverage,
+  setTimeOffCoverage,
+  fetchStaffEvaluationHistory,
+  fetchTeamPerformanceOverview,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
