@@ -9174,6 +9174,20 @@ function parseClockToken(token){
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
 }
 
+// Builds <option> tags for a lunch-time <select> from the state.lunchTimes
+// catalog, pre-selecting by parsed clock time (not exact text) so this
+// still recognizes records saved before lunch times became a manageable
+// catalog — a bare "12:00" correctly shows the "12:00 PM" option as selected.
+function renderLunchOptions(breakTimesRaw){
+  const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
+  const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
+  return state.lunchTimes.map(lt=>{
+    const ltMins = parseClockToken(lt.label);
+    const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
+    return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
+  }).join('');
+}
+
 function formatMinutesAsClock(mins){
   if(mins==null) return '';
   let h = Math.floor(mins/60);
@@ -10474,6 +10488,16 @@ function renderStaffStatsModal(m){
         ${currentArea ? `<span class="stats-current-area"><span class="area-swatch" style="background:${currentArea.color}"></span>${escapeHtml(currentArea.name)}</span>` : '<span class="small-muted"><em>Unassigned</em></span>'}
       </div>
 
+      ${isTeamLeadRole() && currentAreaId && currentAreaId===authState.account.assigned_area_id ? `
+      <div class="field" style="margin-top:14px;">
+        <label>Lunch time</label>
+        <select id="stats-lunch-input" data-staff-id="${s.id}"><option value="">— Select —</option>
+          ${renderLunchOptions(s.breakTimes)}
+        </select>
+        <div class="field-hint" style="margin-top:4px;">You can change lunch time for people currently in your area. Shift hours are set by a supervisor or admin.</div>
+      </div>
+      ` : ''}
+
       ${totalCompletedRotations===0 ? `
         <div class="small-muted" style="line-height:1.6;margin-top:14px;">No rotations have been completed yet, so there's no history to show. Experience will build up here once you start using "Rotate now".</div>
       ` : `
@@ -10675,18 +10699,7 @@ function renderStaffManagerModal(m){
       </div>
       <div class="field"><label>Lunch</label>
         <select id="staff-lunch-input"><option value="">— Select —</option>
-          ${(()=>{
-            // match on the parsed clock time, not exact text, so this still
-            // recognizes older records saved before lunch times became a
-            // manageable catalog (e.g. bare "12:00" now shows as "12:00 PM" selected)
-            const savedLunchRaw = editing && editing.breakTimes ? editing.breakTimes.split('/')[1] : null;
-            const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
-            return state.lunchTimes.map(lt=>{
-              const ltMins = parseClockToken(lt.label);
-              const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
-              return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
-            }).join('');
-          })()}
+          ${renderLunchOptions(editing ? editing.breakTimes : null)}
         </select>
       </div>
     </div>
@@ -14421,12 +14434,34 @@ function attachHandlers(){
   }
 
   // --- staff manager modal ---
-  // --- staff experience stats modal (read-only) ---
+  // --- staff experience stats modal (read-only, except the team-lead lunch quick-editor below) ---
   if(activeModal.type==='staff-stats'){
     const staffId = activeModal.staffId;
     on('modal-close-stats', closeModal);
     on('modal-edit-from-stats', ()=>{
       openModal({type:'staff-manager', editId:staffId});
+    });
+    const lunchSel = document.getElementById('stats-lunch-input');
+    if(lunchSel) lunchSel.addEventListener('change', async ()=>{
+      const s = getStaffById(lunchSel.dataset.staffId);
+      if(!s) return;
+      const newLunch = lunchSel.value;
+      // keep whatever break-start portion is already there — team leads
+      // aren't editing shift hours, only the lunch half of the combined string
+      const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
+      const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
+      lunchSel.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
+        staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
+      }));
+      if(sync.ok){
+        s.breakTimes = breakTimes;
+        saveState();
+        showToast('Lunch time updated — saved to database ✓', 'teal');
+      } else {
+        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+      }
+      render();
     });
   }
 

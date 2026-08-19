@@ -325,6 +325,25 @@ export async function updateStaff(fields) {
   });
 }
 
+// Narrow write for team leads: sends ONLY break_times_label in the PATCH
+// (unlike updateStaff() above, which resends the whole staffRow()) so the
+// staff_team_lead_column_guard trigger sees every other column as
+// genuinely unchanged, not just "resent with the same value". Managers
+// can call this too — it's just a smaller version of updateStaff() — but
+// the roster/staff editor keep using updateStaff() for their full-form
+// saves; this exists for the team-lead lunch/break quick-editor.
+export async function updateStaffBreakTime({ staffId, breakTimesLabel, actingAccountId, staffName }) {
+  const { error } = await supabase.from('staff').update({ break_times_label: breakTimesLabel || null }).eq('id', staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_staff',
+    description: `updated ${staffName || staffId}'s lunch time`,
+    staff_id: staffId,
+  });
+}
+
 export async function archiveStaff({ staffId, staffName, actingAccountId }) {
   const { error } = await supabase.from('staff').update({ active: false }).eq('id', staffId);
   if (error) throw error;
@@ -805,6 +824,7 @@ window.RC = {
   ensureDepartment,
   createStaff,
   updateStaff,
+  updateStaffBreakTime,
   archiveStaff,
   createArea,
   updateArea,
