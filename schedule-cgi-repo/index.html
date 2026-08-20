@@ -5401,7 +5401,7 @@
     border:1px solid var(--c-border,#efefef);
     box-shadow:0 1px 4px rgba(0,0,0,.06);
     display:flex;flex-direction:column;
-    height:calc(100vh - 148px);max-height:calc(100vh - 148px);
+    height:auto;max-height:min(52vh, 440px);
     overflow:hidden;
     position:relative;
   }
@@ -5647,7 +5647,11 @@
   }
   .roster-card-shift{font-size:12px;color:var(--c-text-2);font-weight:500;}
   .roster-card-badges{display:flex;gap:4px;align-items:center;}
-  .roster-card-cert{font-size:13px;}
+  .roster-card-cert{
+    display:inline-block;font-size:10px;font-weight:700;
+    background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;
+    padding:1px 6px;border-radius:99px;margin:1px;
+  }
   .roster-card-out{
     font-size:10px;font-weight:700;
     background:#FEF2F2;color:#DC2626;
@@ -5774,6 +5778,22 @@
     color:var(--c-text-2);width:100%;
   }
   .roster-sup-select:focus{outline:none;}
+
+  /* CA / AGS roster toggles — colored pill badges matching the ones used on
+     board chips and the staff profile (.cert-badge/.roster-card-ags), so
+     these read the same way in the dense roster table instead of a bare
+     checkmark and an easy-to-miss checkbox. */
+  .roster-tag-toggle{
+    display:inline-flex;align-items:center;gap:2px;
+    font-size:10px;font-weight:700;font-family:var(--mono);
+    padding:3px 8px;border-radius:99px;
+    border:1px dashed var(--c-border);
+    cursor:pointer;background:none;color:var(--c-text-2);
+    white-space:nowrap;transition:transform .1s;
+  }
+  .roster-tag-toggle:hover{transform:scale(1.05);}
+  .roster-tag-toggle.ca.on{background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;}
+  .roster-tag-toggle.ags.on{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;}
 
   /* Toolbar */
   .roster-toolbar{
@@ -6581,8 +6601,6 @@
   .to-entry-active{color:var(--md-sys-color-primary);font-weight:700;}
 
   .to-coverage-row{margin-bottom:var(--md-space-2);}
-  .to-assign-cov{width:100%;padding:6px 10px;border:1.5px dashed var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-small);font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-low);cursor:pointer;}
-  .to-assign-cov:focus{border-style:solid;border-color:var(--md-sys-color-primary);outline:none;}
   .to-coverage-assigned{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--md-sys-color-secondary-container);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-2) var(--md-space-3);}
   .to-coverage-label{font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-secondary-container);text-transform:uppercase;letter-spacing:.04em;}
   .to-coverage-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-secondary-container);}
@@ -8225,6 +8243,7 @@ let state = {
   proficiency: {}, // {staffId: {areaId: {rating:1-5, ratings:[{period,teamLeadRating,teamLeadId,teamLeadNote,supervisorRating,supervisorId,supervisorApproved,overrideReason}]}}}
   pendingFeedback: [], // [{staffId,areaId,toAreaId,...}]
   shifts: [],      // [{id, label, start, end}] editable shift schedule
+  lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
   languages: [],   // [{id, name}] editable language certifications list
   calloutHistory: {},  // {staffId: [{date, period, reason}]}
   rotationNotes: {},   // {period: string}
@@ -8505,6 +8524,12 @@ function todayLabel(){
   return d.toISOString().slice(0,10);
 }
 
+function yesterdayLabel(){
+  const d = new Date();
+  d.setDate(d.getDate()-1);
+  return d.toISOString().slice(0,10);
+}
+
 function friendlyDate(isoStr){
   if(!isoStr) return '—';
   try{
@@ -8565,6 +8590,10 @@ async function loadState(){
         {id:'sh3',label:'7:30 – 4:15',start:'7:30',end:'4:15'},
         {id:'sh4',label:'7:45 – 4:30',start:'7:45',end:'4:30'},
         {id:'sh5',label:'8:00 – 4:45',start:'8:00',end:'4:45'},
+      ];
+      if(!state.lunchTimes) state.lunchTimes = [
+        {id:'lt1',label:'12:00 PM',sort_order:0},
+        {id:'lt2',label:'1:00 PM',sort_order:1},
       ];
       if(!state.languages) state.languages = [
         {id:'lang_es',name:'Spanish'},{id:'lang_ar',name:'Arabic'},{id:'lang_zh',name:'Mandarin'},
@@ -8682,6 +8711,10 @@ function seedDemoData(){
       {id:'sh3', label:'7:30 – 4:15', start:'7:30', end:'4:15'},
       {id:'sh4', label:'7:45 – 4:30', start:'7:45', end:'4:30'},
       {id:'sh5', label:'8:00 – 4:45', start:'8:00', end:'4:45'},
+    ];
+    state.lunchTimes = [
+      {id:'lt1', label:'12:00 PM', sort_order:0},
+      {id:'lt2', label:'1:00 PM', sort_order:1},
     ];
     state.languages = [
       {id:'lang_es', name:'Spanish'},
@@ -9151,15 +9184,32 @@ function computeFlowAdvancement(){
 // for 12 and 1-6 (since lunch/end-of-shift times fall in that range for this operation).
 
 function parseClockToken(token){
-  const t = token.trim().replace(/\s+/g,''); // tolerate stray spaces like "12: 00"
-  const m = t.match(/^(\d{1,2}):?(\d{2})?$/);
+  const t = token.trim().replace(/\s+/g,' '); // tolerate stray spaces like "12: 00"
+  const m = t.match(/^(\d{1,2}):?(\d{2})?\s*([AaPp][Mm])?$/);
   if(!m) return null;
   let hour = parseInt(m[1],10);
   const minute = m[2] ? parseInt(m[2],10) : 0;
-  if(hour===12){ /* noon, keep as 12 */ }
+  const ampm = m[3] ? m[3].toUpperCase() : null;
+  if(ampm==='PM'){ if(hour!==12) hour += 12; }
+  else if(ampm==='AM'){ if(hour===12) hour = 0; }
+  else if(hour===12){ /* noon, keep as 12 */ }
   else if(hour>=1 && hour<=6){ hour += 12; } // 1:00-6:59 -> PM (lunch/shift end range)
   // 7-11 stay as-is (AM, shift start / break range)
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
+}
+
+// Builds <option> tags for a lunch-time <select> from the state.lunchTimes
+// catalog, pre-selecting by parsed clock time (not exact text) so this
+// still recognizes records saved before lunch times became a manageable
+// catalog — a bare "12:00" correctly shows the "12:00 PM" option as selected.
+function renderLunchOptions(breakTimesRaw){
+  const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
+  const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
+  return state.lunchTimes.map(lt=>{
+    const ltMins = parseClockToken(lt.label);
+    const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
+    return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
+  }).join('');
 }
 
 function formatMinutesAsClock(mins){
@@ -9377,6 +9427,29 @@ function suggestCoverageFor(areaId, absentStaffId){
   });
 }
 
+// Best-fit coverage picker for a scheduled time-off entry `r` ({staff, area, id, ...}).
+// Shared between the Time Off tab's list and the "Coverage planning" modal
+// so both surfaces show the same ranked picks instead of a plain A-Z list.
+function renderCoverageSuggestions(r){
+  if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
+  const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
+  return `
+  <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
+  <div class="to-suggestion-row">
+    ${suggestions.map(s=>`
+      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
+        <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
+        <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
+        ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
+      </button>`).join('')}
+    <div class="to-sug-divider"></div>
+    <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
+      <option value="">Others…</option>
+      ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
+    </select>
+  </div>`;
+}
+
 function renderTimeOffView(){
   const today     = todayLabel();
   const monthStr  = timeOffMonth || today.slice(0,7);
@@ -9466,26 +9539,6 @@ function renderTimeOffView(){
 
   // ── LIST ──────────────────────────────────────────────────────────
   const renderList = () => {
-    const renderSuggestions = (r) => {
-      if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
-      const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
-      return `
-      <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
-      <div class="to-suggestion-row">
-        ${suggestions.map(s=>`
-          <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
-            <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
-            <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
-            ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
-          </button>`).join('')}
-        <div class="to-sug-divider"></div>
-        <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
-          <option value="">Others…</option>
-          ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
-        </select>
-      </div>`;
-    };
-
     const renderCard = (r) => {
       const isActive  = r.startDate<=today && r.endDate>=today;
       const areaColor = r.area?.color||'#aaa';
@@ -9515,7 +9568,7 @@ function renderTimeOffView(){
                 <span class="to-cov-label">covering</span>
                 <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${r.id}" data-to-staff="${r.staff.id}">Remove</button>
               </div>`
-            : renderSuggestions(r)}
+            : renderCoverageSuggestions(r)}
         </div>
       </div>`;
     };
@@ -9633,6 +9686,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
+      <button class="nav-item" id="nav-manage-lunch-times"><span class="nav-item-icon">🍽</span>Manage lunch times</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -9663,7 +9717,11 @@ function renderSelectionBanner(){
 }
 
 function renderCalloutBanner(){
-  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
+  // getStaffById(id) can come back empty for a callout left behind by
+  // someone who's since been removed — filter those out here too (on top
+  // of the mapSupabaseBoard() filter) so a stale local copy of state can't
+  // still show a "?" or crash the coverage dashboard below.
+  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   if(outIds.length===0) return ''; // nobody out → no banner
 
   const coveredAreaIds = new Set(
@@ -9822,6 +9880,7 @@ function renderChip(s){
       const certs=[];
       if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA Cert</span>');
       (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
+      if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
       return certs.length?'<div class="chip-certs">'+certs.join('')+'</div>':'';
     })()}
     ${(()=>{
@@ -9845,7 +9904,6 @@ function renderChip(s){
       const c = sup.color || '#5B5F66';
       return `<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`;
     })()}
-    ${s.isSubcontractor ? `<span class="roster-card-ags" style="margin-top:2px;width:fit-content;" title="AGS / Sub-contractor">🏷 AGS</span>` : ''}
     <div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
       ${conflicts.length>0 ? `<span class="trail-dot" style="background:var(--rust)" title="Blocked conflict in this area"></span>` : ''}
@@ -9910,8 +9968,14 @@ function renderBoard(){
 }
 
 function renderAreaCol(area){
+  // members drives which chips render (out + covering + regular, so you
+  // can still see who's out and who stepped in); the count badge uses
+  // activeInArea() instead — physically-present headcount, excluding
+  // whoever's out — so a callout + their coverer no longer double-counts
+  // against capacity (was showing e.g. "4/3" when only 3 were really there).
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   const under = isUnderStaffed(area.id);
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
@@ -9920,7 +9984,7 @@ function renderAreaCol(area){
     <div class="area-head" draggable="${readOnly?'false':'true'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="${readOnly?'':'Drag to reorder'}">
       <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <span class="area-count ${over?'over':under?'under':members.length>0?'ok':''}">${members.length}/${area.capacity}</span>
+        <span class="area-count ${over?'over':under?'under':present>0?'ok':''}">${present}/${area.capacity}</span>
         ${readOnly ? '' : `<button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>`}
       </div>
     </div>
@@ -9965,13 +10029,14 @@ function renderOverviewDept(g){
 
 function renderOverviewArea(area){
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   return `
   <div class="ov-area">
     <div class="ov-area-head" style="border-color:${area.color}">
       <span class="area-swatch" style="background:${area.color}"></span>
       <span class="ov-area-name">${escapeHtml(area.name)}</span>
-      <span class="area-count ${over?'over':''}">${members.length}/${area.capacity}</span>
+      <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
     </div>
     ${members.length===0 ? '<div class="ov-empty">No one placed</div>' : members.map(s=>renderOverviewRow(s, area.id)).join('')}
   </div>`;
@@ -10063,7 +10128,7 @@ function renderRoster(){
           <div class="roster-card-right">
             <span class="roster-card-shift">${escapeHtml(s.shiftHours||'—')}</span>
             <div class="roster-card-badges">
-              ${s.counterCert?'<span class="roster-card-cert" title="CA Certified">✅</span>':''}
+              ${s.counterCert?'<span class="roster-card-cert" title="Counter Acceptance certified">✅ CA</span>':''}
               ${langs.length?`<span class="lang-pill-sm">${langs[0]}</span>`:''}
               ${s.isSubcontractor?'<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>':''}
               ${isOut?'<span class="roster-card-out">Out</span>':''}
@@ -10082,13 +10147,13 @@ function renderRoster(){
           <col style="width:110px">
           <col style="width:98px">
           <col style="width:90px">
-          <col style="width:44px">
+          <col style="width:58px">
           <col style="width:78px">
           <col style="width:70px">
           <col style="width:88px">
           <col style="width:130px">
           <col style="width:46px">
-          <col style="width:46px">
+          <col style="width:58px">
           <col style="width:52px">
         </colgroup>
         <thead>
@@ -10143,9 +10208,15 @@ function renderRosterRow(s, i){
     <td class="cell-dim" style="text-align:center;">${s.tdisNumber?`<span class="tdis-badge">${escapeHtml(s.tdisNumber)}</span>`:'<em>—</em>'}</td>
     <td class="cell-dim"><span>${escapeHtml(s.department||'—')}</span></td>
     <td>
-      ${area
-        ?`<div class="cell-area-block"><span class="roster-area-dot" style="background:${area.color}"></span><span>${escapeHtml(area.name)}</span></div>`
-        :'<span class="cell-dim"><em>—</em></span>'}
+      <div class="cell-area-block">
+        <span class="roster-area-dot" style="background:${area?area.color:'transparent'};border-color:${area?area.color:'var(--c-border)'};"></span>
+        <select class="roster-select" data-area-place="${s.id}" title="Change this person's area">
+          <option value="">Unassigned</option>
+          ${areasByDepartment().map(g=>`<optgroup label="${escapeHtml(g.department)}">
+            ${g.areas.map(a=>`<option value="${a.id}" ${areaId===a.id?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}
+          </optgroup>`).join('')}
+        </select>
+      </div>
     </td>
     <td>
       <select class="roster-select" data-field="shiftHours" data-id="${s.id}">
@@ -10160,7 +10231,7 @@ function renderRosterRow(s, i){
       </select>
     </td>
     <td style="text-align:center;">
-      <button class="cert-toggle-btn ${s.counterCert?'on':''}" data-toggle-cert="${s.id}" title="${s.counterCert?'Certified':'Not certified'}">${s.counterCert?'✅':'○'}</button>
+      <button class="roster-tag-toggle ca ${s.counterCert?'on':''}" data-toggle-cert="${s.id}" title="${s.counterCert?'Counter Acceptance certified':'Not certified'}">${s.counterCert?'✅ CA':'CA'}</button>
     </td>
     <td>${langs.length?langs.map(l=>`<span class="lang-pill-sm">${escapeHtml(l)}</span>`).join(''):'<span class="cell-dim">—</span>'}</td>
     <td class="cell-edit" data-edit-cell="tags" data-staff-id="${s.id}">${escapeHtml(s.tags||'')}</td>
@@ -10188,7 +10259,7 @@ function renderRosterRow(s, i){
       <input type="checkbox" class="roster-flag-checkbox roster-flag-lead" data-toggle-lead="${s.id}" ${s.isTeamLead?'checked':''} title="Team Lead"/>
     </td>
     <td style="text-align:center;">
-      <input type="checkbox" class="roster-flag-checkbox roster-flag-ags" data-toggle-ags="${s.id}" ${s.isSubcontractor?'checked':''} title="AGS / Sub-contractor"/>
+      <button class="roster-tag-toggle ags ${s.isSubcontractor?'on':''}" data-toggle-ags="${s.id}" title="${s.isSubcontractor?'AGS / Sub-contractor':'In-house'}">${s.isSubcontractor?'🏷 AGS':'AGS'}</button>
     </td>
     <td style="padding:4px;">
       <button class="btn btn-sm btn-light act-edit" data-id="${s.id}" style="padding:4px 8px;font-size:11px;">Edit</button>
@@ -10224,8 +10295,10 @@ function renderSupervisorSidebar(){
 }
 
 function renderFixedAreaCol(area){
+  // same present-vs-assigned distinction as renderAreaCol() above
   const members = staffInArea(area.id);
-  const over = members.length > area.capacity;
+  const present = activeInArea(area.id).length;
+  const over = present > area.capacity;
   // fixed areas: never show as tap-to-move target for other staff
   // but do allow receiving staff as backup (drag/tap from outside works)
   const permanent = members.filter(s=>!s.isBackupHere);
@@ -10236,7 +10309,7 @@ function renderFixedAreaCol(area){
       <div class="area-name"><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <span class="fixed-badge">Fixed</span>
-        <span class="area-count ${over?'over':''}">${members.length}/${area.capacity}</span>
+        <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
         <button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>
       </div>
     </div>
@@ -10412,6 +10485,7 @@ function renderModal(){
   else if(m.type==='mark-callout') inner = renderMarkCalloutModal(m);
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
   else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
+  else if(m.type==='lunch-times-manager') inner = renderLunchTimesManagerModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
@@ -10443,6 +10517,7 @@ function renderStaffStatsModal(m){
           const certs=[];
           if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ Counter Acceptance Certified</span>');
           (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
+          if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
           return certs.length?'<div class="stats-cert-row">'+certs.join('')+'</div>':'';
         })()}
       </div>
@@ -10453,6 +10528,16 @@ function renderStaffStatsModal(m){
         <span class="small-muted">Currently in</span>
         ${currentArea ? `<span class="stats-current-area"><span class="area-swatch" style="background:${currentArea.color}"></span>${escapeHtml(currentArea.name)}</span>` : '<span class="small-muted"><em>Unassigned</em></span>'}
       </div>
+
+      ${isTeamLeadRole() && currentAreaId && currentAreaId===authState.account.assigned_area_id ? `
+      <div class="field" style="margin-top:14px;">
+        <label>Lunch time</label>
+        <select id="stats-lunch-input" data-staff-id="${s.id}"><option value="">— Select —</option>
+          ${renderLunchOptions(s.breakTimes)}
+        </select>
+        <div class="field-hint" style="margin-top:4px;">You can change lunch time for people currently in your area. Shift hours are set by a supervisor or admin.</div>
+      </div>
+      ` : ''}
 
       ${totalCompletedRotations===0 ? `
         <div class="small-muted" style="line-height:1.6;margin-top:14px;">No rotations have been completed yet, so there's no history to show. Experience will build up here once you start using "Rotate now".</div>
@@ -10655,8 +10740,7 @@ function renderStaffManagerModal(m){
       </div>
       <div class="field"><label>Lunch</label>
         <select id="staff-lunch-input"><option value="">— Select —</option>
-          <option value="12:00" ${editing&&editing.breakTimes&&editing.breakTimes.includes('12:00')&&!editing.breakTimes.includes('1:00')?'selected':''}>12:00 PM</option>
-          <option value="1:00" ${editing&&editing.breakTimes&&editing.breakTimes.includes('1:00')?'selected':''}>1:00 PM</option>
+          ${renderLunchOptions(editing ? editing.breakTimes : null)}
         </select>
       </div>
     </div>
@@ -10955,7 +11039,10 @@ function renderHistoryModal(m){
 
 // --- 5. Call-out dashboard ---
 function renderCalloutDashModal(m){
-  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
+  // same guard as renderCalloutBanner() — a callout with no matching staff
+  // record used to crash this modal outright (every row below assumes
+  // s.name exists), which looked like "nothing shows" when opening it.
+  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   const searchQ = (m.search||'').toLowerCase().trim();
   const rows = outIds.map(sid=>{
     const s      = getStaffById(sid);
@@ -12018,6 +12105,40 @@ function renderShiftsManagerModal(m){
   </div>`;
 }
 
+// --- Lunch times manager (admin) — same list/edit pattern as shifts above.
+// Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
+// used to be a hardcoded two-option <select> baked into the markup.
+function renderLunchTimesManagerModal(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Manage lunch times</h2><p>Define the lunch time options staff can select from.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${editing?`
+      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
+      <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
+        ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
+      </div>
+      <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
+      `:`
+      <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
+      ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
+        <div class="option-card" data-edit-lunch-time="${l.id}">
+          <div class="oc-left">
+            <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
+          </div>
+        </div>`).join('')}
+      `}
+    </div>
+  </div>`;
+}
+
 // --- Languages manager (admin) ---
 function renderLanguagesManagerModal(m){
   const isNew = m.editId === '__new__';
@@ -12116,8 +12237,6 @@ function renderTimeOffManagerModal(m){
     });
 
     const today_label = today;
-    const coverageStaff = state.staff.filter(s=>s.active!==false&&!state.callouts[s.id])
-      .slice().sort((a,b)=>a.name.localeCompare(b.name));
 
     return `
     <div class="modal" style="max-width:600px;max-height:90vh;">
@@ -12171,15 +12290,7 @@ function renderTimeOffManagerModal(m){
                             ${covArea?`<span class="to-entry-area" style="background:${covArea.color}20;color:${covArea.color};border:1px solid ${covArea.color}40;font-size:10px;">${escapeHtml(covArea.name)}</span>`:''}
                             <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${r.id}" data-to-staff="${r.staff.id}">✕</button>
                           </div>`
-                        : r.area
-                          ? `<select class="to-assign-cov" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
-                              <option value="">— Assign coverage for ${escapeHtml(r.area.name)} —</option>
-                              ${coverageStaff.filter(s=>s.id!==r.staff.id).map(s=>{
-                                const sa=getAreaById(state.assignments[s.id]);
-                                return '<option value="'+s.id+'">'+escapeHtml(s.name)+(sa?' ('+escapeHtml(sa.name)+')':'')+'</option>';
-                              }).join('')}
-                            </select>`
-                          : '<span class="small-muted" style="font-size:11px;">No area to cover</span>'}
+                        : renderCoverageSuggestions(r)}
                     </div>
                     <div class="to-entry-actions">
                       <button class="btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit dates</button>
@@ -12908,7 +13019,7 @@ function renderReportPreviewModal(m){
         <button class="rp-view-tab ${viewMode2!=='live'?'active':''}" id="rp-tab-config">⚙ Configure</button>
         <button class="rp-view-tab ${viewMode2==='live'?'active':''}" id="rp-tab-live">👁 Live view</button>
       </div>
-      <button class="modal-close" id="modal-close-btn">✕</button>
+      <button class="modal-close" id="modal-close-x">✕</button>
     </div>
   </div>
   ${viewMode2==='live' ? `
@@ -13134,6 +13245,7 @@ function attachHandlers(){
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
       syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[sid]);
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
       state.callouts[sid] = true;
@@ -13186,6 +13298,7 @@ function attachHandlers(){
     if(state.callouts[id]){
       delete state.callouts[id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[id]);
     } else {
       state.callouts[id] = true;
       syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
@@ -13297,8 +13410,15 @@ function attachHandlers(){
       else { rosterSort.col = col; rosterSort.dir = 1; }
       render();
     }));
+    // Area dropdown: routes through attemptPlace() (not a plain field write) so
+    // it gets the same capacity/cert/blocked-pair/team-lead-displacement checks
+    // as dragging a chip does — an admin picking a new area from the roster
+    // shouldn't be able to silently create a conflict drag-and-drop would catch.
+    document.querySelectorAll('[data-area-place]').forEach(sel=>sel.addEventListener('change', ()=>{
+      attemptPlace(sel.dataset.areaPlace, sel.value || null);
+    }));
     // Dropdown selects for shift and lunch
-    document.querySelectorAll('.roster-select').forEach(sel=>sel.addEventListener('change', ()=>{
+    document.querySelectorAll('.roster-select[data-field]').forEach(sel=>sel.addEventListener('change', ()=>{
       const s = getStaffById(sel.dataset.id);
       if(!s) return;
       if(sel.dataset.field==='flowId'){
@@ -13318,8 +13438,8 @@ function attachHandlers(){
       render();
     }));
 
-    // CA Cert toggle button
-    document.querySelectorAll('.cert-toggle-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+    // CA Cert toggle pill
+    document.querySelectorAll('.roster-tag-toggle.ca').forEach(btn=>btn.addEventListener('click', ()=>{
       const s = getStaffById(btn.dataset.toggleCert);
       if(!s) return;
       s.counterCert = !s.counterCert;
@@ -13329,11 +13449,11 @@ function attachHandlers(){
       render();
     }));
 
-    // AGS (sub-contractor) toggle checkbox
-    document.querySelectorAll('[data-toggle-ags]').forEach(cb=>cb.addEventListener('change', ()=>{
-      const s = getStaffById(cb.dataset.toggleAgs);
+    // AGS (sub-contractor) toggle pill
+    document.querySelectorAll('.roster-tag-toggle.ags').forEach(btn=>btn.addEventListener('click', ()=>{
+      const s = getStaffById(btn.dataset.toggleAgs);
       if(!s) return;
-      s.isSubcontractor = cb.checked;
+      s.isSubcontractor = !s.isSubcontractor;
       saveState();
       syncRosterStaffEdit(s, 'AGS status');
       showToast(`${s.name.split(' ')[0]} ${s.isSubcontractor?'marked as AGS / sub-contractor':'marked as in-house'}`, 'teal');
@@ -14240,6 +14360,7 @@ function attachHandlers(){
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
+  on('nav-manage-lunch-times',  ()=>{ closeNav(); openModal({type:'lunch-times-manager'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -14349,12 +14470,34 @@ function attachHandlers(){
   }
 
   // --- staff manager modal ---
-  // --- staff experience stats modal (read-only) ---
+  // --- staff experience stats modal (read-only, except the team-lead lunch quick-editor below) ---
   if(activeModal.type==='staff-stats'){
     const staffId = activeModal.staffId;
     on('modal-close-stats', closeModal);
     on('modal-edit-from-stats', ()=>{
       openModal({type:'staff-manager', editId:staffId});
+    });
+    const lunchSel = document.getElementById('stats-lunch-input');
+    if(lunchSel) lunchSel.addEventListener('change', async ()=>{
+      const s = getStaffById(lunchSel.dataset.staffId);
+      if(!s) return;
+      const newLunch = lunchSel.value;
+      // keep whatever break-start portion is already there — team leads
+      // aren't editing shift hours, only the lunch half of the combined string
+      const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
+      const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
+      lunchSel.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
+        staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
+      }));
+      if(sync.ok){
+        s.breakTimes = breakTimes;
+        saveState();
+        showToast('Lunch time updated — saved to database ✓', 'teal');
+      } else {
+        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+      }
+      render();
     });
   }
 
@@ -14690,6 +14833,7 @@ function attachHandlers(){
       const _person = getStaffById(_id);
       delete state.callouts[_id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      maybeReturnCoverageFor(state.assignments[_id]);
       saveState();
       const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
       if(outIds.length===0){ closeModal(); return; }
@@ -14881,6 +15025,39 @@ function attachHandlers(){
     }));
   }
 
+  // --- lunch times manager ---
+  if(activeModal.type==='lunch-times-manager'){
+    on('btn-new-lunch-time', ()=>openModal({type:'lunch-times-manager', editId:'__new__'}));
+    on('lunch-time-cancel-btn', ()=>openModal({type:'lunch-times-manager'}));
+    on('lunch-time-save-btn', async ()=>{
+      const label = document.getElementById('lunch-time-label-input').value.trim();
+      if(!label){ showToast('Enter a label','rust'); return; }
+      if(activeModal.editId==='__new__'){
+        const sortOrder = state.lunchTimes.length;
+        const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
+        state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
+        showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      } else {
+        const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
+        if(lt){ lt.label = label; }
+        showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      }
+      saveState(); openModal({type:'lunch-times-manager'});
+    });
+    on('lunch-time-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
+      state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
+      saveState();
+      showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'lunch-times-manager'});
+    });
+    document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'lunch-times-manager', editId:el.dataset.editLunchTime});
+    }));
+  }
+
   // --- languages manager ---
   if(activeModal.type==='languages-manager'){
     on('btn-new-lang', ()=>openModal({type:'languages-manager', editId:'__new__'}));
@@ -14958,8 +15135,16 @@ function attachHandlers(){
       openModal({...m});
     }));
 
-    // coverage assignment dropdown
-    document.querySelectorAll('.to-assign-cov').forEach(sel=>sel.addEventListener('change',()=>{
+    // best-fit suggestion card clicks
+    document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+      const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
+      if(!sid||!rid||!covId) return;
+      applyTimeOffCoverage(sid, rid, covId);
+      openModal({...m});
+    }));
+
+    // "Others…" dropdown (anyone not already in the best-fit picks)
+    document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
       const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
       if(!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
@@ -15135,7 +15320,10 @@ function attachHandlers(){
         showToast(sync.ok ? 'Supervisor added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState();
-      closeModal();
+      // Stay on the manager (reset to a blank "Add" form) so an admin can add
+      // or edit several supervisors in a row without getting bounced back to
+      // the board each time — only the ✕ button should close this modal.
+      openModal({type:'supervisor-manager'});
     });
     on('sup-delete-btn', async ()=>{
       const id = activeModal.editId;
@@ -15144,7 +15332,7 @@ function attachHandlers(){
       state.staff.forEach(s=>{ if(s.supervisorId===id) s.supervisorId = null; });
       saveState();
       showToast(sync.ok ? 'Supervisor removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      closeModal();
+      openModal({type:'supervisor-manager'});
     });
   }
 
@@ -16257,6 +16445,19 @@ function returnFromCoverage(staffId){
   }), 'coverage return');
 }
 
+// Whoever's covering `areaId` should go back to their own regular area the
+// moment nobody assigned there is still out — whether that's because a
+// manager just marked someone back in, or because a scheduled leave
+// reached its end date. Only returns if there's no one else still out in
+// the same area, since one coverer is tracked per area, not per person.
+function maybeReturnCoverageFor(areaId){
+  if(!areaId) return;
+  const stillOut = state.staff.some(s => state.assignments[s.id]===areaId && state.callouts[s.id]);
+  if(stillOut) return;
+  const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
+  if(covererId) returnFromCoverage(covererId);
+}
+
 function endAllCoverage(){
   // Called at Rotate Now — returns all coverage staff to their original areas
   Object.keys(state.coverage).forEach(sid => {
@@ -16376,6 +16577,44 @@ function _applyTodayTimeOff(){
       }
     }
   });
+
+  // 3. Scheduled leave that ended yesterday — auto mark the person back in
+  // and send whoever covered their area back to regular duties, the same
+  // as clicking "Back ✓" manually. Narrowly scoped to endDate===yesterday
+  // (not "any past record") so this can't misfire against an unrelated
+  // manual callout that happens to share a staff member with old time-off
+  // history — it only fires in the one-render window right after a leave
+  // actually ends.
+  // Mutates state directly instead of calling maybeReturnCoverageFor() /
+  // returnFromCoverage() — this whole function runs as the first line of
+  // render(), so calling something that itself calls render() here would
+  // re-enter render() mid-build, same reason step 2 above mutates
+  // state.coverage/state.assignments directly instead of calling
+  // assignCoverage().
+  const yesterday = yesterdayLabel();
+  state.staff.forEach(s=>{
+    if(!state.callouts[s.id]) return;          // not out, nothing to reconcile
+    if(isScheduledOut(s.id, today)) return;     // still within an active range
+    const justEnded = ((state.timeOff||{})[s.id]||[]).some(r=>r.endDate===yesterday);
+    if(!justEnded) return;
+    const areaId = state.assignments[s.id];
+    delete state.callouts[s.id];
+    if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.clearCallout({
+      staffId: s.id, actingAccountId: authState.account.id, staffName: s.name,
+    }), 'callout');
+    if(!areaId) return;
+    const stillOut = state.staff.some(x => state.assignments[x.id]===areaId && state.callouts[x.id]);
+    if(stillOut) return;
+    const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
+    if(!covererId) return;
+    const cov = state.coverage[covererId];
+    state.assignments[covererId] = cov.returnToAreaId || null;
+    delete state.coverage[covererId];
+    if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.returnFromCoverage({
+      staffId: covererId, returnToAreaId: cov.returnToAreaId||null, actingAccountId: authState.account.id,
+      staffName: getStaffById(covererId)?.name,
+    }), 'coverage return');
+  });
 }
 
 function isScheduledOut(staffId, dateStr){
@@ -16490,14 +16729,24 @@ function mapSupabaseBoard(board){
     assignments[row.staff_id] = row.area_id || null;
   });
 
+  // board.staff only ever contains active=true rows (loadBoard()'s query
+  // filters that server-side) — a callout row left behind for someone who
+  // was since archived would otherwise become a "ghost" entry that
+  // getStaffById() can't resolve, breaking anything that reads
+  // state.callouts directly (the callout banner, "Assign coverage"
+  // dashboard). archiveStaff() now cleans its own callout row up, but
+  // filter here too as a backstop against any other way a stale one could
+  // show up.
+  const activeStaffIds = new Set((board.staff||[]).map(s=>s.id));
   const callouts = {};
   (board.callouts||[]).forEach(row=>{
-    callouts[row.staff_id] = true;
+    if(activeStaffIds.has(row.staff_id)) callouts[row.staff_id] = true;
   });
 
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+  const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
 
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
@@ -16522,7 +16771,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -16563,6 +16812,7 @@ async function bootApp(){
       state.staff = mapped.staff;
       state.supervisors = mapped.supervisors;
       state.shifts = mapped.shifts;
+      state.lunchTimes = mapped.lunchTimes;
       state.languages = mapped.languages;
       state.rotationFlows = mapped.rotationFlows;
       state.assignments = mapped.assignments;

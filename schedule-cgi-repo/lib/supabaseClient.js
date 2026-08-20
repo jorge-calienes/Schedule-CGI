@@ -159,7 +159,7 @@ export async function loadBoard() {
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
-    { data: coverageAssignments },
+    { data: coverageAssignments }, { data: lunchTimes },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -175,11 +175,12 @@ export async function loadBoard() {
     supabase.from('time_off').select('*').order('start_date'),
     supabase.from('blocked_pairs').select('*'),
     supabase.from('coverage_assignments').select('*'),
+    supabase.from('lunch_times').select('*').order('sort_order'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs, coverageAssignments,
+    timeOff, blockedPairs, coverageAssignments, lunchTimes,
   };
 }
 
@@ -324,9 +325,38 @@ export async function updateStaff(fields) {
   });
 }
 
+// Narrow write for team leads: sends ONLY break_times_label in the PATCH
+// (unlike updateStaff() above, which resends the whole staffRow()) so the
+// staff_team_lead_column_guard trigger sees every other column as
+// genuinely unchanged, not just "resent with the same value". Managers
+// can call this too — it's just a smaller version of updateStaff() — but
+// the roster/staff editor keep using updateStaff() for their full-form
+// saves; this exists for the team-lead lunch/break quick-editor.
+export async function updateStaffBreakTime({ staffId, breakTimesLabel, actingAccountId, staffName }) {
+  const { error } = await supabase.from('staff').update({ break_times_label: breakTimesLabel || null }).eq('id', staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'edit_staff',
+    description: `updated ${staffName || staffId}'s lunch time`,
+    staff_id: staffId,
+  });
+}
+
 export async function archiveStaff({ staffId, staffName, actingAccountId }) {
   const { error } = await supabase.from('staff').update({ active: false }).eq('id', staffId);
   if (error) throw error;
+
+  // loadBoard() only fetches active=true staff, so an archived person drops
+  // out of state.staff on the next load — but a live callout or coverage
+  // row for them doesn't clean itself up, and getStaffById() then can't
+  // resolve it. That left a ghost "?" entry in the callout banner and
+  // crashed the "Assign coverage" dashboard (it reads s.name on every
+  // callout row unconditionally). Clear both here so archiving never
+  // leaves a dangling reference behind.
+  await supabase.from('callouts').delete().eq('staff_id', staffId);
+  await supabase.from('coverage_assignments').delete().eq('staff_id', staffId);
 
   await supabase.from('audit_log').insert({
     actor_id: actingAccountId,
@@ -415,6 +445,20 @@ export async function updateShift({ shiftId, label, start, end }) {
 }
 export async function deleteShift({ shiftId }) {
   const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+  if (error) throw error;
+}
+
+export async function createLunchTime({ label, sortOrder }) {
+  const { data, error } = await supabase.from('lunch_times').insert({ label, sort_order: sortOrder || 0 }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateLunchTime({ lunchTimeId, label, sortOrder }) {
+  const { error } = await supabase.from('lunch_times').update({ label, sort_order: sortOrder || 0 }).eq('id', lunchTimeId);
+  if (error) throw error;
+}
+export async function deleteLunchTime({ lunchTimeId }) {
+  const { error } = await supabase.from('lunch_times').delete().eq('id', lunchTimeId);
   if (error) throw error;
 }
 
@@ -790,6 +834,7 @@ window.RC = {
   ensureDepartment,
   createStaff,
   updateStaff,
+  updateStaffBreakTime,
   archiveStaff,
   createArea,
   updateArea,
@@ -811,6 +856,9 @@ window.RC = {
   createShift,
   updateShift,
   deleteShift,
+  createLunchTime,
+  updateLunchTime,
+  deleteLunchTime,
   createLanguage,
   updateLanguage,
   deleteLanguage,
