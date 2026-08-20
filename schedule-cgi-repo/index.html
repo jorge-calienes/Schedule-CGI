@@ -9312,6 +9312,7 @@ let selectedStaffId = null; // tap-to-move: staff currently selected, awaiting a
 let navDrawerOpen = false;
 let boardSearch   = '';   // filter chips by name on board
 let searchExpanded = false; // topbar search bar visible
+let _lastSearchScrollQuery = null; // last query auto-scrolled to a match, so unrelated re-renders (realtime, drags) don't keep yanking the view back
 let timeOffFilter = 'upcoming'; // 'today'|'week'|'upcoming'
 let swapMode      = null; // {staffId} first person selected for quick-swap
 let chipMenuOpen  = null; // staffId whose chip menu is open
@@ -13643,6 +13644,17 @@ function attachHandlers(){
     const applyFilter = () => {
       const q = (searchEl.value || '').toLowerCase().trim();
       boardSearch = searchEl.value;
+      // The search box lives in the topbar and shows on every tab, but
+      // chips (and therefore a "location" to jump to) only exist in board
+      // view — so a match found while on another tab jumps there first.
+      // The re-render calls attachHandlers() again, which re-applies the
+      // filter (see the `if(boardSearch) applyFilter()` guard below) against
+      // the now-rendered board chips, including scrolling to the match.
+      if(q && viewMode!=='board' && state.staff.some(s=>(s.name||'').toLowerCase().includes(q))){
+        viewMode = 'board';
+        render();
+        return;
+      }
       // Toggle CSS classes directly — no render() needed
       document.querySelectorAll('.chip[data-staff-id]').forEach(chip => {
         const name = (getStaffById(chip.dataset.staffId)?.name || '').toLowerCase();
@@ -13659,6 +13671,16 @@ function attachHandlers(){
       // show/hide the clear button without full re-render
       const clearBtn = document.getElementById('btn-search-clear');
       if(clearBtn) clearBtn.style.display = q ? 'flex' : 'none';
+      // Jump straight to the match instead of making them hunt for it —
+      // covers areas, the unassigned pool, wherever it actually is. Only
+      // for an actually-new query, so unrelated re-renders while a search
+      // is still active (realtime sync, a drag elsewhere) don't keep
+      // yanking the view back to it.
+      if(q && q!==_lastSearchScrollQuery){
+        const firstMatch = document.querySelector('.chip.search-match');
+        if(firstMatch) firstMatch.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+      }
+      _lastSearchScrollQuery = q || null;
     };
     searchEl.addEventListener('input', () => {
       clearTimeout(_searchTimer);
@@ -13667,6 +13689,7 @@ function attachHandlers(){
     searchEl.addEventListener('keydown', e => {
       if(e.key === 'Escape'){
         boardSearch = ''; searchEl.value = '';
+        _lastSearchScrollQuery = null;
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('search-dim','search-match'));
       }
     });
@@ -13675,6 +13698,7 @@ function attachHandlers(){
   }
   on('btn-search-clear', () => {
     boardSearch = '';
+    _lastSearchScrollQuery = null;
     const el = document.getElementById('board-search-input');
     if(el) el.value = '';
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('search-dim','search-match'));
@@ -15245,9 +15269,19 @@ function attachHandlers(){
   if(activeModal.type==='time-off-manager'){
     const m = activeModal;
 
-    // search and filter
+    // search and filter — openModal() re-renders on every keystroke (the
+    // list/grouping is too structurally different between queries for a
+    // CSS-only filter), which recreates this input and drops focus unless
+    // restored here — otherwise typing feels like it only accepts one
+    // letter at a time.
     const searchEl = document.getElementById('to-search');
-    if(searchEl) searchEl.addEventListener('input', ()=>openModal({...m, searchQ:searchEl.value}));
+    if(searchEl){
+      if(m.searchQ){
+        searchEl.focus();
+        try{ searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length); }catch(e){}
+      }
+      searchEl.addEventListener('input', ()=>openModal({...m, searchQ:searchEl.value}));
+    }
     const pastEl = document.getElementById('to-show-past');
     if(pastEl) pastEl.addEventListener('change', ()=>openModal({...m, showPast:pastEl.checked}));
 
