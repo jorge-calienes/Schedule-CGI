@@ -9699,6 +9699,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
+      <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
       <button class="nav-item" id="nav-manage-lunch-times"><span class="nav-item-icon">🍽</span>Manage lunch times</button>
@@ -10512,6 +10513,7 @@ function renderModal(){
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
+  else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -11053,6 +11055,65 @@ function renderHistoryModal(m){
 }
 
 // --- 5. Call-out dashboard ---
+// Builds the plain-text "who's out / who's covering" summary for today,
+// driven by the same state.callouts + state.coverage the callout dashboard
+// uses — so it's always just today's changes, never the full board.
+function buildDailyChangesEmail(){
+  const today = todayLabel();
+  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
+  const rows = outIds.map(sid=>{
+    const s = getStaffById(sid);
+    const areaId = state.assignments[sid];
+    const area = areaId ? getAreaById(areaId) : null;
+    // A synced callout row collapses 'scheduled' to true after reload
+    // (the server doesn't persist that distinction), so check today's
+    // actual time-off record rather than trusting the flag alone.
+    const toRec = ((state.timeOff||{})[sid]||[]).find(r=>today>=r.startDate&&today<=r.endDate);
+    const reason = toRec ? (toRec.label || toRec.reason || 'Scheduled leave') : 'Called out';
+    const covererId = areaId ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId) : null;
+    const coverer = covererId ? getStaffById(covererId) : null;
+    return {s, area, reason, coverer};
+  }).sort((a,b)=>(a.area?.name||'￿').localeCompare(b.area?.name||'￿'));
+
+  const lines = ['Reassignments for '+friendlyDate(today), ''];
+  if(rows.length===0){
+    lines.push('No call-outs or scheduled leave today — no reassignments needed.');
+  } else {
+    rows.forEach(r=>{
+      lines.push((r.area?r.area.name:'No area')+':');
+      lines.push('  '+r.s.name+' — '+r.reason+' → '+(r.coverer?('Covered by '+r.coverer.name):'NEEDS COVERAGE'));
+      lines.push('');
+    });
+    const pending = rows.filter(r=>!r.coverer && r.area).length;
+    lines.push(pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
+  }
+  return {subject:'Daily Reassignments — '+friendlyDate(today), body:lines.join('\n')};
+}
+
+function renderDailyChangesEmailModal(m){
+  const {subject, body} = buildDailyChangesEmail();
+  return '<div class="modal" style="max-width:520px;">'
+    +'<div class="modal-head">'
+      +'<div><h2>📧 Daily changes email</h2><p>Just today\'s call-outs, leave &amp; reassignments — ready to copy or send.</p></div>'
+      +'<button class="modal-close" id="modal-close-x">✕</button>'
+    +'</div>'
+    +'<div class="modal-body">'
+      +'<div class="field">'
+        +'<label>Subject</label>'
+        +'<input type="text" id="dce-subject" value="'+escapeHtml(subject)+'" readonly/>'
+      +'</div>'
+      +'<div class="field">'
+        +'<label>Body</label>'
+        +'<textarea id="dce-body" rows="14" readonly style="font-family:inherit;white-space:pre-wrap;">'+escapeHtml(body)+'</textarea>'
+      +'</div>'
+    +'</div>'
+    +'<div class="modal-foot">'
+      +'<button class="btn btn-light" id="dce-copy-btn">📋 Copy</button>'
+      +'<button class="btn btn-primary" id="dce-mail-btn">✉ Open in email app</button>'
+    +'</div>'
+  +'</div>';
+}
+
 function renderCalloutDashModal(m){
   // same guard as renderCalloutBanner() — a callout with no matching staff
   // record used to crash this modal outright (every row below assumes
@@ -11168,7 +11229,9 @@ function renderCalloutDashModal(m){
           +'</div>';
       }).join('')
     +'</div>'
-    +(allDone?'<div class="modal-foot"><button class="btn btn-primary" id="btn-cov-done">Done ✓</button></div>':'')
+    +'<div class="modal-foot"><button class="btn btn-light" id="btn-email-changes">📧 Email changes</button>'
+      +(allDone?'<button class="btn btn-primary" id="btn-cov-done">Done ✓</button>':'')
+    +'</div>'
   +'</div>';
 }
 
@@ -13589,6 +13652,12 @@ function attachHandlers(){
     const clearBtn = document.getElementById('btn-search-clear');
     if(clearBtn) clearBtn.style.display = 'none';
   });
+  // ── email today's changes ──
+  on('nav-email-changes', ()=>{
+    navDrawerOpen=false;
+    openModal({type:'daily-changes-email'});
+    render();
+  });
   // ── print board ──
   on('nav-print-board', ()=>{
     navDrawerOpen=false;
@@ -14942,6 +15011,29 @@ function attachHandlers(){
 
     // Done button — all covered, close
     on('btn-cov-done', ()=>{ closeModal(); showToast('Coverage confirmed ✓','teal'); });
+    on('btn-email-changes', ()=>{ openModal({type:'daily-changes-email'}); });
+  }
+
+  // --- daily changes email ---
+  if(activeModal.type==='daily-changes-email'){
+    on('dce-copy-btn', ()=>{
+      const {subject, body} = buildDailyChangesEmail();
+      const text = subject+'\n\n'+body;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(
+          ()=>showToast('Copied to clipboard ✓','teal'),
+          ()=>showToast('Copy failed — select the text manually','rust')
+        );
+      } else {
+        const ta = document.getElementById('dce-body');
+        if(ta){ ta.removeAttribute('readonly'); ta.select(); document.execCommand('copy'); ta.setAttribute('readonly',''); }
+        showToast('Copied to clipboard ✓','teal');
+      }
+    });
+    on('dce-mail-btn', ()=>{
+      const {subject, body} = buildDailyChangesEmail();
+      window.location.href = 'mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    });
   }
 
   // --- mark callout modal ---
