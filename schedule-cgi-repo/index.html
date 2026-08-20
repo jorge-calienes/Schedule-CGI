@@ -9880,6 +9880,7 @@ function renderChip(s){
       const certs=[];
       if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA Cert</span>');
       (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
+      if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
       return certs.length?'<div class="chip-certs">'+certs.join('')+'</div>':'';
     })()}
     ${(()=>{
@@ -9903,7 +9904,6 @@ function renderChip(s){
       const c = sup.color || '#5B5F66';
       return `<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`;
     })()}
-    ${s.isSubcontractor ? `<span class="roster-card-ags" style="margin-top:2px;width:fit-content;" title="AGS / Sub-contractor">🏷 AGS</span>` : ''}
     <div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
       ${conflicts.length>0 ? `<span class="trail-dot" style="background:var(--rust)" title="Blocked conflict in this area"></span>` : ''}
