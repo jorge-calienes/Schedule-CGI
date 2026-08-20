@@ -11126,21 +11126,43 @@ function renderCalloutDashModal(m){
   // s.name exists), which looked like "nothing shows" when opening it.
   const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   const searchQ = (m.search||'').toLowerCase().trim();
+
+  // Coverage is tracked per covering-person, not per specific out-person —
+  // so when 2+ people are out of the SAME area, pair each out person with a
+  // distinct coverer already positioned there (by order), instead of every
+  // row independently grabbing "the" coverer for that area. That old lookup
+  // made one coverer look like they'd covered everyone out of the area even
+  // with slots still empty.
+  const coverersByArea = {};
+  Object.keys(state.coverage||{}).forEach(cid=>{
+    const aId = state.assignments[cid];
+    if(!aId) return;
+    (coverersByArea[aId] = coverersByArea[aId]||[]).push(cid);
+  });
+  const areaSlotsClaimed = {};
+  // Also stop two still-pending rows from both defaulting to the same
+  // suggested candidate — one person can only actually cover one spot.
+  const candidateClaimedThisRender = new Set();
+
   const rows = outIds.map(sid=>{
     const s      = getStaffById(sid);
     const areaId = state.assignments[sid];
     const area   = areaId ? getAreaById(areaId) : null;
-    const covererId = areaId
-      ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId)
-      : null;
+    let covererId = null;
+    if(areaId){
+      const slot = areaSlotsClaimed[areaId]||0;
+      covererId = (coverersByArea[areaId]||[])[slot] || null;
+      areaSlotsClaimed[areaId] = slot+1;
+    }
     const coverPerson = covererId ? getStaffById(covererId) : null;
     const raw  = areaId ? rankCandidatesForArea(areaId,[sid]) : [];
     const cands = raw.filter(c=>{
       if((state.coverage||{})[c.staff.id]) return false;
+      if(candidateClaimedThisRender.has(c.staff.id)) return false;
       if(!c.currentArea) return true;
       return activeInArea(c.currentArea,c.staff.id).length>1;
     });
-    const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id]);
+    const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id] && !candidateClaimedThisRender.has(c.staff.id));
     // Apply search filter
     const filtered = searchQ
       ? all.filter(c=>c.staff.name.toLowerCase().includes(searchQ)
@@ -11149,6 +11171,7 @@ function renderCalloutDashModal(m){
     const selId = (m.selects||{})[sid]
       ?? (filtered.find(c=>c.staff.id===(m.selects||{})[sid])?.staff.id)
       ?? filtered[0]?.staff.id ?? null;
+    if(!coverPerson && selId) candidateClaimedThisRender.add(selId);
     return {sid,s,area,areaId,covererId,coverPerson,candidates:filtered,selId};
   });
   const pendingCount = rows.filter(r=>!r.coverPerson&&r.area).length;
@@ -14425,8 +14448,10 @@ function attachHandlers(){
     }));
     document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const deleted = (state.timeOff[sid]||[]).find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(sid, deleted.startDate, deleted.endDate);
       saveState(); render();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
     }));
@@ -14999,14 +15024,9 @@ function attachHandlers(){
         return;
       }
       assignCoverage(coverId, areaId);
-      // Check if all positions are now covered (must have explicit coverage assigned)
-      const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
-      const coveredAreas = new Set(Object.keys(state.coverage||{}).map(cid=>state.assignments[cid]).filter(Boolean));
-      const allCovered = outIds.every(sid=>{
-        const aId = state.assignments[sid];
-        if(!aId) return true; // unassigned — nothing to cover
-        return coveredAreas.has(aId); // someone is explicitly covering this area
-      });
+      // Check if all positions are now covered (headcount per area, not
+      // just "is anyone covering it" — see calloutCoverageGaps()).
+      const allCovered = calloutCoverageGaps().length===0;
       if(allCovered){
         closeModal();
         showToast('All positions covered ✓','teal');
@@ -15247,8 +15267,10 @@ function attachHandlers(){
     // delete entry (from list)
     document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const deleted = (state.timeOff[sid]||[]).find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(sid, deleted.startDate, deleted.endDate);
       saveState();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({...m});
@@ -15285,8 +15307,10 @@ function attachHandlers(){
     document.querySelectorAll('.to-row-del').forEach(el=>el.addEventListener('click', async ()=>{
       if(!state.timeOff[m.staffId]) return;
       const rid = el.dataset.toId;
+      const deleted = state.timeOff[m.staffId].find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(m.staffId, deleted.startDate, deleted.endDate);
       saveState();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({type:'time-off-manager', staffId:m.staffId, _returnModal:m._returnModal});
@@ -16568,13 +16592,39 @@ function returnFromCoverage(staffId){
 // moment nobody assigned there is still out — whether that's because a
 // manager just marked someone back in, or because a scheduled leave
 // reached its end date. Only returns if there's no one else still out in
-// the same area, since one coverer is tracked per area, not per person.
+// the same area. Multiple coverers can be positioned in the same area
+// (one per out person), so return all of them, not just the first found.
 function maybeReturnCoverageFor(areaId){
   if(!areaId) return;
   const stillOut = state.staff.some(s => state.assignments[s.id]===areaId && state.callouts[s.id]);
   if(stillOut) return;
-  const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
-  if(covererId) returnFromCoverage(covererId);
+  Object.keys(state.coverage||{})
+    .filter(cid=>state.assignments[cid]===areaId)
+    .forEach(covererId=>returnFromCoverage(covererId));
+}
+
+// Returns the ids of areas that still have more people out than people
+// covering them. Coverage is tracked per covering-person rather than per
+// specific out-person, so "is this area covered" has to compare headcounts
+// — how many are out of the area vs. how many are currently positioned
+// there covering — not just whether any coverer is present at all.
+// Otherwise one coverer moving into an area with 2 people out reads as
+// "fully covered" with a slot still empty.
+function calloutCoverageGaps(){
+  const outCountByArea = {};
+  Object.keys(state.callouts).forEach(sid=>{
+    if(!state.callouts[sid]) return;
+    const aId = state.assignments[sid];
+    if(!aId) return;
+    outCountByArea[aId] = (outCountByArea[aId]||0)+1;
+  });
+  const coverCountByArea = {};
+  Object.keys(state.coverage||{}).forEach(cid=>{
+    const aId = state.assignments[cid];
+    if(!aId) return;
+    coverCountByArea[aId] = (coverCountByArea[aId]||0)+1;
+  });
+  return Object.keys(outCountByArea).filter(aId => (coverCountByArea[aId]||0) < outCountByArea[aId]);
 }
 
 function endAllCoverage(){
@@ -16612,6 +16662,23 @@ function applyTimeOffCoverage(sid, rid, covId){
   saveState();
   const covName = getStaffById(covId)?.name||'?';
   showToast(`${covName} assigned to cover ${getAreaById(state.assignments[sid])?.name||'their area'}`, 'teal');
+}
+
+// Deleting a time-off entry that was in effect today should undo whatever
+// callout/"needs coverage" state it triggered (via _applyTodayTimeOff() or
+// applyTimeOffCoverage()) — otherwise cancelling a leave request leaves the
+// person stuck flagged as out, and their coverage stuck assigned, with
+// nothing left to explain why.
+function reconcileCalloutAfterTimeOffDelete(sid, deletedStartDate, deletedEndDate){
+  const today = todayLabel();
+  if(!(deletedStartDate<=today && deletedEndDate>=today)) return; // wasn't in effect today
+  if(isScheduledOut(sid, today)) return; // another overlapping entry still covers today
+  if(!state.callouts[sid]) return; // nothing to undo
+  const areaId = state.assignments[sid];
+  const s = getStaffById(sid);
+  delete state.callouts[sid];
+  syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:s?.name}), 'callout');
+  maybeReturnCoverageFor(areaId);
 }
 
 // Clears the coverage link on a time-off entry. Deliberately does NOT
