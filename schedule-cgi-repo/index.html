@@ -9280,6 +9280,11 @@ function staffOnBreakOrLunch(selectedBreakLabels, selectedLunchLabels, areaIds){
 
 let dragStaffId = null;
 let activeModal = null; // {type, ...payload}
+// A live realtime update landing mid-drag would replace the DOM out from
+// under an in-progress native HTML5 drag; set true on dragstart/dragend for
+// on-board drags so the realtime refresh (see scheduleRealtimeRefresh below)
+// knows to wait rather than re-render immediately.
+let boardInteractionInProgress = false;
 // Guards the auto-derived coverage/callout syncs in _applyTodayTimeOff()/
 // applyScheduledTimeOff() — those run against whatever's in state.staff/
 // state.timeOff at the moment, which during the brief window between
@@ -13143,11 +13148,13 @@ function attachHandlers(){
     el.addEventListener('dragstart', e=>{
       _dragAreaId   = el.dataset.dragArea;
       _dragAreaDept = el.dataset.dragDept;
+      boardInteractionInProgress = true;
       e.dataTransfer.effectAllowed = 'move';
       e.stopPropagation();
     });
     el.addEventListener('dragend', ()=>{
       _dragAreaId = _dragAreaDept = null;
+      boardInteractionInProgress = false;
       document.querySelectorAll('.area-col.drag-over').forEach(c=>c.classList.remove('drag-over'));
     });
   });
@@ -13192,10 +13199,11 @@ function attachHandlers(){
   document.querySelectorAll('.chip[draggable=true]').forEach(chip=>{
     chip.addEventListener('dragstart', e=>{
       dragStaffId = chip.dataset.staffId;
+      boardInteractionInProgress = true;
       chip.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
-    chip.addEventListener('dragend', ()=>{ chip.classList.remove('dragging'); });
+    chip.addEventListener('dragend', ()=>{ chip.classList.remove('dragging'); boardInteractionInProgress = false; });
   });
 
   document.querySelectorAll('[data-dropzone]').forEach(zone=>{
@@ -14365,6 +14373,9 @@ function attachHandlers(){
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
+    if(window.RC && typeof window.RC.unsubscribeFromBoardChanges==='function'){
+      window.RC.unsubscribeFromBoardChanges();
+    }
     if(window.RC && typeof window.RC.signOut==='function'){
       try{ await window.RC.signOut(); }catch(e){}
     }
@@ -16793,6 +16804,23 @@ function reconcileStaleCoverage(){
   });
 }
 
+// Shared by the initial boot load and every realtime-triggered refresh
+// below, so both apply a fresh loadBoard() the same way.
+function applyMappedBoard(mapped){
+  state.areas = mapped.areas;
+  state.staff = mapped.staff;
+  state.supervisors = mapped.supervisors;
+  state.shifts = mapped.shifts;
+  state.lunchTimes = mapped.lunchTimes;
+  state.languages = mapped.languages;
+  state.rotationFlows = mapped.rotationFlows;
+  state.assignments = mapped.assignments;
+  state.callouts = mapped.callouts;
+  state.timeOff = mapped.timeOff;
+  state.blocks = mapped.blocks;
+  state.coverage = mapped.coverage;
+}
+
 // Runs the existing localStorage/seed boot path (for everything Step 3+
 // still owns), then — if a real Supabase board load succeeds — overwrites
 // state.areas/state.staff/state.assignments/state.callouts with the live
@@ -16807,22 +16835,13 @@ async function bootApp(){
   try{
     if(window.RC && typeof window.RC.loadBoard==='function'){
       const board = await window.RC.loadBoard();
-      const mapped = mapSupabaseBoard(board);
-      state.areas = mapped.areas;
-      state.staff = mapped.staff;
-      state.supervisors = mapped.supervisors;
-      state.shifts = mapped.shifts;
-      state.lunchTimes = mapped.lunchTimes;
-      state.languages = mapped.languages;
-      state.rotationFlows = mapped.rotationFlows;
-      state.assignments = mapped.assignments;
-      state.callouts = mapped.callouts;
-      state.timeOff = mapped.timeOff;
-      state.blocks = mapped.blocks;
-      state.coverage = mapped.coverage;
+      applyMappedBoard(mapSupabaseBoard(board));
       boardLoadedFromServer = true;
       reconcileStaleCoverage();
       render();
+      if(typeof window.RC.subscribeToBoardChanges==='function'){
+        window.RC.subscribeToBoardChanges(scheduleRealtimeRefresh);
+      }
     }
   }catch(e){
     console.warn('Could not load board data from Supabase — showing local data instead.', e && e.message);
@@ -16836,6 +16855,41 @@ async function bootApp(){
     }
   }catch(e){
     console.warn('Could not load rotation history from Supabase — showing local data instead.', e && e.message);
+  }
+}
+
+// ============ LIVE SYNC (Supabase Realtime) ============
+// Any write anyone makes lands in Postgres; subscribeToBoardChanges() gets
+// notified on every insert/update/delete across the board-relevant tables
+// (see migration 0010) and calls scheduleRealtimeRefresh() below, which
+// just re-runs loadBoard() + applyMappedBoard() — simplest correct option:
+// a full board is cheap for this app's scale, and re-deriving state from a
+// fresh read sidesteps any risk of subtly misapplying a partial payload.
+// Debounced so a burst of changes (e.g. someone dragging several people in
+// a row) collapses into one refresh instead of one per row.
+let _realtimeRefreshTimer = null;
+function scheduleRealtimeRefresh(){
+  if(_realtimeRefreshTimer) clearTimeout(_realtimeRefreshTimer);
+  _realtimeRefreshTimer = setTimeout(runRealtimeRefresh, 500);
+}
+async function runRealtimeRefresh(){
+  _realtimeRefreshTimer = null;
+  // Applying mid-drag would replace the DOM under an in-progress native
+  // drag; applying while a modal is open risks wiping unsaved form input
+  // (render() rebuilds innerHTML from state, not from live DOM values).
+  // Neither is destructive to skip — just try again shortly instead.
+  if(activeModal !== null || boardInteractionInProgress){
+    _realtimeRefreshTimer = setTimeout(runRealtimeRefresh, 1500);
+    return;
+  }
+  try{
+    const board = await window.RC.loadBoard();
+    applyMappedBoard(mapSupabaseBoard(board));
+    reconcileStaleCoverage();
+    saveState();
+    render();
+  }catch(e){
+    console.warn('Realtime board refresh failed:', e && e.message);
   }
 }
 
