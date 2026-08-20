@@ -11072,20 +11072,31 @@ function buildDailyChangesEmail(){
     const reason = toRec ? (toRec.label || toRec.reason || 'Scheduled leave') : 'Called out';
     const covererId = areaId ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId) : null;
     const coverer = covererId ? getStaffById(covererId) : null;
-    return {s, area, reason, coverer};
+    // coverer's own board slot is now the covered area itself — their real
+    // origin (where they return to tomorrow) is what's useful here.
+    const covererFromArea = coverer ? getAreaById(state.coverage[covererId]?.returnToAreaId) : null;
+    return {s, area, reason, coverer, covererFromArea};
   }).sort((a,b)=>(a.area?.name||'￿').localeCompare(b.area?.name||'￿'));
 
   const lines = ['Reassignments for '+friendlyDate(today), ''];
   if(rows.length===0){
     lines.push('No call-outs or scheduled leave today — no reassignments needed.');
   } else {
+    lines.push('COVERAGE');
     rows.forEach(r=>{
       lines.push((r.area?r.area.name:'No area')+':');
-      lines.push('  '+r.s.name+' — '+r.reason+' → '+(r.coverer?('Covered by '+r.coverer.name):'NEEDS COVERAGE'));
+      lines.push('  '+r.s.name+' out ('+r.reason+') → '+(r.coverer
+        ? 'Covered by '+r.coverer.name+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
+        : 'NEEDS COVERAGE'));
       lines.push('');
     });
     const pending = rows.filter(r=>!r.coverer && r.area).length;
     lines.push(pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
+
+    lines.push('', 'NOT PRESENT TODAY');
+    rows.slice().sort((a,b)=>a.s.name.localeCompare(b.s.name)).forEach(r=>{
+      lines.push('- '+r.s.name+' ('+(r.area?r.area.name:'no area')+')');
+    });
   }
   return {subject:'Daily Reassignments — '+friendlyDate(today), body:lines.join('\n')};
 }
