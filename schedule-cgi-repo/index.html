@@ -11065,17 +11065,12 @@ function buildDailyChangesEmail(){
     const s = getStaffById(sid);
     const areaId = state.assignments[sid];
     const area = areaId ? getAreaById(areaId) : null;
-    // A synced callout row collapses 'scheduled' to true after reload
-    // (the server doesn't persist that distinction), so check today's
-    // actual time-off record rather than trusting the flag alone.
-    const toRec = ((state.timeOff||{})[sid]||[]).find(r=>today>=r.startDate&&today<=r.endDate);
-    const reason = toRec ? (toRec.label || toRec.reason || 'Scheduled leave') : 'Called out';
     const covererId = areaId ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId) : null;
     const coverer = covererId ? getStaffById(covererId) : null;
     // coverer's own board slot is now the covered area itself — their real
     // origin (where they return to tomorrow) is what's useful here.
     const covererFromArea = coverer ? getAreaById(state.coverage[covererId]?.returnToAreaId) : null;
-    return {s, area, reason, coverer, covererFromArea};
+    return {s, area, coverer, covererFromArea};
   }).sort((a,b)=>(a.area?.name||'￿').localeCompare(b.area?.name||'￿'));
 
   const lines = ['Reassignments for '+friendlyDate(today), ''];
@@ -11095,7 +11090,7 @@ function buildDailyChangesEmail(){
 
     lines.push('', 'NOT PRESENT TODAY');
     rows.slice().sort((a,b)=>a.s.name.localeCompare(b.s.name)).forEach(r=>{
-      lines.push('- '+r.s.name+' ('+(r.area?r.area.name:'no area')+') — '+r.reason);
+      lines.push('- '+r.s.name+' ('+(r.area?r.area.name:'no area')+')');
     });
   }
   return {subject:'Daily Reassignments — '+friendlyDate(today), body:lines.join('\n')};
