@@ -10517,6 +10517,7 @@ function renderStaffStatsModal(m){
           const certs=[];
           if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ Counter Acceptance Certified</span>');
           (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
+          if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
           return certs.length?'<div class="stats-cert-row">'+certs.join('')+'</div>':'';
         })()}
       </div>
