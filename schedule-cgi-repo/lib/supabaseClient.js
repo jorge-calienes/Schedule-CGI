@@ -815,6 +815,42 @@ export async function fetchAuditLog({ limit = 50 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Live sync (Supabase Realtime / Postgres Changes) — one shared channel
+// subscribed to every table loadBoard() reads (see migration 0010 for the
+// publication setup). onChange fires on every insert/update/delete on any
+// of them; the caller decides what to do (index.html just re-runs
+// loadBoard() and re-applies it — see scheduleRealtimeRefresh there).
+// Deliberately dumb on this end: no diffing or per-table logic here, just
+// "something changed, go refetch" — keeps this file from needing to know
+// index.html's state shape.
+// ---------------------------------------------------------------------------
+
+const REALTIME_TABLES = [
+  'areas', 'staff', 'assignments', 'departments', 'callouts', 'supervisors',
+  'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
+  'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
+  'lunch_times',
+];
+
+let realtimeChannel = null;
+
+export function subscribeToBoardChanges(onChange) {
+  if (realtimeChannel) return; // already subscribed — no-op, not an error
+  let channel = supabase.channel('board-changes');
+  for (const table of REALTIME_TABLES) {
+    channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, onChange);
+  }
+  channel.subscribe();
+  realtimeChannel = channel;
+}
+
+export function unsubscribeFromBoardChanges() {
+  if (!realtimeChannel) return;
+  supabase.removeChannel(realtimeChannel);
+  realtimeChannel = null;
+}
+
+// ---------------------------------------------------------------------------
 // index.html is a classic (non-module) script, so it can't `import` this
 // file directly. Bridge everything through window.RC instead, and fire
 // 'rc:ready' once it's populated so the classic script knows it's safe to
@@ -846,6 +882,8 @@ window.RC = {
   fetchPendingEvaluations,
   myEvaluationQueue,
   fetchAuditLog,
+  subscribeToBoardChanges,
+  unsubscribeFromBoardChanges,
   grantAccess,
   fetchAccounts,
   revokeAccess,
