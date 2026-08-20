@@ -14425,8 +14425,10 @@ function attachHandlers(){
     }));
     document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const deleted = (state.timeOff[sid]||[]).find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(sid, deleted.startDate, deleted.endDate);
       saveState(); render();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
     }));
@@ -15247,8 +15249,10 @@ function attachHandlers(){
     // delete entry (from list)
     document.querySelectorAll('[data-to-delete-staff]').forEach(el=>el.addEventListener('click', async ()=>{
       const sid=el.dataset.toDeleteStaff, rid=el.dataset.toDeleteId;
+      const deleted = (state.timeOff[sid]||[]).find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       if(state.timeOff[sid]) state.timeOff[sid]=state.timeOff[sid].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(sid, deleted.startDate, deleted.endDate);
       saveState();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({...m});
@@ -15285,8 +15289,10 @@ function attachHandlers(){
     document.querySelectorAll('.to-row-del').forEach(el=>el.addEventListener('click', async ()=>{
       if(!state.timeOff[m.staffId]) return;
       const rid = el.dataset.toId;
+      const deleted = state.timeOff[m.staffId].find(r=>r.id===rid);
       const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
       state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==rid);
+      if(deleted) reconcileCalloutAfterTimeOffDelete(m.staffId, deleted.startDate, deleted.endDate);
       saveState();
       if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
       openModal({type:'time-off-manager', staffId:m.staffId, _returnModal:m._returnModal});
@@ -16612,6 +16618,23 @@ function applyTimeOffCoverage(sid, rid, covId){
   saveState();
   const covName = getStaffById(covId)?.name||'?';
   showToast(`${covName} assigned to cover ${getAreaById(state.assignments[sid])?.name||'their area'}`, 'teal');
+}
+
+// Deleting a time-off entry that was in effect today should undo whatever
+// callout/"needs coverage" state it triggered (via _applyTodayTimeOff() or
+// applyTimeOffCoverage()) — otherwise cancelling a leave request leaves the
+// person stuck flagged as out, and their coverage stuck assigned, with
+// nothing left to explain why.
+function reconcileCalloutAfterTimeOffDelete(sid, deletedStartDate, deletedEndDate){
+  const today = todayLabel();
+  if(!(deletedStartDate<=today && deletedEndDate>=today)) return; // wasn't in effect today
+  if(isScheduledOut(sid, today)) return; // another overlapping entry still covers today
+  if(!state.callouts[sid]) return; // nothing to undo
+  const areaId = state.assignments[sid];
+  const s = getStaffById(sid);
+  delete state.callouts[sid];
+  syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:s?.name}), 'callout');
+  maybeReturnCoverageFor(areaId);
 }
 
 // Clears the coverage link on a time-off entry. Deliberately does NOT
