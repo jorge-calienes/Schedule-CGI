@@ -11126,21 +11126,43 @@ function renderCalloutDashModal(m){
   // s.name exists), which looked like "nothing shows" when opening it.
   const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   const searchQ = (m.search||'').toLowerCase().trim();
+
+  // Coverage is tracked per covering-person, not per specific out-person —
+  // so when 2+ people are out of the SAME area, pair each out person with a
+  // distinct coverer already positioned there (by order), instead of every
+  // row independently grabbing "the" coverer for that area. That old lookup
+  // made one coverer look like they'd covered everyone out of the area even
+  // with slots still empty.
+  const coverersByArea = {};
+  Object.keys(state.coverage||{}).forEach(cid=>{
+    const aId = state.assignments[cid];
+    if(!aId) return;
+    (coverersByArea[aId] = coverersByArea[aId]||[]).push(cid);
+  });
+  const areaSlotsClaimed = {};
+  // Also stop two still-pending rows from both defaulting to the same
+  // suggested candidate — one person can only actually cover one spot.
+  const candidateClaimedThisRender = new Set();
+
   const rows = outIds.map(sid=>{
     const s      = getStaffById(sid);
     const areaId = state.assignments[sid];
     const area   = areaId ? getAreaById(areaId) : null;
-    const covererId = areaId
-      ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId)
-      : null;
+    let covererId = null;
+    if(areaId){
+      const slot = areaSlotsClaimed[areaId]||0;
+      covererId = (coverersByArea[areaId]||[])[slot] || null;
+      areaSlotsClaimed[areaId] = slot+1;
+    }
     const coverPerson = covererId ? getStaffById(covererId) : null;
     const raw  = areaId ? rankCandidatesForArea(areaId,[sid]) : [];
     const cands = raw.filter(c=>{
       if((state.coverage||{})[c.staff.id]) return false;
+      if(candidateClaimedThisRender.has(c.staff.id)) return false;
       if(!c.currentArea) return true;
       return activeInArea(c.currentArea,c.staff.id).length>1;
     });
-    const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id]);
+    const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id] && !candidateClaimedThisRender.has(c.staff.id));
     // Apply search filter
     const filtered = searchQ
       ? all.filter(c=>c.staff.name.toLowerCase().includes(searchQ)
@@ -11149,6 +11171,7 @@ function renderCalloutDashModal(m){
     const selId = (m.selects||{})[sid]
       ?? (filtered.find(c=>c.staff.id===(m.selects||{})[sid])?.staff.id)
       ?? filtered[0]?.staff.id ?? null;
+    if(!coverPerson && selId) candidateClaimedThisRender.add(selId);
     return {sid,s,area,areaId,covererId,coverPerson,candidates:filtered,selId};
   });
   const pendingCount = rows.filter(r=>!r.coverPerson&&r.area).length;
@@ -15001,14 +15024,9 @@ function attachHandlers(){
         return;
       }
       assignCoverage(coverId, areaId);
-      // Check if all positions are now covered (must have explicit coverage assigned)
-      const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
-      const coveredAreas = new Set(Object.keys(state.coverage||{}).map(cid=>state.assignments[cid]).filter(Boolean));
-      const allCovered = outIds.every(sid=>{
-        const aId = state.assignments[sid];
-        if(!aId) return true; // unassigned — nothing to cover
-        return coveredAreas.has(aId); // someone is explicitly covering this area
-      });
+      // Check if all positions are now covered (headcount per area, not
+      // just "is anyone covering it" — see calloutCoverageGaps()).
+      const allCovered = calloutCoverageGaps().length===0;
       if(allCovered){
         closeModal();
         showToast('All positions covered ✓','teal');
@@ -16574,13 +16592,39 @@ function returnFromCoverage(staffId){
 // moment nobody assigned there is still out — whether that's because a
 // manager just marked someone back in, or because a scheduled leave
 // reached its end date. Only returns if there's no one else still out in
-// the same area, since one coverer is tracked per area, not per person.
+// the same area. Multiple coverers can be positioned in the same area
+// (one per out person), so return all of them, not just the first found.
 function maybeReturnCoverageFor(areaId){
   if(!areaId) return;
   const stillOut = state.staff.some(s => state.assignments[s.id]===areaId && state.callouts[s.id]);
   if(stillOut) return;
-  const covererId = Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId);
-  if(covererId) returnFromCoverage(covererId);
+  Object.keys(state.coverage||{})
+    .filter(cid=>state.assignments[cid]===areaId)
+    .forEach(covererId=>returnFromCoverage(covererId));
+}
+
+// Returns the ids of areas that still have more people out than people
+// covering them. Coverage is tracked per covering-person rather than per
+// specific out-person, so "is this area covered" has to compare headcounts
+// — how many are out of the area vs. how many are currently positioned
+// there covering — not just whether any coverer is present at all.
+// Otherwise one coverer moving into an area with 2 people out reads as
+// "fully covered" with a slot still empty.
+function calloutCoverageGaps(){
+  const outCountByArea = {};
+  Object.keys(state.callouts).forEach(sid=>{
+    if(!state.callouts[sid]) return;
+    const aId = state.assignments[sid];
+    if(!aId) return;
+    outCountByArea[aId] = (outCountByArea[aId]||0)+1;
+  });
+  const coverCountByArea = {};
+  Object.keys(state.coverage||{}).forEach(cid=>{
+    const aId = state.assignments[cid];
+    if(!aId) return;
+    coverCountByArea[aId] = (coverCountByArea[aId]||0)+1;
+  });
+  return Object.keys(outCountByArea).filter(aId => (coverCountByArea[aId]||0) < outCountByArea[aId]);
 }
 
 function endAllCoverage(){
