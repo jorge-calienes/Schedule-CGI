@@ -6574,17 +6574,22 @@
   .to-list-card:hover{box-shadow:var(--md-sys-elevation-1);}
   .to-list-card.active{border-color:var(--md-sys-color-primary);}
 
+  /* header stacks vertically: top row is name + date/Edit/✕ together on one
+     line, chips (TDIS/AGS/area/Now/reason) wrap on their own line below —
+     instead of the name+chips and the date+actions competing for the same
+     row and unpredictably wrapping apart on narrow screens. */
   .to-card-header{
-    display:flex;align-items:center;justify-content:space-between;
+    display:flex;flex-direction:column;gap:6px;
     padding:var(--md-space-3) var(--md-space-4);
     border-bottom:1px solid var(--md-sys-color-outline-variant);
-    flex-wrap:wrap;gap:var(--md-space-2);
   }
-  .to-card-who{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);}
+  .to-card-toprow{display:flex;align-items:center;justify-content:space-between;gap:var(--md-space-2);}
+  .to-card-name-wrap{display:flex;align-items:center;gap:6px;min-width:0;}
+  .to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .to-card-actions{display:flex;align-items:center;gap:var(--md-space-2);flex-shrink:0;}
+  .to-card-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .to-active-pill{font-size:10px;font-weight:700;color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
-  .to-card-meta{display:flex;align-items:center;gap:var(--md-space-2);flex-wrap:wrap;}
-  .to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);}
+  .to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
   .to-card-reason{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
 
   .to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
@@ -9628,19 +9633,23 @@ function renderTimeOffView(){
       return `
       <div class="to-list-card ${isActive?'active':''}">
         <div class="to-card-header">
-          <div class="to-card-who">
-            <span class="area-dot" style="background:${areaColor}"></span>
-            <span class="to-list-name">${escapeHtml(r.staff.name)}</span>
+          <div class="to-card-toprow">
+            <div class="to-card-name-wrap">
+              <span class="area-dot" style="background:${areaColor}"></span>
+              <span class="to-list-name">${escapeHtml(r.staff.name)}</span>
+            </div>
+            <div class="to-card-actions">
+              <span class="to-card-dates">${r.startDate===r.endDate?r.startDate:r.startDate+' → '+r.endDate}</span>
+              <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
+              <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
+            </div>
+          </div>
+          <div class="to-card-chips">
             ${r.staff.tdisNumber?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(r.staff.tdisNumber)}</span>`:''}
             ${r.staff.isSubcontractor?'<span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}
             ${r.area?`<span class="to-entry-area" style="background:${areaColor}18;color:${areaColor};border:1px solid ${areaColor}40;">${escapeHtml(r.area.name)}</span>`:'<span class="to-entry-area unassigned">No area</span>'}
             ${isActive?'<span class="to-active-pill">● Now</span>':''}
-          </div>
-          <div class="to-card-meta">
-            <span class="to-card-dates">${r.startDate===r.endDate?r.startDate:r.startDate+' → '+r.endDate}</span>
             ${r.label?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
-            <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
-            <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
           </div>
         </div>
         <div class="to-card-coverage">
