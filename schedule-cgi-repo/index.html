@@ -6589,32 +6589,41 @@
 
   .to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
 
-  /* Best-fit suggestion cards */
+  /* Best-fit suggestion list — one full-width row per candidate, stacked,
+     instead of a horizontal wrapping row of small cards (which read as
+     something to scroll through sideways). */
   .to-suggestion-label{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:var(--md-space-2);}
-  .to-suggestion-row{display:flex;align-items:stretch;gap:var(--md-space-2);flex-wrap:wrap;}
-  .to-sug-card{
-    display:flex;flex-direction:column;align-items:center;gap:2px;
+  .to-suggestion-list{display:flex;flex-direction:column;gap:var(--md-space-2);}
+  .to-sug-row{
+    display:flex;align-items:center;gap:var(--md-space-3);
+    width:100%;text-align:left;
     background:var(--md-sys-color-surface-container-low);
     border:1.5px solid var(--md-sys-color-outline-variant);
     border-radius:var(--md-sys-shape-corner-medium);
     padding:var(--md-space-2) var(--md-space-3);
-    min-width:72px;
     cursor:pointer;
     font-family:var(--sans);
     transition:border-color .15s,background .15s;
   }
-  .to-sug-card:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
-  .to-sug-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
-  .to-sug-exp{font-size:10px;font-weight:700;white-space:nowrap;}
-  .to-sug-times{font-size:9px;color:var(--md-sys-color-on-surface-variant);}
-  .to-sug-divider{width:1px;background:var(--md-sys-color-outline-variant);align-self:stretch;margin:0 var(--md-space-1);}
+  .to-sug-row:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+  .to-sug-avatar{
+    width:30px;height:30px;flex-shrink:0;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--md-sys-color-secondary-container);
+    color:var(--md-sys-color-on-secondary-container);
+    font-weight:700;font-size:13px;
+  }
+  .to-sug-row-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .to-sug-row-exp{font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;}
+  .to-sug-best-tag{background:#E8F5E9;color:#2E7D32;font-size:10px;font-weight:700;padding:2px 9px;border-radius:var(--md-sys-shape-corner-full);flex-shrink:0;}
   .to-sug-more{
-    padding:4px 8px;border:1.5px solid var(--md-sys-color-outline-variant);
-    border-radius:var(--md-sys-shape-corner-small);
+    width:100%;margin-top:var(--md-space-2);
+    padding:8px 12px;border:1.5px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
     font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);
     color:var(--md-sys-color-on-surface-variant);
     background:var(--md-sys-color-surface-container-low);
-    align-self:center;cursor:pointer;min-width:110px;
+    cursor:pointer;
   }
 
   /* Coverage assigned badge */
@@ -6635,7 +6644,6 @@
     .cal-grid-wrap,.to-list-wrap{padding:var(--md-space-3);}
     .cal-cell{min-height:72px;}
     .to-list-card{border-radius:var(--md-sys-shape-corner-small);}
-    .to-sug-card{min-width:60px;}
   }
 
 
@@ -9510,19 +9518,19 @@ function renderCoverageSuggestions(r){
   const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
-  <div class="to-suggestion-row">
-    ${suggestions.map(s=>`
-      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
-        <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
-        <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
-        ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
+  <div class="to-suggestion-list">
+    ${suggestions.map((s,i)=>`
+      <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
+        <span class="to-sug-avatar">${escapeHtml(s.staff.name.charAt(0))}</span>
+        <span class="to-sug-row-name">${escapeHtml(s.staff.name)}</span>
+        <span class="to-sug-row-exp" style="color:${s.fitColor}">${s.fitLabel}${s.timesWorked>0?' · '+s.timesWorked+'×':''}</span>
+        ${i===0?'<span class="to-sug-best-tag">Best</span>':''}
       </button>`).join('')}
-    <div class="to-sug-divider"></div>
-    <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
-      <option value="">Others…</option>
-      ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
-    </select>
-  </div>`;
+  </div>
+  <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
+    <option value="">Others…</option>
+    ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
+  </select>`;
 }
 
 function renderTimeOffView(){
@@ -14525,7 +14533,7 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
@@ -15393,7 +15401,7 @@ function attachHandlers(){
     }));
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
