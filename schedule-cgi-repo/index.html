@@ -8949,6 +8949,12 @@ function blockConflictsIn(staffId, areaId){
 
 // was staffId in areaId last rotation?
 function isRepeatArea(staffId, areaId){
+  // Team leads are expected to stay in their own area every rotation —
+  // that's not a "repeat" worth flagging the way it is for rotating staff.
+  // A team lead placed somewhere OTHER than home is a real exception,
+  // handled separately by isTeamLeadDisplaced().
+  const staff = getStaffById(staffId);
+  if(staff?.isTeamLead) return false;
   const last = lastAreaFor(staffId);
   return last && last===areaId;
 }
