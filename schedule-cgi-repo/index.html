@@ -5362,7 +5362,36 @@
     overflow-y:auto;
     flex-shrink:0;
     padding:var(--md-space-4) var(--md-space-3) var(--md-space-8);
+    transition:width .18s ease;
   }
+  .sidebar-head-row{display:flex;align-items:center;justify-content:space-between;gap:var(--md-space-2);}
+  .sidebar-head-row h3{margin-bottom:0;}
+  .sidebar-collapse-btn, .sidebar-expand-btn{
+    background:var(--md-sys-color-surface-container-high);
+    border:1px solid var(--md-sys-color-outline-variant);
+    color:var(--md-sys-color-on-surface-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
+    width:28px;height:28px;flex-shrink:0;
+    font-size:14px;line-height:1;cursor:pointer;
+  }
+  .sidebar-collapse-btn:hover, .sidebar-expand-btn:hover{background:var(--md-sys-color-surface-container-highest);}
+  .sidebar.sidebar-collapsed{
+    width:56px;
+    padding:var(--md-space-4) var(--md-space-2);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:var(--md-space-2);
+  }
+  .sidebar-collapsed.dragover{border-right:2px dashed var(--md-sys-color-tertiary);}
+  .sidebar-mini-btn{
+    width:36px;height:36px;
+    border-radius:var(--md-sys-shape-corner-medium);
+    border:1px solid var(--md-sys-color-outline-variant);
+    background:var(--md-sys-color-surface-container-high);
+    font-size:15px;cursor:pointer;
+  }
+  .sidebar-mini-btn:hover{background:var(--md-sys-color-surface-container-highest);}
   .sidebar h3{
     font-size:var(--md-sys-typescale-label-medium-size);
     text-transform:uppercase;
@@ -7264,6 +7293,10 @@
       padding-top:120px;
     }
     .sidebar.drawer-open{transform:translateX(0);}
+    /* the desktop/tablet collapse-to-a-rail trick doesn't apply here — the
+       drawer is already off-canvas by default, so there's no board width
+       to reclaim, and a 56px sliver would make an opened drawer unusable */
+    .sidebar.sidebar-collapsed{width:82vw;max-width:320px;align-items:stretch;}
     .drawer-scrim{display:block;}
 
     /* board mobile: full-width stacked, page is the scrollbar */
@@ -9308,10 +9341,12 @@ let _prevStaffManagerTab = null; // tracks last-rendered staff-manager tab, so w
 let _prevStaffManagerEditId = undefined;
 let viewMode = 'board'; // 'board' | 'overview'
 let drawerOpen = false; // mobile-only: whether the pool sidebar overlay is open
+let sidebarForceExpanded = false; // user manually pinned the sidebar open despite an empty pool
 let selectedStaffId = null; // tap-to-move: staff currently selected, awaiting a destination tap
 let navDrawerOpen = false;
 let boardSearch   = '';   // filter chips by name on board
 let searchExpanded = false; // topbar search bar visible
+let _lastSearchScrollQuery = null; // last query auto-scrolled to a match, so unrelated re-renders (realtime, drags) don't keep yanking the view back
 let timeOffFilter = 'upcoming'; // 'today'|'week'|'upcoming'
 let swapMode      = null; // {staffId} first person selected for quick-swap
 let chipMenuOpen  = null; // staffId whose chip menu is open
@@ -9817,9 +9852,30 @@ function renderSidebar(){
   const unplaced = state.staff.filter(s=>s.active!==false && !state.assignments[s.id]);
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
+
+  // Nobody to place and nothing pinned open — collapse to a slim rail so
+  // the board columns can use that width instead of an empty "Everyone is
+  // placed" panel. Still a drop target (drag a chip here to unassign them)
+  // and still surfaces Quick actions as icon buttons. A tap-to-move in
+  // progress always forces it back open so the target button has room.
+  const collapsed = unplaced.length===0 && !sidebarForceExpanded && !isTapTarget;
+  if(collapsed){
+    return `
+    <div class="sidebar sidebar-collapsed ${drawerOpen?'drawer-open':''}" data-dropzone="pool" title="Drop here to unassign">
+      <button class="sidebar-expand-btn" id="btn-sidebar-expand" title="Show unassigned pool &amp; quick actions">☰</button>
+      ${readOnly ? '' : `
+      <button class="sidebar-mini-btn" id="btn-add-area" title="Add work area">➕</button>
+      <button class="sidebar-mini-btn" id="btn-mark-callout" title="Mark someone out">⚠️</button>
+      `}
+    </div>`;
+  }
+
   return `
   <div class="sidebar ${drawerOpen?'drawer-open':''}">
-    <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
+    <div class="sidebar-head-row">
+      <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
+      ${unplaced.length===0 && !isTapTarget ? `<button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="Collapse — everyone's placed">◂</button>` : ''}
+    </div>
     <div class="pool-zone ${isTapTarget?'tap-target':''}" data-dropzone="pool">
       ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="">Move here (unassign)</button>`:''}
       ${unplaced.length===0 ? '<div class="pool-empty">Everyone is placed</div>' : unplaced.map(s=>renderChip(s)).join('')}
@@ -13643,6 +13699,17 @@ function attachHandlers(){
     const applyFilter = () => {
       const q = (searchEl.value || '').toLowerCase().trim();
       boardSearch = searchEl.value;
+      // The search box lives in the topbar and shows on every tab, but
+      // chips (and therefore a "location" to jump to) only exist in board
+      // view — so a match found while on another tab jumps there first.
+      // The re-render calls attachHandlers() again, which re-applies the
+      // filter (see the `if(boardSearch) applyFilter()` guard below) against
+      // the now-rendered board chips, including scrolling to the match.
+      if(q && viewMode!=='board' && state.staff.some(s=>(s.name||'').toLowerCase().includes(q))){
+        viewMode = 'board';
+        render();
+        return;
+      }
       // Toggle CSS classes directly — no render() needed
       document.querySelectorAll('.chip[data-staff-id]').forEach(chip => {
         const name = (getStaffById(chip.dataset.staffId)?.name || '').toLowerCase();
@@ -13659,6 +13726,16 @@ function attachHandlers(){
       // show/hide the clear button without full re-render
       const clearBtn = document.getElementById('btn-search-clear');
       if(clearBtn) clearBtn.style.display = q ? 'flex' : 'none';
+      // Jump straight to the match instead of making them hunt for it —
+      // covers areas, the unassigned pool, wherever it actually is. Only
+      // for an actually-new query, so unrelated re-renders while a search
+      // is still active (realtime sync, a drag elsewhere) don't keep
+      // yanking the view back to it.
+      if(q && q!==_lastSearchScrollQuery){
+        const firstMatch = document.querySelector('.chip.search-match');
+        if(firstMatch) firstMatch.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+      }
+      _lastSearchScrollQuery = q || null;
     };
     searchEl.addEventListener('input', () => {
       clearTimeout(_searchTimer);
@@ -13667,6 +13744,7 @@ function attachHandlers(){
     searchEl.addEventListener('keydown', e => {
       if(e.key === 'Escape'){
         boardSearch = ''; searchEl.value = '';
+        _lastSearchScrollQuery = null;
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('search-dim','search-match'));
       }
     });
@@ -13675,6 +13753,7 @@ function attachHandlers(){
   }
   on('btn-search-clear', () => {
     boardSearch = '';
+    _lastSearchScrollQuery = null;
     const el = document.getElementById('board-search-input');
     if(el) el.value = '';
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('search-dim','search-match'));
@@ -14396,6 +14475,8 @@ function attachHandlers(){
   on('btn-add-area', ()=>openModal({type:'area-editor'}));
   on('btn-add-area-2', ()=>openModal({type:'area-editor'}));
   on('btn-mark-callout', ()=>openModal({type:'mark-callout'}));
+  on('btn-sidebar-expand', ()=>{ sidebarForceExpanded=true; render(); });
+  on('btn-sidebar-collapse', ()=>{ sidebarForceExpanded=false; render(); });
 
   // --- tab bar (view switcher) ---
   on('btn-view-board',       ()=>{ viewMode='board';       navDrawerOpen=false; render(); });
@@ -15245,9 +15326,19 @@ function attachHandlers(){
   if(activeModal.type==='time-off-manager'){
     const m = activeModal;
 
-    // search and filter
+    // search and filter — openModal() re-renders on every keystroke (the
+    // list/grouping is too structurally different between queries for a
+    // CSS-only filter), which recreates this input and drops focus unless
+    // restored here — otherwise typing feels like it only accepts one
+    // letter at a time.
     const searchEl = document.getElementById('to-search');
-    if(searchEl) searchEl.addEventListener('input', ()=>openModal({...m, searchQ:searchEl.value}));
+    if(searchEl){
+      if(m.searchQ){
+        searchEl.focus();
+        try{ searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length); }catch(e){}
+      }
+      searchEl.addEventListener('input', ()=>openModal({...m, searchQ:searchEl.value}));
+    }
     const pastEl = document.getElementById('to-show-past');
     if(pastEl) pastEl.addEventListener('change', ()=>openModal({...m, showPast:pastEl.checked}));
 
