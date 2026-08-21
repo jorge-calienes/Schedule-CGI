@@ -8949,12 +8949,14 @@ function blockConflictsIn(staffId, areaId){
 
 // was staffId in areaId last rotation?
 function isRepeatArea(staffId, areaId){
-  // Team leads are expected to stay in their own area every rotation —
-  // that's not a "repeat" worth flagging the way it is for rotating staff.
+  // Team leads are expected to stay in their own area every rotation, and
+  // a "fixed" area is by definition one staff don't rotate in or out of —
+  // neither is a "repeat" worth flagging the way it is for rotating staff.
   // A team lead placed somewhere OTHER than home is a real exception,
   // handled separately by isTeamLeadDisplaced().
   const staff = getStaffById(staffId);
   if(staff?.isTeamLead) return false;
+  if(getAreaById(areaId)?.fixed) return false;
   const last = lastAreaFor(staffId);
   return last && last===areaId;
 }
@@ -9985,7 +9987,7 @@ function renderChip(s){
   const area     = areaId ? getAreaById(areaId) : null;
   const isOut    = !!state.callouts[s.id];
   const isFixed  = !!(area?.fixed);  // fixed areas never rotate — no flags
-  const repeat   = !isFixed && areaId && isRepeatArea(s.id, areaId);
+  const repeat   = areaId && isRepeatArea(s.id, areaId); // isRepeatArea() itself excludes fixed areas
   const conflicts= !isFixed && areaId ? blockConflictsIn(s.id, areaId) : [];
   const displaced= !isFixed && areaId && isTeamLeadDisplaced(s.id, areaId);
   const flagged  = repeat || conflicts.length>0 || displaced;
@@ -15545,7 +15547,7 @@ function attachHandlers(){
         const areaId = activeModal.editId;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = await window.RC.ensureDepartment(dept);
-          return window.RC.updateArea({areaId, name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          return window.RC.updateArea({areaId, name, color, capacity, departmentId, fixed, actingAccountId:authState.account.id});
         });
         const a = getAreaById(areaId);
         a.name=name; a.capacity=capacity; a.color=color; a.department=dept; a.fixed=fixed;
@@ -15558,7 +15560,7 @@ function attachHandlers(){
         let createdId = null;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = await window.RC.ensureDepartment(dept);
-          const row = await window.RC.createArea({name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          const row = await window.RC.createArea({name, color, capacity, departmentId, fixed, actingAccountId:authState.account.id});
           createdId = row.id;
           return row;
         });
@@ -15743,7 +15745,7 @@ function attachHandlers(){
           const hrs   = dly!=null ? (dly*rots).toFixed(1) : '';
           const cos   = (state.calloutHistory||{})[s.id]?.length||0;
           const leaves= ((state.timeOff||{})[s.id]||[]).filter(r=>r.endDate>=today).length;
-          const move  = !!(area&&!area.fixed&&isRepeatArea(s.id,area.id));
+          const move  = !!(area&&isRepeatArea(s.id,area.id));
           const reqs  = (s.positionRequests||[]).filter(r=>!r.status||r.status==='pending').length;
           sh1.push([
             s.name, s.department||'', area?.name||'', s.shiftHours||'',
@@ -17040,7 +17042,7 @@ function mapSupabaseBoard(board){
     color: a.color,
     capacity: a.capacity,
     department: deptById[a.department_id] || '',
-    fixed: false,
+    fixed: !!a.fixed,
   }));
 
   const langCertsByStaff = {};

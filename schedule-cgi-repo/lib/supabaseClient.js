@@ -366,12 +366,13 @@ export async function archiveStaff({ staffId, staffName, actingAccountId }) {
   });
 }
 
-function areaRow({ name, color, capacity, departmentId }) {
+function areaRow({ name, color, capacity, departmentId, fixed }) {
   return {
     name,
     color: color || '#2F5FA8',
     capacity: capacity || 4,
     department_id: departmentId || null,
+    fixed: !!fixed,
   };
 }
 
