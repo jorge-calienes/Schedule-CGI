@@ -6621,15 +6621,33 @@
   .to-sug-row-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .to-sug-row-exp{font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;}
   .to-sug-best-tag{background:#E8F5E9;color:#2E7D32;font-size:10px;font-weight:700;padding:2px 9px;border-radius:var(--md-sys-shape-corner-full);flex-shrink:0;}
-  .to-sug-more{
-    width:100%;margin-top:var(--md-space-2);
-    padding:8px 12px;border:1.5px solid var(--md-sys-color-outline-variant);
+  /* "Others" — a native <details> disclosure instead of a <select> dropdown,
+     so tapping it reveals the same row-per-candidate list on its own line
+     below, rather than a cramped OS picker menu. */
+  .to-others-details{margin-top:var(--md-space-2);}
+  .to-others-bar{
+    display:flex;align-items:center;gap:8px;
+    width:100%;padding:8px 12px;
+    border:1.5px solid var(--md-sys-color-outline-variant);
     border-radius:var(--md-sys-shape-corner-medium);
-    font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);
+    font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);font-weight:600;
     color:var(--md-sys-color-on-surface-variant);
     background:var(--md-sys-color-surface-container-low);
     cursor:pointer;
+    list-style:none;
   }
+  .to-others-bar::-webkit-details-marker{display:none;}
+  .to-others-bar::before{content:'▸';font-size:10px;transition:transform .15s;}
+  .to-others-details[open] .to-others-bar::before{transform:rotate(90deg);}
+  .to-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--md-sys-color-surface-container-high);
+    color:var(--md-sys-color-on-surface-variant);
+    padding:1px 7px;border-radius:var(--md-sys-shape-corner-full);
+  }
+  .to-others-list{display:flex;flex-direction:column;gap:var(--md-space-2);margin-top:var(--md-space-2);}
+  .to-others-list .to-sug-row{padding:6px 12px;}
+  .to-others-list .to-sug-avatar{width:26px;height:26px;font-size:11px;}
 
   /* Coverage assigned badge */
   .to-cov-badge{display:flex;align-items:center;gap:var(--md-space-2);background:#E8F5E9;border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-2) var(--md-space-3);}
@@ -9521,6 +9539,7 @@ function suggestCoverageFor(areaId, absentStaffId){
 function renderCoverageSuggestions(r){
   if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
   const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
+  const others = state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name));
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
   <div class="to-suggestion-list">
@@ -9532,10 +9551,17 @@ function renderCoverageSuggestions(r){
         ${i===0?'<span class="to-sug-best-tag">Best</span>':''}
       </button>`).join('')}
   </div>
-  <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
-    <option value="">Others…</option>
-    ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
-  </select>`;
+  ${others.length>0?`
+  <details class="to-others-details">
+    <summary class="to-others-bar">Others <span class="to-others-count">${others.length}</span></summary>
+    <div class="to-others-list">
+      ${others.map(s=>`
+        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.id}">
+          <span class="to-sug-avatar">${escapeHtml(s.name.charAt(0))}</span>
+          <span class="to-sug-row-name">${escapeHtml(s.name)}</span>
+        </button>`).join('')}
+    </div>
+  </details>`:''}`;
 }
 
 function renderTimeOffView(){
@@ -14549,14 +14575,6 @@ function attachHandlers(){
       render();
     }));
 
-    // "Others…" dropdown
-    document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
-      const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
-      if(!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
-      render();
-    }));
-
     // remove coverage
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
@@ -15413,14 +15431,6 @@ function attachHandlers(){
     document.querySelectorAll('.to-sug-row').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
-      openModal({...m});
-    }));
-
-    // "Others…" dropdown (anyone not already in the best-fit picks)
-    document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
-      const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
-      if(!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
       openModal({...m});
     }));
