@@ -6396,6 +6396,14 @@
   /* ══ Time Off View ══════════════════════════════════════════════ */
   /* ── Time Off Split Layout ── */
   .timeoff-view{display:flex;flex-direction:column;height:100%;width:100%;flex:1;min-width:0;overflow:hidden;background:var(--md-sys-color-surface);}
+  /* This element also carries the shared .view-container class, whose
+     overflow-y:auto (declared later in the sheet) would otherwise win on
+     equal specificity and turn the WHOLE split view into one scroller —
+     which is what made the calendar and the "Coverage needed" list fight
+     over the same scroll gesture instead of each scrolling independently.
+     Higher specificity here pins the outer div to overflow:hidden so only
+     .cal-grid-wrap / .to-list-wrap below actually scroll. */
+  .view-container.timeoff-view{overflow:hidden;}
 
   .timeoff-split{flex-direction:column;flex:1;min-width:0;}
   .timeoff-split-toolbar{
@@ -6475,7 +6483,7 @@
   .to-toolbar-right{display:flex;align-items:center;gap:var(--md-space-3);}
 
   /* ── Calendar ── */
-  .cal-grid-wrap{flex:1;overflow-y:auto;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
+  .cal-grid-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
   .cal-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
   .cal-nav-btn{background:none;border:1px solid var(--c-border);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--c-text);line-height:1;flex-shrink:0;}
   .cal-nav-btn:hover{background:var(--md-sys-color-surface-container-high);}
@@ -6487,7 +6495,7 @@
   .cal-legend-dot{width:8px;height:8px;border-radius:50%;background:#E65100;flex-shrink:0;}
   .cal-legend-dot.green{background:#2E7D32;}
 
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;}
   .cal-dow{background:var(--md-sys-color-surface-container-low);padding:var(--md-space-2) 0;text-align:center;font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);border-bottom:1px solid var(--md-sys-color-outline-variant);}
   .cal-cell{
     background:var(--md-sys-color-surface-container-lowest);
@@ -6495,6 +6503,7 @@
     border-bottom:1px solid var(--md-sys-color-outline-variant);
     padding:var(--md-space-2);
     min-height:110px;
+    min-width:0;
     display:flex;flex-direction:column;gap:3px;
     transition:background .1s;
     vertical-align:top;
@@ -6512,22 +6521,38 @@
     border-radius:50%;flex-shrink:0;margin-bottom:2px;
   }
   .cal-cell.today .cal-day-num{background:var(--md-sys-color-primary);color:#fff;}
-  .cal-entries{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;}
+  .cal-entries{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;min-width:0;}
   .cal-pill{
     display:flex;align-items:center;gap:3px;
     padding:2px 5px;border-radius:4px;
     font-size:10.5px;line-height:1.3;
     cursor:default;
     overflow:hidden;
+    min-width:0;
   }
   .cal-pill-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
-  .cal-pill-name{font-weight:600;color:var(--md-sys-color-on-surface);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* min-width:0 is required here — without it, a flex item with
+     white-space:nowrap sizes to its full untruncated text width (ignoring
+     the overflow:hidden/text-overflow:ellipsis below it), which forced
+     every .cal-cell — and the whole 7-column grid — wider than the
+     viewport on a long name, making the calendar need horizontal
+     scroll/pinch-zoom to see the cut-off day columns. */
+  .cal-pill-name{font-weight:600;color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cal-pill-check{color:#2E7D32;font-size:9px;font-weight:700;flex-shrink:0;}
   .cal-pill-warn{color:#E65100;font-size:9px;font-weight:700;flex-shrink:0;}
-  .cal-more{font-size:9px;color:var(--md-sys-color-primary);font-weight:700;padding:1px 5px;}
+  .cal-more{
+    font-size:9.5px;font-weight:700;
+    color:var(--md-sys-color-primary);
+    background:var(--md-sys-color-primary-container);
+    border-radius:4px;
+    padding:2px 6px;
+    text-align:center;
+    cursor:pointer;
+  }
+  .cal-more:hover{filter:brightness(0.96);}
 
   /* ── List view ── */
-  .to-list-wrap{flex:1;overflow-y:auto;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
+  .to-list-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
   .to-section-head{
     display:flex;align-items:center;justify-content:space-between;
     font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
