@@ -6594,11 +6594,25 @@
 
   .to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
 
-  /* Best-fit suggestion list — one full-width row per candidate, stacked,
-     instead of a horizontal wrapping row of small cards (which read as
-     something to scroll through sideways). */
+  /* Best-fit suggestion cards — a horizontal row of compact cards. */
   .to-suggestion-label{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:var(--md-space-2);}
-  .to-suggestion-list{display:flex;flex-direction:column;gap:var(--md-space-2);}
+  .to-suggestion-row{display:flex;align-items:stretch;gap:var(--md-space-2);flex-wrap:wrap;}
+  .to-sug-card{
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    background:var(--md-sys-color-surface-container-low);
+    border:1.5px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
+    padding:var(--md-space-2) var(--md-space-3);
+    min-width:72px;
+    cursor:pointer;
+    font-family:var(--sans);
+    transition:border-color .15s,background .15s;
+  }
+  .to-sug-card:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+  .to-sug-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
+  .to-sug-exp{font-size:10px;font-weight:700;white-space:nowrap;}
+  .to-sug-times{font-size:9px;color:var(--md-sys-color-on-surface-variant);}
+  /* Shared row style, used by the "Others" expandable list below. */
   .to-sug-row{
     display:flex;align-items:center;gap:var(--md-space-3);
     width:100%;text-align:left;
@@ -6619,8 +6633,6 @@
     font-weight:700;font-size:13px;
   }
   .to-sug-row-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .to-sug-row-exp{font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;}
-  .to-sug-best-tag{background:#E8F5E9;color:#2E7D32;font-size:10px;font-weight:700;padding:2px 9px;border-radius:var(--md-sys-shape-corner-full);flex-shrink:0;}
   /* "Others" — a native <details> disclosure instead of a <select> dropdown,
      so tapping it reveals the same row-per-candidate list on its own line
      below, rather than a cramped OS picker menu. */
@@ -9542,13 +9554,12 @@ function renderCoverageSuggestions(r){
   const others = state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name));
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
-  <div class="to-suggestion-list">
-    ${suggestions.map((s,i)=>`
-      <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
-        <span class="to-sug-avatar">${escapeHtml(s.staff.name.charAt(0))}</span>
-        <span class="to-sug-row-name">${escapeHtml(s.staff.name)}</span>
-        <span class="to-sug-row-exp" style="color:${s.fitColor}">${s.fitLabel}${s.timesWorked>0?' · '+s.timesWorked+'×':''}</span>
-        ${i===0?'<span class="to-sug-best-tag">Best</span>':''}
+  <div class="to-suggestion-row">
+    ${suggestions.map(s=>`
+      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
+        <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
+        <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
+        ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
       </button>`).join('')}
   </div>
   ${others.length>0?`
@@ -14568,7 +14579,7 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-row').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
@@ -15428,7 +15439,7 @@ function attachHandlers(){
     }));
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-row').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
