@@ -5362,7 +5362,36 @@
     overflow-y:auto;
     flex-shrink:0;
     padding:var(--md-space-4) var(--md-space-3) var(--md-space-8);
+    transition:width .18s ease;
   }
+  .sidebar-head-row{display:flex;align-items:center;justify-content:space-between;gap:var(--md-space-2);}
+  .sidebar-head-row h3{margin-bottom:0;}
+  .sidebar-collapse-btn, .sidebar-expand-btn{
+    background:var(--md-sys-color-surface-container-high);
+    border:1px solid var(--md-sys-color-outline-variant);
+    color:var(--md-sys-color-on-surface-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
+    width:28px;height:28px;flex-shrink:0;
+    font-size:14px;line-height:1;cursor:pointer;
+  }
+  .sidebar-collapse-btn:hover, .sidebar-expand-btn:hover{background:var(--md-sys-color-surface-container-highest);}
+  .sidebar.sidebar-collapsed{
+    width:56px;
+    padding:var(--md-space-4) var(--md-space-2);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:var(--md-space-2);
+  }
+  .sidebar-collapsed.dragover{border-right:2px dashed var(--md-sys-color-tertiary);}
+  .sidebar-mini-btn{
+    width:36px;height:36px;
+    border-radius:var(--md-sys-shape-corner-medium);
+    border:1px solid var(--md-sys-color-outline-variant);
+    background:var(--md-sys-color-surface-container-high);
+    font-size:15px;cursor:pointer;
+  }
+  .sidebar-mini-btn:hover{background:var(--md-sys-color-surface-container-highest);}
   .sidebar h3{
     font-size:var(--md-sys-typescale-label-medium-size);
     text-transform:uppercase;
@@ -7264,6 +7293,10 @@
       padding-top:120px;
     }
     .sidebar.drawer-open{transform:translateX(0);}
+    /* the desktop/tablet collapse-to-a-rail trick doesn't apply here — the
+       drawer is already off-canvas by default, so there's no board width
+       to reclaim, and a 56px sliver would make an opened drawer unusable */
+    .sidebar.sidebar-collapsed{width:82vw;max-width:320px;align-items:stretch;}
     .drawer-scrim{display:block;}
 
     /* board mobile: full-width stacked, page is the scrollbar */
@@ -9308,6 +9341,7 @@ let _prevStaffManagerTab = null; // tracks last-rendered staff-manager tab, so w
 let _prevStaffManagerEditId = undefined;
 let viewMode = 'board'; // 'board' | 'overview'
 let drawerOpen = false; // mobile-only: whether the pool sidebar overlay is open
+let sidebarForceExpanded = false; // user manually pinned the sidebar open despite an empty pool
 let selectedStaffId = null; // tap-to-move: staff currently selected, awaiting a destination tap
 let navDrawerOpen = false;
 let boardSearch   = '';   // filter chips by name on board
@@ -9818,9 +9852,30 @@ function renderSidebar(){
   const unplaced = state.staff.filter(s=>s.active!==false && !state.assignments[s.id]);
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
+
+  // Nobody to place and nothing pinned open — collapse to a slim rail so
+  // the board columns can use that width instead of an empty "Everyone is
+  // placed" panel. Still a drop target (drag a chip here to unassign them)
+  // and still surfaces Quick actions as icon buttons. A tap-to-move in
+  // progress always forces it back open so the target button has room.
+  const collapsed = unplaced.length===0 && !sidebarForceExpanded && !isTapTarget;
+  if(collapsed){
+    return `
+    <div class="sidebar sidebar-collapsed ${drawerOpen?'drawer-open':''}" data-dropzone="pool" title="Drop here to unassign">
+      <button class="sidebar-expand-btn" id="btn-sidebar-expand" title="Show unassigned pool &amp; quick actions">☰</button>
+      ${readOnly ? '' : `
+      <button class="sidebar-mini-btn" id="btn-add-area" title="Add work area">➕</button>
+      <button class="sidebar-mini-btn" id="btn-mark-callout" title="Mark someone out">⚠️</button>
+      `}
+    </div>`;
+  }
+
   return `
   <div class="sidebar ${drawerOpen?'drawer-open':''}">
-    <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
+    <div class="sidebar-head-row">
+      <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
+      ${unplaced.length===0 && !isTapTarget ? `<button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="Collapse — everyone's placed">◂</button>` : ''}
+    </div>
     <div class="pool-zone ${isTapTarget?'tap-target':''}" data-dropzone="pool">
       ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="">Move here (unassign)</button>`:''}
       ${unplaced.length===0 ? '<div class="pool-empty">Everyone is placed</div>' : unplaced.map(s=>renderChip(s)).join('')}
@@ -14420,6 +14475,8 @@ function attachHandlers(){
   on('btn-add-area', ()=>openModal({type:'area-editor'}));
   on('btn-add-area-2', ()=>openModal({type:'area-editor'}));
   on('btn-mark-callout', ()=>openModal({type:'mark-callout'}));
+  on('btn-sidebar-expand', ()=>{ sidebarForceExpanded=true; render(); });
+  on('btn-sidebar-collapse', ()=>{ sidebarForceExpanded=false; render(); });
 
   // --- tab bar (view switcher) ---
   on('btn-view-board',       ()=>{ viewMode='board';       navDrawerOpen=false; render(); });
