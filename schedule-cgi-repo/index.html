@@ -5077,12 +5077,13 @@
   .tm-tab.active{color:var(--c-accent,#2F5FA8);border-bottom-color:var(--c-accent,#2F5FA8);}
   .tm-tab:hover:not(.active){color:var(--c-text);}
   .tm-break-row{
-    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
     padding:10px 0;border-bottom:1px solid var(--c-border);
   }
   .tm-break-row:last-child{border-bottom:none;}
   .tm-break-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--c-text);}
   .tm-break-area{font-size:11px;font-weight:600;color:var(--c-text-2);background:var(--c-surface-2);padding:2px 8px;border-radius:999px;}
+  .tm-break-selects{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;}
   .tm-break-select{padding:6px 10px;border:1px solid var(--c-border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--c-surface);}
 
   /* ── App bar & layout ── */
@@ -8725,6 +8726,12 @@ async function loadState(){
         {id:'lt1',label:'12:00 PM',sort_order:0},
         {id:'lt2',label:'1:00 PM',sort_order:1},
       ];
+      if(!state.breakTimes) state.breakTimes = [
+        {id:'bt1',label:'10:00 AM',sort_order:0},
+        {id:'bt2',label:'10:15 AM',sort_order:1},
+        {id:'bt3',label:'10:30 AM',sort_order:2},
+        {id:'bt4',label:'10:45 AM',sort_order:3},
+      ];
       if(!state.languages) state.languages = [
         {id:'lang_es',name:'Spanish'},{id:'lang_ar',name:'Arabic'},{id:'lang_zh',name:'Mandarin'},
       ];
@@ -8845,6 +8852,12 @@ function seedDemoData(){
     state.lunchTimes = [
       {id:'lt1', label:'12:00 PM', sort_order:0},
       {id:'lt2', label:'1:00 PM', sort_order:1},
+    ];
+    state.breakTimes = [
+      {id:'bt1', label:'10:00 AM', sort_order:0},
+      {id:'bt2', label:'10:15 AM', sort_order:1},
+      {id:'bt3', label:'10:30 AM', sort_order:2},
+      {id:'bt4', label:'10:45 AM', sort_order:3},
     ];
     state.languages = [
       {id:'lang_es', name:'Spanish'},
@@ -9336,17 +9349,44 @@ function parseClockToken(token){
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
 }
 
+// Sorts a lunch/break-time catalog latest-first by parsed clock time.
+// Entries that don't parse (free text like "See Supervisor") sort last,
+// keeping their relative order.
+function sortTimesDescending(list){
+  return [...list].sort((a,b)=>{
+    const am = parseClockToken(a.label);
+    const bm = parseClockToken(b.label);
+    if(am==null && bm==null) return 0;
+    if(am==null) return 1;
+    if(bm==null) return -1;
+    return bm - am;
+  });
+}
+
 // Builds <option> tags for a lunch-time <select> from the state.lunchTimes
 // catalog, pre-selecting by parsed clock time (not exact text) so this
 // still recognizes records saved before lunch times became a manageable
 // catalog — a bare "12:00" correctly shows the "12:00 PM" option as selected.
+// Listed latest-first.
 function renderLunchOptions(breakTimesRaw){
   const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
   const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
-  return state.lunchTimes.map(lt=>{
+  return sortTimesDescending(state.lunchTimes).map(lt=>{
     const ltMins = parseClockToken(lt.label);
     const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
     return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
+  }).join('');
+}
+
+// Same as renderLunchOptions but for the break-time half (index 0) of the
+// combined "break / lunch" string. Listed latest-first.
+function renderBreakOptions(breakTimesRaw){
+  const savedBreakRaw = breakTimesRaw ? breakTimesRaw.split('/')[0] : null;
+  const savedBreakMins = savedBreakRaw ? parseClockToken(savedBreakRaw) : null;
+  return sortTimesDescending(state.breakTimes).map(bt=>{
+    const btMins = parseClockToken(bt.label);
+    const isSelected = savedBreakMins!=null && btMins!=null && savedBreakMins===btMins;
+    return `<option value="${escapeHtml(bt.label)}" ${isSelected?'selected':''}>${escapeHtml(bt.label)}</option>`;
   }).join('');
 }
 
@@ -12347,12 +12387,17 @@ function renderTimeManagementModal(m){
   const isLead = isTeamLeadRole();
   const tab = m.tab || (isLead ? 'breaks' : 'shifts');
   const tabs = [
-    ...(isLead ? [] : [{id:'shifts', label:'Shifts'}, {id:'lunch', label:'Lunch times'}]),
+    ...(isLead ? [] : [
+      {id:'shifts', label:'Shifts'},
+      {id:'lunch', label:'Lunch times'},
+      {id:'break-times', label:'Break times'},
+    ]),
     {id:'breaks', label:'Team breaks'},
   ];
   const body = tab==='shifts' ? renderShiftsTabBody(m)
     : tab==='lunch' ? renderLunchTabBody(m)
-    : renderBreaksTabBody(m);
+    : tab==='break-times' ? renderBreakTimesTabBody(m)
+    : renderTeamBreaksTabBody(m);
   return `
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
@@ -12393,9 +12438,11 @@ function renderShiftsTabBody(m){
 
 // Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
 // used to be a hardcoded two-option <select> baked into the markup.
+// Listed latest-time-first, like every other time list in this modal.
 function renderLunchTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
+  const sorted = sortTimesDescending(state.lunchTimes);
   return editing?`
     <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
     <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
@@ -12406,7 +12453,7 @@ function renderLunchTabBody(m){
     <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
     `:`
     <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
-    ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
+    ${sorted.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':sorted.map(l=>`
       <div class="option-card" data-edit-lunch-time="${l.id}">
         <div class="oc-left">
           <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
@@ -12415,16 +12462,42 @@ function renderLunchTabBody(m){
     `;
 }
 
-// Bulk lunch-time editor: team leads see just their own area's staff (the
+// Same CRUD pattern as lunch times — the 15-minute break slots staff pick
+// from (e.g. 10:00, 10:15, 10:30, 10:45), staggered so a whole area isn't
+// on break at once. Listed latest-time-first.
+function renderBreakTimesTabBody(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:''} : (m.editId ? state.breakTimes.find(b=>b.id===m.editId) : null);
+  const sorted = sortTimesDescending(state.breakTimes);
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New break time':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Label</label><input type="text" id="break-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 10:15 AM"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="break-time-save-btn" style="flex:1;">Save break time</button>
+      ${isNew?'':'<button class="btn btn-danger" id="break-time-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="break-time-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-break-time" style="width:100%;margin-bottom:16px;">+ Add break time</button>
+    ${sorted.length===0?'<div class="small-muted" style="padding:8px 0;">No break times yet — add one above.</div>':sorted.map(b=>`
+      <div class="option-card" data-edit-break-time="${b.id}">
+        <div class="oc-left">
+          <span class="oc-name">☕ ${escapeHtml(b.label)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
+// Bulk break/lunch editor: team leads see just their own area's staff (the
 // only slice they're allowed to edit — no more hunting through each
 // person's stats modal one at a time); admin/supervisor see everyone.
-function renderBreaksTabBody(m){
+function renderTeamBreaksTabBody(m){
   const isLead = isTeamLeadRole();
   const scopeStaff = isLead
     ? state.staff.filter(s=>s.active!==false && state.assignments[s.id]===authState.account.assigned_area_id)
     : state.staff.filter(s=>s.active!==false);
   return `
-    <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set lunch time for people currently in your area.' : 'Set lunch time for any staff member.'}</div>
+    <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set break and lunch time for people currently in your area.' : 'Set break and lunch time for any staff member.'}</div>
     ${scopeStaff.length===0?'<div class="small-muted" style="padding:8px 0;">No one here right now.</div>':scopeStaff.map(s=>{
       const area = getAreaById(state.assignments[s.id]);
       return `
@@ -12433,34 +12506,53 @@ function renderBreaksTabBody(m){
           <span>${escapeHtml(s.name)}</span>
           ${!isLead && area ? `<span class="tm-break-area">${escapeHtml(area.name)}</span>` : ''}
         </div>
-        <select class="tm-break-select" data-staff-id="${s.id}">
-          <option value="">— Select —</option>
-          ${renderLunchOptions(s.breakTimes)}
-        </select>
+        <div class="tm-break-selects">
+          <select class="tm-break-select" data-part="break" data-staff-id="${s.id}" title="Break time">
+            <option value="">Break —</option>
+            ${renderBreakOptions(s.breakTimes)}
+          </select>
+          <select class="tm-break-select" data-part="lunch" data-staff-id="${s.id}" title="Lunch time">
+            <option value="">Lunch —</option>
+            ${renderLunchOptions(s.breakTimes)}
+          </select>
+        </div>
       </div>`;
     }).join('')}
     `;
 }
 
 // Shared by the Team breaks tab and the per-person staff-stats quick
-// editor — keeps whatever break-start portion is already there, only
-// swaps the lunch half of the combined "start / lunch" string.
-async function applyLunchChange(staffId, newLunch){
+// editor — keeps whatever's on the OTHER half of the combined
+// "break / lunch" string, only swaps the half being changed.
+async function applyBreakOrLunchChange(staffId, part, newValue){
   const s = getStaffById(staffId);
   if(!s) return false;
-  const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
-  const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
+  const parts = (s.breakTimes||'').split('/').map(p=>p.trim());
+  let breakPart = part==='break' ? newValue : (parts[0] || '');
+  const lunchPart = part==='lunch' ? newValue : (parts[1] || '');
+  // preserve prior behavior: setting lunch with no break on file yet
+  // defaults the break half to 10:00 rather than leaving it blank
+  if(part==='lunch' && newValue && !breakPart) breakPart = '10:00';
+  const breakTimes = breakPart && lunchPart ? `${breakPart} / ${lunchPart}`
+    : breakPart ? breakPart
+    : lunchPart ? lunchPart
+    : '';
   const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
     staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
   }));
   if(sync.ok){
     s.breakTimes = breakTimes;
     saveState();
-    showToast('Lunch time updated — saved to database ✓', 'teal');
+    showToast(`${part==='break'?'Break':'Lunch'} time updated — saved to database ✓`, 'teal');
   } else {
     showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
   }
   return sync.ok;
+}
+// Back-compat name for the staff-stats quick editor, which only ever
+// touches the lunch half.
+function applyLunchChange(staffId, newLunch){
+  return applyBreakOrLunchChange(staffId, 'lunch', newLunch);
 }
 
 // --- Languages manager (admin) ---
@@ -15419,10 +15511,42 @@ function attachHandlers(){
       }));
     }
 
+    if(tab==='break-times'){
+      on('btn-new-break-time', ()=>openModal({type:'time-management', tab:'break-times', editId:'__new__'}));
+      on('break-time-cancel-btn', ()=>openModal({type:'time-management', tab:'break-times'}));
+      on('break-time-save-btn', async ()=>{
+        const label = document.getElementById('break-time-label-input').value.trim();
+        if(!label){ showToast('Enter a label','rust'); return; }
+        if(activeModal.editId==='__new__'){
+          const sortOrder = state.breakTimes.length;
+          const sync = await syncCrudWrite(()=>window.RC.createBreakTime({label, sortOrder}));
+          state.breakTimes.push({id: sync.ok ? sync.result.id : uid('bt'), label, sort_order: sortOrder});
+          showToast(sync.ok ? 'Break time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const bt = state.breakTimes.find(b=>b.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateBreakTime({breakTimeId: bt.id, label, sortOrder: bt?.sort_order||0}));
+          if(bt){ bt.label = label; }
+          showToast(sync.ok ? 'Break time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'break-times'});
+      });
+      on('break-time-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteBreakTime({breakTimeId:id}));
+        state.breakTimes = state.breakTimes.filter(b=>b.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Break time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'break-times'});
+      });
+      document.querySelectorAll('[data-edit-break-time]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'break-times', editId:el.dataset.editBreakTime});
+      }));
+    }
+
     if(tab==='breaks'){
       document.querySelectorAll('.tm-break-select').forEach(sel=>sel.addEventListener('change', async ()=>{
         sel.disabled = true;
-        await applyLunchChange(sel.dataset.staffId, sel.value);
+        await applyBreakOrLunchChange(sel.dataset.staffId, sel.dataset.part, sel.value);
         render();
       }));
     }
@@ -17166,6 +17290,7 @@ function mapSupabaseBoard(board){
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
+  const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
@@ -17190,7 +17315,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -17220,6 +17345,7 @@ function applyMappedBoard(mapped){
   state.supervisors = mapped.supervisors;
   state.shifts = mapped.shifts;
   state.lunchTimes = mapped.lunchTimes;
+  state.breakTimes = mapped.breakTimes;
   state.languages = mapped.languages;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;

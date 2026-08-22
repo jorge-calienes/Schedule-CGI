@@ -159,7 +159,7 @@ export async function loadBoard() {
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
-    { data: coverageAssignments }, { data: lunchTimes },
+    { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -176,11 +176,12 @@ export async function loadBoard() {
     supabase.from('blocked_pairs').select('*'),
     supabase.from('coverage_assignments').select('*'),
     supabase.from('lunch_times').select('*').order('sort_order'),
+    supabase.from('break_times').select('*').order('sort_order'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs, coverageAssignments, lunchTimes,
+    timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes,
   };
 }
 
@@ -460,6 +461,20 @@ export async function updateLunchTime({ lunchTimeId, label, sortOrder }) {
 }
 export async function deleteLunchTime({ lunchTimeId }) {
   const { error } = await supabase.from('lunch_times').delete().eq('id', lunchTimeId);
+  if (error) throw error;
+}
+
+export async function createBreakTime({ label, sortOrder }) {
+  const { data, error } = await supabase.from('break_times').insert({ label, sort_order: sortOrder || 0 }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updateBreakTime({ breakTimeId, label, sortOrder }) {
+  const { error } = await supabase.from('break_times').update({ label, sort_order: sortOrder || 0 }).eq('id', breakTimeId);
+  if (error) throw error;
+}
+export async function deleteBreakTime({ breakTimeId }) {
+  const { error } = await supabase.from('break_times').delete().eq('id', breakTimeId);
   if (error) throw error;
 }
 
@@ -830,7 +845,7 @@ const REALTIME_TABLES = [
   'areas', 'staff', 'assignments', 'departments', 'callouts', 'supervisors',
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
-  'lunch_times',
+  'lunch_times', 'break_times',
 ];
 
 let realtimeChannel = null;
@@ -898,6 +913,9 @@ window.RC = {
   createLunchTime,
   updateLunchTime,
   deleteLunchTime,
+  createBreakTime,
+  updateBreakTime,
+  deleteBreakTime,
   createLanguage,
   updateLanguage,
   deleteLanguage,
