@@ -5452,6 +5452,11 @@
   }
 
   /* ---------- area column (md.comp.card, elevated) ---------- */
+  /* height adapts to however many people are in the area — no internal
+     scrollbar; the board (and page) scroll as a whole instead. An earlier
+     .area-col rule sets a viewport-relative max-height + overflow:hidden;
+     explicitly override both here rather than omitting them, since the
+     cascade falls back to that earlier declaration per-property otherwise. */
   .area-col{
     background:var(--c-surface,#fcfcfc);
     border-radius:12px;
@@ -5460,8 +5465,8 @@
     border:1px solid var(--c-border,#efefef);
     box-shadow:0 1px 4px rgba(0,0,0,.06);
     display:flex;flex-direction:column;
-    height:auto;max-height:min(52vh, 440px);
-    overflow:hidden;
+    height:auto;max-height:none;
+    overflow:visible;
     position:relative;
   }
   .area-head{
@@ -6311,7 +6316,6 @@
   .coverage-return-hint{opacity:.7;font-weight:400;}
   .act-return-coverage{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;}
   .streak-badge{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:6px;padding:1px 5px;}
-  .chip-flags-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
   .chip-repeat-badge,.chip-blocked-badge,.chip-away-badge{font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;}
   .chip-repeat-badge{background:#FFEDD5;color:#C2410C;}
   .chip-blocked-badge,.chip-away-badge{background:#fee2e2;color:#dc2626;}
@@ -10109,6 +10113,9 @@ function renderChip(s){
       if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA Cert</span>');
       (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
       if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
+      if(repeat) certs.push('<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>');
+      if(conflicts.length>0) certs.push('<span class="chip-blocked-badge" title="Blocked pairing in this area">🚫 blocked</span>');
+      if(displaced) certs.push('<span class="chip-away-badge" title="Team lead away from home area">📍 away</span>');
       return certs.length?'<div class="chip-certs">'+certs.join('')+'</div>':'';
     })()}
     ${(()=>{
@@ -10134,11 +10141,6 @@ function renderChip(s){
     })()}
     ${trail.length ? `<div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
-    </div>` : ''}
-    ${repeat || conflicts.length>0 || displaced ? `<div class="chip-flags-row">
-      ${repeat?'<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>':''}
-      ${conflicts.length>0?'<span class="chip-blocked-badge" title="Blocked pairing in this area">🚫 blocked</span>':''}
-      ${displaced?'<span class="chip-away-badge" title="Team lead away from home area">📍 away</span>':''}
     </div>` : ''}
     ${isCovering ? `<div class="chip-covering-row">
       <span class="chip-covering-tag">↩ Return</span>
