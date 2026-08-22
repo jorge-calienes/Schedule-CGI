@@ -5066,6 +5066,26 @@
   .oc-name{font-size:15px;font-weight:590;color:var(--c-text);}
   .oc-sub{font-size:12px;color:var(--c-text-2);margin-top:2px;}
 
+  /* ── Time management modal: tabs + team-breaks rows ── */
+  .tm-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--c-border);}
+  .tm-tab{
+    background:none;border:none;border-bottom:2px solid transparent;
+    padding:10px 4px;margin-right:16px;
+    font-family:inherit;font-size:14px;font-weight:600;
+    color:var(--c-text-2);cursor:pointer;
+  }
+  .tm-tab.active{color:var(--c-accent,#2F5FA8);border-bottom-color:var(--c-accent,#2F5FA8);}
+  .tm-tab:hover:not(.active){color:var(--c-text);}
+  .tm-break-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    padding:10px 0;border-bottom:1px solid var(--c-border);
+  }
+  .tm-break-row:last-child{border-bottom:none;}
+  .tm-break-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--c-text);}
+  .tm-break-area{font-size:11px;font-weight:600;color:var(--c-text-2);background:var(--c-surface-2);padding:2px 8px;border-radius:999px;}
+  .tm-break-selects{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;}
+  .tm-break-select{padding:6px 10px;border:1px solid var(--c-border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--c-surface);}
+
   /* ── App bar & layout ── */
   .topbar{
     background:rgba(255,255,255,.92)!important;
@@ -6396,6 +6416,14 @@
   /* ══ Time Off View ══════════════════════════════════════════════ */
   /* ── Time Off Split Layout ── */
   .timeoff-view{display:flex;flex-direction:column;height:100%;width:100%;flex:1;min-width:0;overflow:hidden;background:var(--md-sys-color-surface);}
+  /* This element also carries the shared .view-container class, whose
+     overflow-y:auto (declared later in the sheet) would otherwise win on
+     equal specificity and turn the WHOLE split view into one scroller —
+     which is what made the calendar and the "Coverage needed" list fight
+     over the same scroll gesture instead of each scrolling independently.
+     Higher specificity here pins the outer div to overflow:hidden so only
+     .cal-grid-wrap / .to-list-wrap below actually scroll. */
+  .view-container.timeoff-view{overflow:hidden;}
 
   .timeoff-split{flex-direction:column;flex:1;min-width:0;}
   .timeoff-split-toolbar{
@@ -6475,7 +6503,7 @@
   .to-toolbar-right{display:flex;align-items:center;gap:var(--md-space-3);}
 
   /* ── Calendar ── */
-  .cal-grid-wrap{flex:1;overflow-y:auto;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
+  .cal-grid-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
   .cal-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
   .cal-nav-btn{background:none;border:1px solid var(--c-border);border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--c-text);line-height:1;flex-shrink:0;}
   .cal-nav-btn:hover{background:var(--md-sys-color-surface-container-high);}
@@ -6487,7 +6515,7 @@
   .cal-legend-dot{width:8px;height:8px;border-radius:50%;background:#E65100;flex-shrink:0;}
   .cal-legend-dot.green{background:#2E7D32;}
 
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;}
   .cal-dow{background:var(--md-sys-color-surface-container-low);padding:var(--md-space-2) 0;text-align:center;font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);border-bottom:1px solid var(--md-sys-color-outline-variant);}
   .cal-cell{
     background:var(--md-sys-color-surface-container-lowest);
@@ -6495,6 +6523,7 @@
     border-bottom:1px solid var(--md-sys-color-outline-variant);
     padding:var(--md-space-2);
     min-height:110px;
+    min-width:0;
     display:flex;flex-direction:column;gap:3px;
     transition:background .1s;
     vertical-align:top;
@@ -6512,22 +6541,38 @@
     border-radius:50%;flex-shrink:0;margin-bottom:2px;
   }
   .cal-cell.today .cal-day-num{background:var(--md-sys-color-primary);color:#fff;}
-  .cal-entries{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;}
+  .cal-entries{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;min-width:0;}
   .cal-pill{
     display:flex;align-items:center;gap:3px;
     padding:2px 5px;border-radius:4px;
     font-size:10.5px;line-height:1.3;
     cursor:default;
     overflow:hidden;
+    min-width:0;
   }
   .cal-pill-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
-  .cal-pill-name{font-weight:600;color:var(--md-sys-color-on-surface);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* min-width:0 is required here — without it, a flex item with
+     white-space:nowrap sizes to its full untruncated text width (ignoring
+     the overflow:hidden/text-overflow:ellipsis below it), which forced
+     every .cal-cell — and the whole 7-column grid — wider than the
+     viewport on a long name, making the calendar need horizontal
+     scroll/pinch-zoom to see the cut-off day columns. */
+  .cal-pill-name{font-weight:600;color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cal-pill-check{color:#2E7D32;font-size:9px;font-weight:700;flex-shrink:0;}
   .cal-pill-warn{color:#E65100;font-size:9px;font-weight:700;flex-shrink:0;}
-  .cal-more{font-size:9px;color:var(--md-sys-color-primary);font-weight:700;padding:1px 5px;}
+  .cal-more{
+    font-size:9.5px;font-weight:700;
+    color:var(--md-sys-color-primary);
+    background:var(--md-sys-color-primary-container);
+    border-radius:4px;
+    padding:2px 6px;
+    text-align:center;
+    cursor:pointer;
+  }
+  .cal-more:hover{filter:brightness(0.96);}
 
   /* ── List view ── */
-  .to-list-wrap{flex:1;overflow-y:auto;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
+  .to-list-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
   .to-section-head{
     display:flex;align-items:center;justify-content:space-between;
     font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
@@ -6549,22 +6594,27 @@
   .to-list-card:hover{box-shadow:var(--md-sys-elevation-1);}
   .to-list-card.active{border-color:var(--md-sys-color-primary);}
 
+  /* header stacks vertically: top row is name + date/Edit/✕ together on one
+     line, chips (TDIS/AGS/area/Now/reason) wrap on their own line below —
+     instead of the name+chips and the date+actions competing for the same
+     row and unpredictably wrapping apart on narrow screens. */
   .to-card-header{
-    display:flex;align-items:center;justify-content:space-between;
+    display:flex;flex-direction:column;gap:6px;
     padding:var(--md-space-3) var(--md-space-4);
     border-bottom:1px solid var(--md-sys-color-outline-variant);
-    flex-wrap:wrap;gap:var(--md-space-2);
   }
-  .to-card-who{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);}
+  .to-card-toprow{display:flex;align-items:center;justify-content:space-between;gap:var(--md-space-2);}
+  .to-card-name-wrap{display:flex;align-items:center;gap:6px;min-width:0;}
+  .to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .to-card-actions{display:flex;align-items:center;gap:var(--md-space-2);flex-shrink:0;}
+  .to-card-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .to-active-pill{font-size:10px;font-weight:700;color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
-  .to-card-meta{display:flex;align-items:center;gap:var(--md-space-2);flex-wrap:wrap;}
-  .to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);}
+  .to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
   .to-card-reason{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
 
   .to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
 
-  /* Best-fit suggestion cards */
+  /* Best-fit suggestion cards — a horizontal row of compact cards. */
   .to-suggestion-label{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:var(--md-space-2);}
   .to-suggestion-row{display:flex;align-items:stretch;gap:var(--md-space-2);flex-wrap:wrap;}
   .to-sug-card{
@@ -6582,15 +6632,54 @@
   .to-sug-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
   .to-sug-exp{font-size:10px;font-weight:700;white-space:nowrap;}
   .to-sug-times{font-size:9px;color:var(--md-sys-color-on-surface-variant);}
-  .to-sug-divider{width:1px;background:var(--md-sys-color-outline-variant);align-self:stretch;margin:0 var(--md-space-1);}
-  .to-sug-more{
-    padding:4px 8px;border:1.5px solid var(--md-sys-color-outline-variant);
-    border-radius:var(--md-sys-shape-corner-small);
-    font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);
+  /* Shared row style, used by the "Others" expandable list below. */
+  .to-sug-row{
+    display:flex;align-items:center;gap:var(--md-space-3);
+    width:100%;text-align:left;
+    background:var(--md-sys-color-surface-container-low);
+    border:1.5px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
+    padding:var(--md-space-2) var(--md-space-3);
+    cursor:pointer;
+    font-family:var(--sans);
+    transition:border-color .15s,background .15s;
+  }
+  .to-sug-row:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+  .to-sug-avatar{
+    width:30px;height:30px;flex-shrink:0;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--md-sys-color-secondary-container);
+    color:var(--md-sys-color-on-secondary-container);
+    font-weight:700;font-size:13px;
+  }
+  .to-sug-row-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* "Others" — a native <details> disclosure instead of a <select> dropdown,
+     so tapping it reveals the same row-per-candidate list on its own line
+     below, rather than a cramped OS picker menu. */
+  .to-others-details{margin-top:var(--md-space-2);}
+  .to-others-bar{
+    display:flex;align-items:center;gap:8px;
+    width:100%;padding:8px 12px;
+    border:1.5px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-medium);
+    font-family:var(--sans);font-size:var(--md-sys-typescale-body-small-size);font-weight:600;
     color:var(--md-sys-color-on-surface-variant);
     background:var(--md-sys-color-surface-container-low);
-    align-self:center;cursor:pointer;min-width:110px;
+    cursor:pointer;
+    list-style:none;
   }
+  .to-others-bar::-webkit-details-marker{display:none;}
+  .to-others-bar::before{content:'▸';font-size:10px;transition:transform .15s;}
+  .to-others-details[open] .to-others-bar::before{transform:rotate(90deg);}
+  .to-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--md-sys-color-surface-container-high);
+    color:var(--md-sys-color-on-surface-variant);
+    padding:1px 7px;border-radius:var(--md-sys-shape-corner-full);
+  }
+  .to-others-list{display:flex;flex-direction:column;gap:var(--md-space-2);margin-top:var(--md-space-2);}
+  .to-others-list .to-sug-row{padding:6px 12px;}
+  .to-others-list .to-sug-avatar{width:26px;height:26px;font-size:11px;}
 
   /* Coverage assigned badge */
   .to-cov-badge{display:flex;align-items:center;gap:var(--md-space-2);background:#E8F5E9;border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-2) var(--md-space-3);}
@@ -6610,7 +6699,6 @@
     .cal-grid-wrap,.to-list-wrap{padding:var(--md-space-3);}
     .cal-cell{min-height:72px;}
     .to-list-card{border-radius:var(--md-sys-shape-corner-small);}
-    .to-sug-card{min-width:60px;}
   }
 
 
@@ -8638,6 +8726,12 @@ async function loadState(){
         {id:'lt1',label:'12:00 PM',sort_order:0},
         {id:'lt2',label:'1:00 PM',sort_order:1},
       ];
+      if(!state.breakTimes) state.breakTimes = [
+        {id:'bt1',label:'10:00 AM',sort_order:0},
+        {id:'bt2',label:'10:15 AM',sort_order:1},
+        {id:'bt3',label:'10:30 AM',sort_order:2},
+        {id:'bt4',label:'10:45 AM',sort_order:3},
+      ];
       if(!state.languages) state.languages = [
         {id:'lang_es',name:'Spanish'},{id:'lang_ar',name:'Arabic'},{id:'lang_zh',name:'Mandarin'},
       ];
@@ -8758,6 +8852,12 @@ function seedDemoData(){
     state.lunchTimes = [
       {id:'lt1', label:'12:00 PM', sort_order:0},
       {id:'lt2', label:'1:00 PM', sort_order:1},
+    ];
+    state.breakTimes = [
+      {id:'bt1', label:'10:00 AM', sort_order:0},
+      {id:'bt2', label:'10:15 AM', sort_order:1},
+      {id:'bt3', label:'10:30 AM', sort_order:2},
+      {id:'bt4', label:'10:45 AM', sort_order:3},
     ];
     state.languages = [
       {id:'lang_es', name:'Spanish'},
@@ -8881,6 +8981,14 @@ function blockConflictsIn(staffId, areaId){
 
 // was staffId in areaId last rotation?
 function isRepeatArea(staffId, areaId){
+  // Team leads are expected to stay in their own area every rotation, and
+  // a "fixed" area is by definition one staff don't rotate in or out of —
+  // neither is a "repeat" worth flagging the way it is for rotating staff.
+  // A team lead placed somewhere OTHER than home is a real exception,
+  // handled separately by isTeamLeadDisplaced().
+  const staff = getStaffById(staffId);
+  if(staff?.isTeamLead) return false;
+  if(getAreaById(areaId)?.fixed) return false;
   const last = lastAreaFor(staffId);
   return last && last===areaId;
 }
@@ -9241,17 +9349,44 @@ function parseClockToken(token){
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
 }
 
+// Sorts a lunch/break-time catalog earliest-first by parsed clock time.
+// Entries that don't parse (free text like "See Supervisor") sort last,
+// keeping their relative order.
+function sortTimesAscending(list){
+  return [...list].sort((a,b)=>{
+    const am = parseClockToken(a.label);
+    const bm = parseClockToken(b.label);
+    if(am==null && bm==null) return 0;
+    if(am==null) return 1;
+    if(bm==null) return -1;
+    return am - bm;
+  });
+}
+
 // Builds <option> tags for a lunch-time <select> from the state.lunchTimes
 // catalog, pre-selecting by parsed clock time (not exact text) so this
 // still recognizes records saved before lunch times became a manageable
 // catalog — a bare "12:00" correctly shows the "12:00 PM" option as selected.
+// Listed earliest-first.
 function renderLunchOptions(breakTimesRaw){
   const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
   const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
-  return state.lunchTimes.map(lt=>{
+  return sortTimesAscending(state.lunchTimes).map(lt=>{
     const ltMins = parseClockToken(lt.label);
     const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
     return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
+  }).join('');
+}
+
+// Same as renderLunchOptions but for the break-time half (index 0) of the
+// combined "break / lunch" string. Listed earliest-first.
+function renderBreakOptions(breakTimesRaw){
+  const savedBreakRaw = breakTimesRaw ? breakTimesRaw.split('/')[0] : null;
+  const savedBreakMins = savedBreakRaw ? parseClockToken(savedBreakRaw) : null;
+  return sortTimesAscending(state.breakTimes).map(bt=>{
+    const btMins = parseClockToken(bt.label);
+    const isSelected = savedBreakMins!=null && btMins!=null && savedBreakMins===btMins;
+    return `<option value="${escapeHtml(bt.label)}" ${isSelected?'selected':''}>${escapeHtml(bt.label)}</option>`;
   }).join('');
 }
 
@@ -9483,6 +9618,7 @@ function suggestCoverageFor(areaId, absentStaffId){
 function renderCoverageSuggestions(r){
   if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
   const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
+  const others = state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name));
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
   <div class="to-suggestion-row">
@@ -9492,12 +9628,18 @@ function renderCoverageSuggestions(r){
         <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
         ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
       </button>`).join('')}
-    <div class="to-sug-divider"></div>
-    <select class="to-sug-more" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}">
-      <option value="">Others…</option>
-      ${state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>'<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>').join('')}
-    </select>
-  </div>`;
+  </div>
+  ${others.length>0?`
+  <details class="to-others-details">
+    <summary class="to-others-bar">Others <span class="to-others-count">${others.length}</span></summary>
+    <div class="to-others-list">
+      ${others.map(s=>`
+        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.id}">
+          <span class="to-sug-avatar">${escapeHtml(s.name.charAt(0))}</span>
+          <span class="to-sug-row-name">${escapeHtml(s.name)}</span>
+        </button>`).join('')}
+    </div>
+  </details>`:''}`;
 }
 
 function renderTimeOffView(){
@@ -9595,19 +9737,23 @@ function renderTimeOffView(){
       return `
       <div class="to-list-card ${isActive?'active':''}">
         <div class="to-card-header">
-          <div class="to-card-who">
-            <span class="area-dot" style="background:${areaColor}"></span>
-            <span class="to-list-name">${escapeHtml(r.staff.name)}</span>
+          <div class="to-card-toprow">
+            <div class="to-card-name-wrap">
+              <span class="area-dot" style="background:${areaColor}"></span>
+              <span class="to-list-name">${escapeHtml(r.staff.name)}</span>
+            </div>
+            <div class="to-card-actions">
+              <span class="to-card-dates">${r.startDate===r.endDate?r.startDate:r.startDate+' → '+r.endDate}</span>
+              <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
+              <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
+            </div>
+          </div>
+          <div class="to-card-chips">
             ${r.staff.tdisNumber?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(r.staff.tdisNumber)}</span>`:''}
             ${r.staff.isSubcontractor?'<span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}
             ${r.area?`<span class="to-entry-area" style="background:${areaColor}18;color:${areaColor};border:1px solid ${areaColor}40;">${escapeHtml(r.area.name)}</span>`:'<span class="to-entry-area unassigned">No area</span>'}
             ${isActive?'<span class="to-active-pill">● Now</span>':''}
-          </div>
-          <div class="to-card-meta">
-            <span class="to-card-dates">${r.startDate===r.endDate?r.startDate:r.startDate+' → '+r.endDate}</span>
             ${r.label?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
-            <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
-            <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
           </div>
         </div>
         <div class="to-card-coverage">
@@ -9694,8 +9840,9 @@ function renderTabBar(){
 function renderNavDrawer(){
   const isOpen = navDrawerOpen;
   if(isTeamLeadRole()){
-    // Team leads: evaluations + board view only — every other nav item
-    // opens something that mutates data, which is manager-only server-side.
+    // Team leads: evaluations + board view + their own area's lunch/break
+    // times (the one data mutation RLS actually grants them, per migration
+    // 0009) — every other nav item opens something manager-only server-side.
     return `
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
@@ -9703,6 +9850,7 @@ function renderNavDrawer(){
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>
+      <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
     </nav>`;
@@ -9736,8 +9884,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
-      <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
-      <button class="nav-item" id="nav-manage-lunch-times"><span class="nav-item-icon">🍽</span>Manage lunch times</button>
+      <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -9900,7 +10047,7 @@ function renderChip(s){
   const area     = areaId ? getAreaById(areaId) : null;
   const isOut    = !!state.callouts[s.id];
   const isFixed  = !!(area?.fixed);  // fixed areas never rotate — no flags
-  const repeat   = !isFixed && areaId && isRepeatArea(s.id, areaId);
+  const repeat   = areaId && isRepeatArea(s.id, areaId); // isRepeatArea() itself excludes fixed areas
   const conflicts= !isFixed && areaId ? blockConflictsIn(s.id, areaId) : [];
   const displaced= !isFixed && areaId && isTeamLeadDisplaced(s.id, areaId);
   const flagged  = repeat || conflicts.length>0 || displaced;
@@ -10556,8 +10703,7 @@ function renderModal(){
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
   else if(m.type==='mark-callout') inner = renderMarkCalloutModal(m);
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
-  else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
-  else if(m.type==='lunch-times-manager') inner = renderLunchTimesManagerModal(m);
+  else if(m.type==='time-management') inner = renderTimeManagementModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
@@ -12234,72 +12380,200 @@ function renderDeptReorderModal(m){
 }
 
 
-// --- Shifts manager (admin) ---
-function renderShiftsManagerModal(m){
-  const isNew = m.editId === '__new__';
-  const editing = isNew ? {label:'',start:'',end:''} : (m.editId ? state.shifts.find(s=>s.id===m.editId) : null);
+// --- Time management (admin/supervisor: shifts + lunch catalogs + team
+// breaks; team lead: breaks tab only) — one consolidated modal instead of
+// three separate menu entries / a buried per-person editor. ---
+function renderTimeManagementModal(m){
+  const isLead = isTeamLeadRole();
+  const tab = m.tab || (isLead ? 'breaks' : 'shifts');
+  const tabs = [
+    ...(isLead ? [] : [
+      {id:'shifts', label:'Shifts'},
+      {id:'lunch', label:'Lunch times'},
+      {id:'break-times', label:'Break times'},
+    ]),
+    {id:'breaks', label:'Team breaks'},
+  ];
+  const body = tab==='shifts' ? renderShiftsTabBody(m)
+    : tab==='lunch' ? renderLunchTabBody(m)
+    : tab==='break-times' ? renderBreakTimesTabBody(m)
+    : renderTeamBreaksTabBody(m);
   return `
-  <div class="modal" style="max-width:440px;">
+  <div class="modal" style="max-width:480px;">
     <div class="modal-head">
-      <div><h2>Manage shifts</h2><p>Define the shift schedule for your operation. Staff select from this list.</p></div>
+      <div><h2>🕐 Time management</h2><p>Shifts, lunch times, and break assignments — all in one place.</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
-    <div class="modal-body">
-      ${editing?`
-      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New shift':'Editing: '+escapeHtml(editing.label)}</b></div>
-      <div class="field"><label>Start time</label><input type="text" id="shift-start-input" value="${escapeHtml(editing.start)}" placeholder="e.g. 7:30"/></div>
-      <div class="field"><label>End time</label><input type="text" id="shift-end-input" value="${escapeHtml(editing.end)}" placeholder="e.g. 4:15"/></div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button class="btn btn-primary" id="shift-save-btn" style="flex:1;">Save shift</button>
-        ${isNew?'':'<button class="btn btn-danger" id="shift-delete-btn">Delete</button>'}
-      </div>
-      <button class="btn btn-light" id="shift-cancel-btn" style="width:100%;">Cancel</button>
-      `:`
-      <button class="btn btn-primary" id="btn-new-shift" style="width:100%;margin-bottom:16px;">+ Add shift</button>
-      ${state.shifts.map(sh=>`
-        <div class="option-card" data-edit-shift="${sh.id}">
-          <div class="oc-left">
-            <span class="oc-name">🕐 ${escapeHtml(sh.label)}</span>
-            <span class="oc-sub">${escapeHtml(sh.start)} → ${escapeHtml(sh.end)}</span>
-          </div>
-        </div>`).join('')}
-      `}
-    </div>
+    ${tabs.length>1?`
+    <div class="tm-tabs">
+      ${tabs.map(t=>`<button class="tm-tab ${tab===t.id?'active':''}" data-tm-tab="${t.id}">${t.label}</button>`).join('')}
+    </div>`:''}
+    <div class="modal-body">${body}</div>
   </div>`;
 }
 
-// --- Lunch times manager (admin) — same list/edit pattern as shifts above.
+// Listed earliest-start-first, like every other time list in this modal.
+function renderShiftsTabBody(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:'',start:'',end:''} : (m.editId ? state.shifts.find(s=>s.id===m.editId) : null);
+  const sorted = [...state.shifts].sort((a,b)=>{
+    const am = parseClockToken(a.start);
+    const bm = parseClockToken(b.start);
+    if(am==null && bm==null) return 0;
+    if(am==null) return 1;
+    if(bm==null) return -1;
+    return am - bm;
+  });
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New shift':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Start time</label><input type="text" id="shift-start-input" value="${escapeHtml(editing.start)}" placeholder="e.g. 7:30"/></div>
+    <div class="field"><label>End time</label><input type="text" id="shift-end-input" value="${escapeHtml(editing.end)}" placeholder="e.g. 4:15"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="shift-save-btn" style="flex:1;">Save shift</button>
+      ${isNew?'':'<button class="btn btn-danger" id="shift-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="shift-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-shift" style="width:100%;margin-bottom:16px;">+ Add shift</button>
+    ${sorted.map(sh=>`
+      <div class="option-card" data-edit-shift="${sh.id}">
+        <div class="oc-left">
+          <span class="oc-name">🕐 ${escapeHtml(sh.label)}</span>
+          <span class="oc-sub">${escapeHtml(sh.start)} → ${escapeHtml(sh.end)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
 // Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
 // used to be a hardcoded two-option <select> baked into the markup.
-function renderLunchTimesManagerModal(m){
+// Listed earliest-time-first, like every other time list in this modal.
+function renderLunchTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
+  const sorted = sortTimesAscending(state.lunchTimes);
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
+      ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
+    ${sorted.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':sorted.map(l=>`
+      <div class="option-card" data-edit-lunch-time="${l.id}">
+        <div class="oc-left">
+          <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
+// Same CRUD pattern as lunch times — the 15-minute break slots staff pick
+// from (e.g. 10:00, 10:15, 10:30, 10:45), staggered so a whole area isn't
+// on break at once. Listed earliest-time-first.
+function renderBreakTimesTabBody(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:''} : (m.editId ? state.breakTimes.find(b=>b.id===m.editId) : null);
+  const sorted = sortTimesAscending(state.breakTimes);
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New break time':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Label</label><input type="text" id="break-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 10:15 AM"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="break-time-save-btn" style="flex:1;">Save break time</button>
+      ${isNew?'':'<button class="btn btn-danger" id="break-time-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="break-time-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-break-time" style="width:100%;margin-bottom:16px;">+ Add break time</button>
+    ${sorted.length===0?'<div class="small-muted" style="padding:8px 0;">No break times yet — add one above.</div>':sorted.map(b=>`
+      <div class="option-card" data-edit-break-time="${b.id}">
+        <div class="oc-left">
+          <span class="oc-name">☕ ${escapeHtml(b.label)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
+// Bulk break/lunch editor: team leads see just their own area's staff (the
+// only slice they're allowed to edit — no more hunting through each
+// person's stats modal one at a time); admin/supervisor see everyone, with
+// an area filter to jump straight to one team lead's area instead of
+// scrolling the full roster.
+function renderTeamBreaksTabBody(m){
+  const isLead = isTeamLeadRole();
+  const areaFilter = m.areaFilter || '';
+  const scopeStaff = isLead
+    ? state.staff.filter(s=>s.active!==false && state.assignments[s.id]===authState.account.assigned_area_id)
+    : state.staff.filter(s=>s.active!==false && (!areaFilter || state.assignments[s.id]===areaFilter));
   return `
-  <div class="modal" style="max-width:440px;">
-    <div class="modal-head">
-      <div><h2>Manage lunch times</h2><p>Define the lunch time options staff can select from.</p></div>
-      <button class="modal-close" id="modal-close-x">✕</button>
+    <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set break and lunch time for people currently in your area.' : 'Set break and lunch time for any staff member.'}</div>
+    ${isLead ? '' : `
+    <div class="field" style="margin-bottom:14px;">
+      <label>Filter by area</label>
+      <select id="tm-break-area-filter">
+        <option value="">All areas</option>
+        ${state.areas.map(a=>`<option value="${a.id}" ${areaFilter===a.id?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}
+      </select>
     </div>
-    <div class="modal-body">
-      ${editing?`
-      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
-      <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
-        ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
-      </div>
-      <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
-      `:`
-      <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
-      ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
-        <div class="option-card" data-edit-lunch-time="${l.id}">
-          <div class="oc-left">
-            <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
-          </div>
-        </div>`).join('')}
-      `}
-    </div>
-  </div>`;
+    `}
+    ${scopeStaff.length===0?`<div class="small-muted" style="padding:8px 0;">${areaFilter?'No one in this area right now.':'No one here right now.'}</div>`:scopeStaff.map(s=>{
+      const area = getAreaById(state.assignments[s.id]);
+      return `
+      <div class="tm-break-row">
+        <div class="tm-break-name">
+          <span>${escapeHtml(s.name)}</span>
+          ${!isLead && area ? `<span class="tm-break-area">${escapeHtml(area.name)}</span>` : ''}
+        </div>
+        <div class="tm-break-selects">
+          <select class="tm-break-select" data-part="break" data-staff-id="${s.id}" title="Break time">
+            <option value="">Break —</option>
+            ${renderBreakOptions(s.breakTimes)}
+          </select>
+          <select class="tm-break-select" data-part="lunch" data-staff-id="${s.id}" title="Lunch time">
+            <option value="">Lunch —</option>
+            ${renderLunchOptions(s.breakTimes)}
+          </select>
+        </div>
+      </div>`;
+    }).join('')}
+    `;
+}
+
+// Shared by the Team breaks tab and the per-person staff-stats quick
+// editor — keeps whatever's on the OTHER half of the combined
+// "break / lunch" string, only swaps the half being changed.
+async function applyBreakOrLunchChange(staffId, part, newValue){
+  const s = getStaffById(staffId);
+  if(!s) return false;
+  const parts = (s.breakTimes||'').split('/').map(p=>p.trim());
+  let breakPart = part==='break' ? newValue : (parts[0] || '');
+  const lunchPart = part==='lunch' ? newValue : (parts[1] || '');
+  // preserve prior behavior: setting lunch with no break on file yet
+  // defaults the break half to 10:00 rather than leaving it blank
+  if(part==='lunch' && newValue && !breakPart) breakPart = '10:00';
+  const breakTimes = breakPart && lunchPart ? `${breakPart} / ${lunchPart}`
+    : breakPart ? breakPart
+    : lunchPart ? lunchPart
+    : '';
+  const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
+    staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
+  }));
+  if(sync.ok){
+    s.breakTimes = breakTimes;
+    saveState();
+    showToast(`${part==='break'?'Break':'Lunch'} time updated — saved to database ✓`, 'teal');
+  } else {
+    showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+  }
+  return sync.ok;
+}
+// Back-compat name for the staff-stats quick editor, which only ever
+// touches the lunch half.
+function applyLunchChange(staffId, newLunch){
+  return applyBreakOrLunchChange(staffId, 'lunch', newLunch);
 }
 
 // --- Languages manager (admin) ---
@@ -14500,17 +14774,9 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
-      render();
-    }));
-
-    // "Others…" dropdown
-    document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
-      const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
-      if(!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
       render();
     }));
@@ -14558,8 +14824,7 @@ function attachHandlers(){
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
-  on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
-  on('nav-manage-lunch-times',  ()=>{ closeNav(); openModal({type:'lunch-times-manager'}); });
+  on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -14681,24 +14946,8 @@ function attachHandlers(){
     });
     const lunchSel = document.getElementById('stats-lunch-input');
     if(lunchSel) lunchSel.addEventListener('change', async ()=>{
-      const s = getStaffById(lunchSel.dataset.staffId);
-      if(!s) return;
-      const newLunch = lunchSel.value;
-      // keep whatever break-start portion is already there — team leads
-      // aren't editing shift hours, only the lunch half of the combined string
-      const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
-      const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
       lunchSel.disabled = true;
-      const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
-        staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
-      }));
-      if(sync.ok){
-        s.breakTimes = breakTimes;
-        saveState();
-        showToast('Lunch time updated — saved to database ✓', 'teal');
-      } else {
-        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
-      }
+      await applyLunchChange(lunchSel.dataset.staffId, lunchSel.value);
       render();
     });
   }
@@ -15211,71 +15460,121 @@ function attachHandlers(){
     });
   }
 
-  // --- shifts manager ---
-  if(activeModal.type==='shifts-manager'){
-    on('btn-new-shift', ()=>openModal({type:'shifts-manager', editId:'__new__'}));
-    on('shift-cancel-btn', ()=>openModal({type:'shifts-manager'}));
-    on('shift-save-btn', async ()=>{
-      const start = document.getElementById('shift-start-input').value.trim();
-      const end   = document.getElementById('shift-end-input').value.trim();
-      if(!start||!end){ showToast('Enter start and end time','rust'); return; }
-      const label = `${start} – ${end}`;
-      if(activeModal.editId==='__new__'){
-        const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
-        state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
-        showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      } else {
-        const sh = state.shifts.find(s=>s.id===activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
-        if(sh){ sh.start=start; sh.end=end; sh.label=label; }
-        showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      }
-      saveState(); openModal({type:'shifts-manager'});
-    });
-    on('shift-delete-btn', async ()=>{
-      const id = activeModal.editId;
-      const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
-      state.shifts = state.shifts.filter(s=>s.id!==id);
-      saveState();
-      showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      openModal({type:'shifts-manager'});
-    });
-    document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
-      openModal({type:'shifts-manager', editId:el.dataset.editShift});
+  // --- time management (shifts / lunch times / team breaks tabs) ---
+  if(activeModal.type==='time-management'){
+    const tab = activeModal.tab || (isTeamLeadRole() ? 'breaks' : 'shifts');
+    document.querySelectorAll('[data-tm-tab]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'time-management', tab:el.dataset.tmTab});
     }));
-  }
 
-  // --- lunch times manager ---
-  if(activeModal.type==='lunch-times-manager'){
-    on('btn-new-lunch-time', ()=>openModal({type:'lunch-times-manager', editId:'__new__'}));
-    on('lunch-time-cancel-btn', ()=>openModal({type:'lunch-times-manager'}));
-    on('lunch-time-save-btn', async ()=>{
-      const label = document.getElementById('lunch-time-label-input').value.trim();
-      if(!label){ showToast('Enter a label','rust'); return; }
-      if(activeModal.editId==='__new__'){
-        const sortOrder = state.lunchTimes.length;
-        const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
-        state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
-        showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      } else {
-        const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
-        if(lt){ lt.label = label; }
-        showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      }
-      saveState(); openModal({type:'lunch-times-manager'});
-    });
-    on('lunch-time-delete-btn', async ()=>{
-      const id = activeModal.editId;
-      const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
-      state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
-      saveState();
-      showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      openModal({type:'lunch-times-manager'});
-    });
-    document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
-      openModal({type:'lunch-times-manager', editId:el.dataset.editLunchTime});
-    }));
+    if(tab==='shifts'){
+      on('btn-new-shift', ()=>openModal({type:'time-management', tab:'shifts', editId:'__new__'}));
+      on('shift-cancel-btn', ()=>openModal({type:'time-management', tab:'shifts'}));
+      on('shift-save-btn', async ()=>{
+        const start = document.getElementById('shift-start-input').value.trim();
+        const end   = document.getElementById('shift-end-input').value.trim();
+        if(!start||!end){ showToast('Enter start and end time','rust'); return; }
+        const label = `${start} – ${end}`;
+        if(activeModal.editId==='__new__'){
+          const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
+          state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
+          showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const sh = state.shifts.find(s=>s.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
+          if(sh){ sh.start=start; sh.end=end; sh.label=label; }
+          showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'shifts'});
+      });
+      on('shift-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
+        state.shifts = state.shifts.filter(s=>s.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'shifts'});
+      });
+      document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'shifts', editId:el.dataset.editShift});
+      }));
+    }
+
+    if(tab==='lunch'){
+      on('btn-new-lunch-time', ()=>openModal({type:'time-management', tab:'lunch', editId:'__new__'}));
+      on('lunch-time-cancel-btn', ()=>openModal({type:'time-management', tab:'lunch'}));
+      on('lunch-time-save-btn', async ()=>{
+        const label = document.getElementById('lunch-time-label-input').value.trim();
+        if(!label){ showToast('Enter a label','rust'); return; }
+        if(activeModal.editId==='__new__'){
+          const sortOrder = state.lunchTimes.length;
+          const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
+          state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
+          showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
+          if(lt){ lt.label = label; }
+          showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'lunch'});
+      });
+      on('lunch-time-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
+        state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'lunch'});
+      });
+      document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'lunch', editId:el.dataset.editLunchTime});
+      }));
+    }
+
+    if(tab==='break-times'){
+      on('btn-new-break-time', ()=>openModal({type:'time-management', tab:'break-times', editId:'__new__'}));
+      on('break-time-cancel-btn', ()=>openModal({type:'time-management', tab:'break-times'}));
+      on('break-time-save-btn', async ()=>{
+        const label = document.getElementById('break-time-label-input').value.trim();
+        if(!label){ showToast('Enter a label','rust'); return; }
+        if(activeModal.editId==='__new__'){
+          const sortOrder = state.breakTimes.length;
+          const sync = await syncCrudWrite(()=>window.RC.createBreakTime({label, sortOrder}));
+          state.breakTimes.push({id: sync.ok ? sync.result.id : uid('bt'), label, sort_order: sortOrder});
+          showToast(sync.ok ? 'Break time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const bt = state.breakTimes.find(b=>b.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateBreakTime({breakTimeId: bt.id, label, sortOrder: bt?.sort_order||0}));
+          if(bt){ bt.label = label; }
+          showToast(sync.ok ? 'Break time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'break-times'});
+      });
+      on('break-time-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteBreakTime({breakTimeId:id}));
+        state.breakTimes = state.breakTimes.filter(b=>b.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Break time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'break-times'});
+      });
+      document.querySelectorAll('[data-edit-break-time]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'break-times', editId:el.dataset.editBreakTime});
+      }));
+    }
+
+    if(tab==='breaks'){
+      document.querySelectorAll('.tm-break-select').forEach(sel=>sel.addEventListener('change', async ()=>{
+        sel.disabled = true;
+        await applyBreakOrLunchChange(sel.dataset.staffId, sel.dataset.part, sel.value);
+        render();
+      }));
+      const areaFilterSel = document.getElementById('tm-break-area-filter');
+      if(areaFilterSel) areaFilterSel.addEventListener('change', ()=>{
+        openModal({...activeModal, areaFilter: areaFilterSel.value});
+      });
+    }
   }
 
   // --- languages manager ---
@@ -15368,17 +15667,9 @@ function attachHandlers(){
     }));
 
     // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
       const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
       if(!sid||!rid||!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
-      openModal({...m});
-    }));
-
-    // "Others…" dropdown (anyone not already in the best-fit picks)
-    document.querySelectorAll('.to-sug-more').forEach(sel=>sel.addEventListener('change',()=>{
-      const sid=sel.dataset.toAssignStaff, rid=sel.dataset.toAssignId, covId=sel.value;
-      if(!covId) return;
       applyTimeOffCoverage(sid, rid, covId);
       openModal({...m});
     }));
@@ -15476,7 +15767,7 @@ function attachHandlers(){
         const areaId = activeModal.editId;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = await window.RC.ensureDepartment(dept);
-          return window.RC.updateArea({areaId, name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          return window.RC.updateArea({areaId, name, color, capacity, departmentId, fixed, actingAccountId:authState.account.id});
         });
         const a = getAreaById(areaId);
         a.name=name; a.capacity=capacity; a.color=color; a.department=dept; a.fixed=fixed;
@@ -15489,7 +15780,7 @@ function attachHandlers(){
         let createdId = null;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = await window.RC.ensureDepartment(dept);
-          const row = await window.RC.createArea({name, color, capacity, departmentId, actingAccountId:authState.account.id});
+          const row = await window.RC.createArea({name, color, capacity, departmentId, fixed, actingAccountId:authState.account.id});
           createdId = row.id;
           return row;
         });
@@ -15674,7 +15965,7 @@ function attachHandlers(){
           const hrs   = dly!=null ? (dly*rots).toFixed(1) : '';
           const cos   = (state.calloutHistory||{})[s.id]?.length||0;
           const leaves= ((state.timeOff||{})[s.id]||[]).filter(r=>r.endDate>=today).length;
-          const move  = !!(area&&!area.fixed&&isRepeatArea(s.id,area.id));
+          const move  = !!(area&&isRepeatArea(s.id,area.id));
           const reqs  = (s.positionRequests||[]).filter(r=>!r.status||r.status==='pending').length;
           sh1.push([
             s.name, s.department||'', area?.name||'', s.shiftHours||'',
@@ -16971,7 +17262,7 @@ function mapSupabaseBoard(board){
     color: a.color,
     capacity: a.capacity,
     department: deptById[a.department_id] || '',
-    fixed: false,
+    fixed: !!a.fixed,
   }));
 
   const langCertsByStaff = {};
@@ -17024,6 +17315,7 @@ function mapSupabaseBoard(board){
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
+  const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
@@ -17048,7 +17340,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -17078,6 +17370,7 @@ function applyMappedBoard(mapped){
   state.supervisors = mapped.supervisors;
   state.shifts = mapped.shifts;
   state.lunchTimes = mapped.lunchTimes;
+  state.breakTimes = mapped.breakTimes;
   state.languages = mapped.languages;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
