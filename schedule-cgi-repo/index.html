@@ -6316,9 +6316,9 @@
   .coverage-return-hint{opacity:.7;font-weight:400;}
   .act-return-coverage{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;}
   .streak-badge{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:6px;padding:1px 5px;}
-  .chip-repeat-badge,.chip-blocked-badge,.chip-away-badge{font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;}
+  .chip-repeat-badge,.chip-blocked-badge{font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;}
   .chip-repeat-badge{background:#FFEDD5;color:#C2410C;}
-  .chip-blocked-badge,.chip-away-badge{background:#fee2e2;color:#dc2626;}
+  .chip-blocked-badge{background:#fee2e2;color:#dc2626;}
   /* chip dot-menu */
   .chip{position:relative;}
   .chip:has(.chip-action-menu){z-index:100;overflow:visible;}
@@ -10062,8 +10062,7 @@ function renderChip(s){
   const isFixed  = !!(area?.fixed);  // fixed areas never rotate — no flags
   const repeat   = areaId && isRepeatArea(s.id, areaId); // isRepeatArea() itself excludes fixed areas
   const conflicts= !isFixed && areaId ? blockConflictsIn(s.id, areaId) : [];
-  const displaced= !isFixed && areaId && isTeamLeadDisplaced(s.id, areaId);
-  const flagged  = repeat || conflicts.length>0 || displaced;
+  const flagged  = repeat || conflicts.length>0;
   const trail    = lastTrail(s.id);
   const isSelected = selectedStaffId === s.id;
   const isSwapFirst = swapMode && swapMode.staffId===s.id;
@@ -10115,7 +10114,6 @@ function renderChip(s){
       if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
       if(repeat) certs.push('<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>');
       if(conflicts.length>0) certs.push('<span class="chip-blocked-badge" title="Blocked pairing in this area">🚫 blocked</span>');
-      if(displaced) certs.push('<span class="chip-away-badge" title="Team lead away from home area">📍 away</span>');
       return certs.length?'<div class="chip-certs">'+certs.join('')+'</div>':'';
     })()}
     ${(()=>{
@@ -10278,12 +10276,11 @@ function renderOverviewRow(s, areaId){
   const isOut = !!state.callouts[s.id];
   const repeat = isRepeatArea(s.id, areaId);
   const conflicts = blockConflictsIn(s.id, areaId);
-  const displaced = isTeamLeadDisplaced(s.id, areaId);
-  const flagged = repeat || conflicts.length>0 || displaced;
+  const flagged = repeat || conflicts.length>0;
   const times = [s.shiftHours, s.breakTimes].filter(Boolean).join(' · ');
   return `
   <div class="ov-row ${isOut?'out':''} ${flagged?'flagged':''}" data-show-stats="${s.id}">
-    <span class="ov-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.tdisNumber?` <span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdisNumber)}</span>`:''}${s.isSubcontractor?' <span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}${isOut?' <span class="ov-out-tag">Out</span>':''}${flagged&&!isOut?` <span class="ov-flag-dot" title="${[repeat&&'repeat',conflicts.length&&'blocked',displaced&&'away'].filter(Boolean).join(', ')}">⚠</span>`:''}</span>
+    <span class="ov-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.tdisNumber?` <span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdisNumber)}</span>`:''}${s.isSubcontractor?' <span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}${isOut?' <span class="ov-out-tag">Out</span>':''}${flagged&&!isOut?` <span class="ov-flag-dot" title="${[repeat&&'repeat',conflicts.length&&'blocked'].filter(Boolean).join(', ')}">⚠</span>`:''}</span>
     ${times?`<span class="ov-times">${escapeHtml(times)}</span>`:''}
   </div>`;
 }
