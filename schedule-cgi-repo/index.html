@@ -9349,17 +9349,17 @@ function parseClockToken(token){
   return hour*60 + minute; // minutes since midnight, for sorting/comparison
 }
 
-// Sorts a lunch/break-time catalog latest-first by parsed clock time.
+// Sorts a lunch/break-time catalog earliest-first by parsed clock time.
 // Entries that don't parse (free text like "See Supervisor") sort last,
 // keeping their relative order.
-function sortTimesDescending(list){
+function sortTimesAscending(list){
   return [...list].sort((a,b)=>{
     const am = parseClockToken(a.label);
     const bm = parseClockToken(b.label);
     if(am==null && bm==null) return 0;
     if(am==null) return 1;
     if(bm==null) return -1;
-    return bm - am;
+    return am - bm;
   });
 }
 
@@ -9367,11 +9367,11 @@ function sortTimesDescending(list){
 // catalog, pre-selecting by parsed clock time (not exact text) so this
 // still recognizes records saved before lunch times became a manageable
 // catalog — a bare "12:00" correctly shows the "12:00 PM" option as selected.
-// Listed latest-first.
+// Listed earliest-first.
 function renderLunchOptions(breakTimesRaw){
   const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
   const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
-  return sortTimesDescending(state.lunchTimes).map(lt=>{
+  return sortTimesAscending(state.lunchTimes).map(lt=>{
     const ltMins = parseClockToken(lt.label);
     const isSelected = savedLunchMins!=null && ltMins!=null && savedLunchMins===ltMins;
     return `<option value="${escapeHtml(lt.label)}" ${isSelected?'selected':''}>${escapeHtml(lt.label)}</option>`;
@@ -9379,11 +9379,11 @@ function renderLunchOptions(breakTimesRaw){
 }
 
 // Same as renderLunchOptions but for the break-time half (index 0) of the
-// combined "break / lunch" string. Listed latest-first.
+// combined "break / lunch" string. Listed earliest-first.
 function renderBreakOptions(breakTimesRaw){
   const savedBreakRaw = breakTimesRaw ? breakTimesRaw.split('/')[0] : null;
   const savedBreakMins = savedBreakRaw ? parseClockToken(savedBreakRaw) : null;
-  return sortTimesDescending(state.breakTimes).map(bt=>{
+  return sortTimesAscending(state.breakTimes).map(bt=>{
     const btMins = parseClockToken(bt.label);
     const isSelected = savedBreakMins!=null && btMins!=null && savedBreakMins===btMins;
     return `<option value="${escapeHtml(bt.label)}" ${isSelected?'selected':''}>${escapeHtml(bt.label)}</option>`;
@@ -12412,9 +12412,18 @@ function renderTimeManagementModal(m){
   </div>`;
 }
 
+// Listed earliest-start-first, like every other time list in this modal.
 function renderShiftsTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:'',start:'',end:''} : (m.editId ? state.shifts.find(s=>s.id===m.editId) : null);
+  const sorted = [...state.shifts].sort((a,b)=>{
+    const am = parseClockToken(a.start);
+    const bm = parseClockToken(b.start);
+    if(am==null && bm==null) return 0;
+    if(am==null) return 1;
+    if(bm==null) return -1;
+    return am - bm;
+  });
   return editing?`
     <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New shift':'Editing: '+escapeHtml(editing.label)}</b></div>
     <div class="field"><label>Start time</label><input type="text" id="shift-start-input" value="${escapeHtml(editing.start)}" placeholder="e.g. 7:30"/></div>
@@ -12426,7 +12435,7 @@ function renderShiftsTabBody(m){
     <button class="btn btn-light" id="shift-cancel-btn" style="width:100%;">Cancel</button>
     `:`
     <button class="btn btn-primary" id="btn-new-shift" style="width:100%;margin-bottom:16px;">+ Add shift</button>
-    ${state.shifts.map(sh=>`
+    ${sorted.map(sh=>`
       <div class="option-card" data-edit-shift="${sh.id}">
         <div class="oc-left">
           <span class="oc-name">🕐 ${escapeHtml(sh.label)}</span>
@@ -12438,11 +12447,11 @@ function renderShiftsTabBody(m){
 
 // Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
 // used to be a hardcoded two-option <select> baked into the markup.
-// Listed latest-time-first, like every other time list in this modal.
+// Listed earliest-time-first, like every other time list in this modal.
 function renderLunchTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
-  const sorted = sortTimesDescending(state.lunchTimes);
+  const sorted = sortTimesAscending(state.lunchTimes);
   return editing?`
     <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
     <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
@@ -12464,11 +12473,11 @@ function renderLunchTabBody(m){
 
 // Same CRUD pattern as lunch times — the 15-minute break slots staff pick
 // from (e.g. 10:00, 10:15, 10:30, 10:45), staggered so a whole area isn't
-// on break at once. Listed latest-time-first.
+// on break at once. Listed earliest-time-first.
 function renderBreakTimesTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:''} : (m.editId ? state.breakTimes.find(b=>b.id===m.editId) : null);
-  const sorted = sortTimesDescending(state.breakTimes);
+  const sorted = sortTimesAscending(state.breakTimes);
   return editing?`
     <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New break time':'Editing: '+escapeHtml(editing.label)}</b></div>
     <div class="field"><label>Label</label><input type="text" id="break-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 10:15 AM"/></div>
