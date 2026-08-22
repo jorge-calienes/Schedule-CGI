@@ -5066,6 +5066,25 @@
   .oc-name{font-size:15px;font-weight:590;color:var(--c-text);}
   .oc-sub{font-size:12px;color:var(--c-text-2);margin-top:2px;}
 
+  /* ── Time management modal: tabs + team-breaks rows ── */
+  .tm-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--c-border);}
+  .tm-tab{
+    background:none;border:none;border-bottom:2px solid transparent;
+    padding:10px 4px;margin-right:16px;
+    font-family:inherit;font-size:14px;font-weight:600;
+    color:var(--c-text-2);cursor:pointer;
+  }
+  .tm-tab.active{color:var(--c-accent,#2F5FA8);border-bottom-color:var(--c-accent,#2F5FA8);}
+  .tm-tab:hover:not(.active){color:var(--c-text);}
+  .tm-break-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 0;border-bottom:1px solid var(--c-border);
+  }
+  .tm-break-row:last-child{border-bottom:none;}
+  .tm-break-name{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--c-text);}
+  .tm-break-area{font-size:11px;font-weight:600;color:var(--c-text-2);background:var(--c-surface-2);padding:2px 8px;border-radius:999px;}
+  .tm-break-select{padding:6px 10px;border:1px solid var(--c-border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--c-surface);}
+
   /* ── App bar & layout ── */
   .topbar{
     background:rgba(255,255,255,.92)!important;
@@ -9781,8 +9800,9 @@ function renderTabBar(){
 function renderNavDrawer(){
   const isOpen = navDrawerOpen;
   if(isTeamLeadRole()){
-    // Team leads: evaluations + board view only — every other nav item
-    // opens something that mutates data, which is manager-only server-side.
+    // Team leads: evaluations + board view + their own area's lunch/break
+    // times (the one data mutation RLS actually grants them, per migration
+    // 0009) — every other nav item opens something manager-only server-side.
     return `
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
@@ -9790,6 +9810,7 @@ function renderNavDrawer(){
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>
+      <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
     </nav>`;
@@ -9823,8 +9844,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
-      <button class="nav-item" id="nav-manage-shifts"><span class="nav-item-icon">🕐</span>Manage shifts</button>
-      <button class="nav-item" id="nav-manage-lunch-times"><span class="nav-item-icon">🍽</span>Manage lunch times</button>
+      <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -10643,8 +10663,7 @@ function renderModal(){
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
   else if(m.type==='mark-callout') inner = renderMarkCalloutModal(m);
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
-  else if(m.type==='shifts-manager') inner = renderShiftsManagerModal(m);
-  else if(m.type==='lunch-times-manager') inner = renderLunchTimesManagerModal(m);
+  else if(m.type==='time-management') inner = renderTimeManagementModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
@@ -12321,72 +12340,127 @@ function renderDeptReorderModal(m){
 }
 
 
-// --- Shifts manager (admin) ---
-function renderShiftsManagerModal(m){
-  const isNew = m.editId === '__new__';
-  const editing = isNew ? {label:'',start:'',end:''} : (m.editId ? state.shifts.find(s=>s.id===m.editId) : null);
+// --- Time management (admin/supervisor: shifts + lunch catalogs + team
+// breaks; team lead: breaks tab only) — one consolidated modal instead of
+// three separate menu entries / a buried per-person editor. ---
+function renderTimeManagementModal(m){
+  const isLead = isTeamLeadRole();
+  const tab = m.tab || (isLead ? 'breaks' : 'shifts');
+  const tabs = [
+    ...(isLead ? [] : [{id:'shifts', label:'Shifts'}, {id:'lunch', label:'Lunch times'}]),
+    {id:'breaks', label:'Team breaks'},
+  ];
+  const body = tab==='shifts' ? renderShiftsTabBody(m)
+    : tab==='lunch' ? renderLunchTabBody(m)
+    : renderBreaksTabBody(m);
   return `
-  <div class="modal" style="max-width:440px;">
+  <div class="modal" style="max-width:480px;">
     <div class="modal-head">
-      <div><h2>Manage shifts</h2><p>Define the shift schedule for your operation. Staff select from this list.</p></div>
+      <div><h2>🕐 Time management</h2><p>Shifts, lunch times, and break assignments — all in one place.</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
-    <div class="modal-body">
-      ${editing?`
-      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New shift':'Editing: '+escapeHtml(editing.label)}</b></div>
-      <div class="field"><label>Start time</label><input type="text" id="shift-start-input" value="${escapeHtml(editing.start)}" placeholder="e.g. 7:30"/></div>
-      <div class="field"><label>End time</label><input type="text" id="shift-end-input" value="${escapeHtml(editing.end)}" placeholder="e.g. 4:15"/></div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button class="btn btn-primary" id="shift-save-btn" style="flex:1;">Save shift</button>
-        ${isNew?'':'<button class="btn btn-danger" id="shift-delete-btn">Delete</button>'}
-      </div>
-      <button class="btn btn-light" id="shift-cancel-btn" style="width:100%;">Cancel</button>
-      `:`
-      <button class="btn btn-primary" id="btn-new-shift" style="width:100%;margin-bottom:16px;">+ Add shift</button>
-      ${state.shifts.map(sh=>`
-        <div class="option-card" data-edit-shift="${sh.id}">
-          <div class="oc-left">
-            <span class="oc-name">🕐 ${escapeHtml(sh.label)}</span>
-            <span class="oc-sub">${escapeHtml(sh.start)} → ${escapeHtml(sh.end)}</span>
-          </div>
-        </div>`).join('')}
-      `}
-    </div>
+    ${tabs.length>1?`
+    <div class="tm-tabs">
+      ${tabs.map(t=>`<button class="tm-tab ${tab===t.id?'active':''}" data-tm-tab="${t.id}">${t.label}</button>`).join('')}
+    </div>`:''}
+    <div class="modal-body">${body}</div>
   </div>`;
 }
 
-// --- Lunch times manager (admin) — same list/edit pattern as shifts above.
+function renderShiftsTabBody(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {label:'',start:'',end:''} : (m.editId ? state.shifts.find(s=>s.id===m.editId) : null);
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New shift':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Start time</label><input type="text" id="shift-start-input" value="${escapeHtml(editing.start)}" placeholder="e.g. 7:30"/></div>
+    <div class="field"><label>End time</label><input type="text" id="shift-end-input" value="${escapeHtml(editing.end)}" placeholder="e.g. 4:15"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="shift-save-btn" style="flex:1;">Save shift</button>
+      ${isNew?'':'<button class="btn btn-danger" id="shift-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="shift-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-shift" style="width:100%;margin-bottom:16px;">+ Add shift</button>
+    ${state.shifts.map(sh=>`
+      <div class="option-card" data-edit-shift="${sh.id}">
+        <div class="oc-left">
+          <span class="oc-name">🕐 ${escapeHtml(sh.label)}</span>
+          <span class="oc-sub">${escapeHtml(sh.start)} → ${escapeHtml(sh.end)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
 // Feeds the "Lunch" dropdown on the staff editor (state.lunchTimes), which
 // used to be a hardcoded two-option <select> baked into the markup.
-function renderLunchTimesManagerModal(m){
+function renderLunchTabBody(m){
   const isNew = m.editId === '__new__';
   const editing = isNew ? {label:''} : (m.editId ? state.lunchTimes.find(l=>l.id===m.editId) : null);
+  return editing?`
+    <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
+    <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
+      ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
+    </div>
+    <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
+    `:`
+    <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
+    ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
+      <div class="option-card" data-edit-lunch-time="${l.id}">
+        <div class="oc-left">
+          <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
+        </div>
+      </div>`).join('')}
+    `;
+}
+
+// Bulk lunch-time editor: team leads see just their own area's staff (the
+// only slice they're allowed to edit — no more hunting through each
+// person's stats modal one at a time); admin/supervisor see everyone.
+function renderBreaksTabBody(m){
+  const isLead = isTeamLeadRole();
+  const scopeStaff = isLead
+    ? state.staff.filter(s=>s.active!==false && state.assignments[s.id]===authState.account.assigned_area_id)
+    : state.staff.filter(s=>s.active!==false);
   return `
-  <div class="modal" style="max-width:440px;">
-    <div class="modal-head">
-      <div><h2>Manage lunch times</h2><p>Define the lunch time options staff can select from.</p></div>
-      <button class="modal-close" id="modal-close-x">✕</button>
-    </div>
-    <div class="modal-body">
-      ${editing?`
-      <div class="alert-box" style="margin-bottom:16px;"><b>${isNew?'New lunch time':'Editing: '+escapeHtml(editing.label)}</b></div>
-      <div class="field"><label>Label</label><input type="text" id="lunch-time-label-input" value="${escapeHtml(editing.label)}" placeholder="e.g. 12:30 PM"/></div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button class="btn btn-primary" id="lunch-time-save-btn" style="flex:1;">Save lunch time</button>
-        ${isNew?'':'<button class="btn btn-danger" id="lunch-time-delete-btn">Delete</button>'}
-      </div>
-      <button class="btn btn-light" id="lunch-time-cancel-btn" style="width:100%;">Cancel</button>
-      `:`
-      <button class="btn btn-primary" id="btn-new-lunch-time" style="width:100%;margin-bottom:16px;">+ Add lunch time</button>
-      ${state.lunchTimes.length===0?'<div class="small-muted" style="padding:8px 0;">No lunch times yet — add one above.</div>':state.lunchTimes.map(l=>`
-        <div class="option-card" data-edit-lunch-time="${l.id}">
-          <div class="oc-left">
-            <span class="oc-name">🍽 ${escapeHtml(l.label)}</span>
-          </div>
-        </div>`).join('')}
-      `}
-    </div>
-  </div>`;
+    <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set lunch time for people currently in your area.' : 'Set lunch time for any staff member.'}</div>
+    ${scopeStaff.length===0?'<div class="small-muted" style="padding:8px 0;">No one here right now.</div>':scopeStaff.map(s=>{
+      const area = getAreaById(state.assignments[s.id]);
+      return `
+      <div class="tm-break-row">
+        <div class="tm-break-name">
+          <span>${escapeHtml(s.name)}</span>
+          ${!isLead && area ? `<span class="tm-break-area">${escapeHtml(area.name)}</span>` : ''}
+        </div>
+        <select class="tm-break-select" data-staff-id="${s.id}">
+          <option value="">— Select —</option>
+          ${renderLunchOptions(s.breakTimes)}
+        </select>
+      </div>`;
+    }).join('')}
+    `;
+}
+
+// Shared by the Team breaks tab and the per-person staff-stats quick
+// editor — keeps whatever break-start portion is already there, only
+// swaps the lunch half of the combined "start / lunch" string.
+async function applyLunchChange(staffId, newLunch){
+  const s = getStaffById(staffId);
+  if(!s) return false;
+  const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
+  const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
+  const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
+    staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
+  }));
+  if(sync.ok){
+    s.breakTimes = breakTimes;
+    saveState();
+    showToast('Lunch time updated — saved to database ✓', 'teal');
+  } else {
+    showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+  }
+  return sync.ok;
 }
 
 // --- Languages manager (admin) ---
@@ -14637,8 +14711,7 @@ function attachHandlers(){
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
-  on('nav-manage-shifts',       ()=>{ closeNav(); openModal({type:'shifts-manager'}); });
-  on('nav-manage-lunch-times',  ()=>{ closeNav(); openModal({type:'lunch-times-manager'}); });
+  on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-sign-out', async ()=>{
@@ -14760,24 +14833,8 @@ function attachHandlers(){
     });
     const lunchSel = document.getElementById('stats-lunch-input');
     if(lunchSel) lunchSel.addEventListener('change', async ()=>{
-      const s = getStaffById(lunchSel.dataset.staffId);
-      if(!s) return;
-      const newLunch = lunchSel.value;
-      // keep whatever break-start portion is already there — team leads
-      // aren't editing shift hours, only the lunch half of the combined string
-      const breakPart = (s.breakTimes||'').split('/')[0]?.trim() || '10:00';
-      const breakTimes = newLunch ? `${breakPart} / ${newLunch}` : '';
       lunchSel.disabled = true;
-      const sync = await syncCrudWrite(()=>window.RC.updateStaffBreakTime({
-        staffId: s.id, breakTimesLabel: breakTimes, actingAccountId: authState.account.id, staffName: s.name,
-      }));
-      if(sync.ok){
-        s.breakTimes = breakTimes;
-        saveState();
-        showToast('Lunch time updated — saved to database ✓', 'teal');
-      } else {
-        showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
-      }
+      await applyLunchChange(lunchSel.dataset.staffId, lunchSel.value);
       render();
     });
   }
@@ -15290,71 +15347,85 @@ function attachHandlers(){
     });
   }
 
-  // --- shifts manager ---
-  if(activeModal.type==='shifts-manager'){
-    on('btn-new-shift', ()=>openModal({type:'shifts-manager', editId:'__new__'}));
-    on('shift-cancel-btn', ()=>openModal({type:'shifts-manager'}));
-    on('shift-save-btn', async ()=>{
-      const start = document.getElementById('shift-start-input').value.trim();
-      const end   = document.getElementById('shift-end-input').value.trim();
-      if(!start||!end){ showToast('Enter start and end time','rust'); return; }
-      const label = `${start} – ${end}`;
-      if(activeModal.editId==='__new__'){
-        const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
-        state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
-        showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      } else {
-        const sh = state.shifts.find(s=>s.id===activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
-        if(sh){ sh.start=start; sh.end=end; sh.label=label; }
-        showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      }
-      saveState(); openModal({type:'shifts-manager'});
-    });
-    on('shift-delete-btn', async ()=>{
-      const id = activeModal.editId;
-      const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
-      state.shifts = state.shifts.filter(s=>s.id!==id);
-      saveState();
-      showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      openModal({type:'shifts-manager'});
-    });
-    document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
-      openModal({type:'shifts-manager', editId:el.dataset.editShift});
+  // --- time management (shifts / lunch times / team breaks tabs) ---
+  if(activeModal.type==='time-management'){
+    const tab = activeModal.tab || (isTeamLeadRole() ? 'breaks' : 'shifts');
+    document.querySelectorAll('[data-tm-tab]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'time-management', tab:el.dataset.tmTab});
     }));
-  }
 
-  // --- lunch times manager ---
-  if(activeModal.type==='lunch-times-manager'){
-    on('btn-new-lunch-time', ()=>openModal({type:'lunch-times-manager', editId:'__new__'}));
-    on('lunch-time-cancel-btn', ()=>openModal({type:'lunch-times-manager'}));
-    on('lunch-time-save-btn', async ()=>{
-      const label = document.getElementById('lunch-time-label-input').value.trim();
-      if(!label){ showToast('Enter a label','rust'); return; }
-      if(activeModal.editId==='__new__'){
-        const sortOrder = state.lunchTimes.length;
-        const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
-        state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
-        showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      } else {
-        const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
-        if(lt){ lt.label = label; }
-        showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      }
-      saveState(); openModal({type:'lunch-times-manager'});
-    });
-    on('lunch-time-delete-btn', async ()=>{
-      const id = activeModal.editId;
-      const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
-      state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
-      saveState();
-      showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      openModal({type:'lunch-times-manager'});
-    });
-    document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
-      openModal({type:'lunch-times-manager', editId:el.dataset.editLunchTime});
-    }));
+    if(tab==='shifts'){
+      on('btn-new-shift', ()=>openModal({type:'time-management', tab:'shifts', editId:'__new__'}));
+      on('shift-cancel-btn', ()=>openModal({type:'time-management', tab:'shifts'}));
+      on('shift-save-btn', async ()=>{
+        const start = document.getElementById('shift-start-input').value.trim();
+        const end   = document.getElementById('shift-end-input').value.trim();
+        if(!start||!end){ showToast('Enter start and end time','rust'); return; }
+        const label = `${start} – ${end}`;
+        if(activeModal.editId==='__new__'){
+          const sync = await syncCrudWrite(()=>window.RC.createShift({label, start, end}));
+          state.shifts.push({id: sync.ok ? sync.result.id : uid('sh'), label, start, end});
+          showToast(sync.ok ? 'Shift added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const sh = state.shifts.find(s=>s.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateShift({shiftId: sh.id, label, start, end}));
+          if(sh){ sh.start=start; sh.end=end; sh.label=label; }
+          showToast(sync.ok ? 'Shift updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'shifts'});
+      });
+      on('shift-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteShift({shiftId:id}));
+        state.shifts = state.shifts.filter(s=>s.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Shift removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'shifts'});
+      });
+      document.querySelectorAll('[data-edit-shift]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'shifts', editId:el.dataset.editShift});
+      }));
+    }
+
+    if(tab==='lunch'){
+      on('btn-new-lunch-time', ()=>openModal({type:'time-management', tab:'lunch', editId:'__new__'}));
+      on('lunch-time-cancel-btn', ()=>openModal({type:'time-management', tab:'lunch'}));
+      on('lunch-time-save-btn', async ()=>{
+        const label = document.getElementById('lunch-time-label-input').value.trim();
+        if(!label){ showToast('Enter a label','rust'); return; }
+        if(activeModal.editId==='__new__'){
+          const sortOrder = state.lunchTimes.length;
+          const sync = await syncCrudWrite(()=>window.RC.createLunchTime({label, sortOrder}));
+          state.lunchTimes.push({id: sync.ok ? sync.result.id : uid('lt'), label, sort_order: sortOrder});
+          showToast(sync.ok ? 'Lunch time added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        } else {
+          const lt = state.lunchTimes.find(l=>l.id===activeModal.editId);
+          const sync = await syncCrudWrite(()=>window.RC.updateLunchTime({lunchTimeId: lt.id, label, sortOrder: lt?.sort_order||0}));
+          if(lt){ lt.label = label; }
+          showToast(sync.ok ? 'Lunch time updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        }
+        saveState(); openModal({type:'time-management', tab:'lunch'});
+      });
+      on('lunch-time-delete-btn', async ()=>{
+        const id = activeModal.editId;
+        const sync = await syncCrudWrite(()=>window.RC.deleteLunchTime({lunchTimeId:id}));
+        state.lunchTimes = state.lunchTimes.filter(l=>l.id!==id);
+        saveState();
+        showToast(sync.ok ? 'Lunch time removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        openModal({type:'time-management', tab:'lunch'});
+      });
+      document.querySelectorAll('[data-edit-lunch-time]').forEach(el=>el.addEventListener('click',()=>{
+        openModal({type:'time-management', tab:'lunch', editId:el.dataset.editLunchTime});
+      }));
+    }
+
+    if(tab==='breaks'){
+      document.querySelectorAll('.tm-break-select').forEach(sel=>sel.addEventListener('change', async ()=>{
+        sel.disabled = true;
+        await applyLunchChange(sel.dataset.staffId, sel.value);
+        render();
+      }));
+    }
   }
 
   // --- languages manager ---
