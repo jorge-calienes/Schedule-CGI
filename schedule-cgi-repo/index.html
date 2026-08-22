@@ -12499,15 +12499,27 @@ function renderBreakTimesTabBody(m){
 
 // Bulk break/lunch editor: team leads see just their own area's staff (the
 // only slice they're allowed to edit — no more hunting through each
-// person's stats modal one at a time); admin/supervisor see everyone.
+// person's stats modal one at a time); admin/supervisor see everyone, with
+// an area filter to jump straight to one team lead's area instead of
+// scrolling the full roster.
 function renderTeamBreaksTabBody(m){
   const isLead = isTeamLeadRole();
+  const areaFilter = m.areaFilter || '';
   const scopeStaff = isLead
     ? state.staff.filter(s=>s.active!==false && state.assignments[s.id]===authState.account.assigned_area_id)
-    : state.staff.filter(s=>s.active!==false);
+    : state.staff.filter(s=>s.active!==false && (!areaFilter || state.assignments[s.id]===areaFilter));
   return `
     <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set break and lunch time for people currently in your area.' : 'Set break and lunch time for any staff member.'}</div>
-    ${scopeStaff.length===0?'<div class="small-muted" style="padding:8px 0;">No one here right now.</div>':scopeStaff.map(s=>{
+    ${isLead ? '' : `
+    <div class="field" style="margin-bottom:14px;">
+      <label>Filter by area</label>
+      <select id="tm-break-area-filter">
+        <option value="">All areas</option>
+        ${state.areas.map(a=>`<option value="${a.id}" ${areaFilter===a.id?'selected':''}>${escapeHtml(a.name)}</option>`).join('')}
+      </select>
+    </div>
+    `}
+    ${scopeStaff.length===0?`<div class="small-muted" style="padding:8px 0;">${areaFilter?'No one in this area right now.':'No one here right now.'}</div>`:scopeStaff.map(s=>{
       const area = getAreaById(state.assignments[s.id]);
       return `
       <div class="tm-break-row">
@@ -15558,6 +15570,10 @@ function attachHandlers(){
         await applyBreakOrLunchChange(sel.dataset.staffId, sel.dataset.part, sel.value);
         render();
       }));
+      const areaFilterSel = document.getElementById('tm-break-area-filter');
+      if(areaFilterSel) areaFilterSel.addEventListener('change', ()=>{
+        openModal({...activeModal, areaFilter: areaFilterSel.value});
+      });
     }
   }
 
