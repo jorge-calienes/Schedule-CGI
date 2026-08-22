@@ -6311,6 +6311,10 @@
   .coverage-return-hint{opacity:.7;font-weight:400;}
   .act-return-coverage{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;}
   .streak-badge{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:6px;padding:1px 5px;}
+  .chip-flags-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
+  .chip-repeat-badge,.chip-blocked-badge,.chip-away-badge{font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;display:inline-flex;align-items:center;gap:2px;white-space:nowrap;}
+  .chip-repeat-badge{background:#FFEDD5;color:#C2410C;}
+  .chip-blocked-badge,.chip-away-badge{background:#fee2e2;color:#dc2626;}
   /* chip dot-menu */
   .chip{position:relative;}
   .chip:has(.chip-action-menu){z-index:100;overflow:visible;}
@@ -6610,6 +6614,7 @@
   .to-card-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .to-active-pill{font-size:10px;font-weight:700;color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
   .to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
+  .to-card-bdays{font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-variant,#EEF1F4);border-radius:6px;padding:2px 6px;white-space:nowrap;}
   .to-card-reason{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
 
   .to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
@@ -9744,6 +9749,10 @@ function renderTimeOffView(){
             </div>
             <div class="to-card-actions">
               <span class="to-card-dates">${r.startDate===r.endDate?r.startDate:r.startDate+' → '+r.endDate}</span>
+              ${(()=>{
+                const bDays = businessDaysBetween(r.startDate, r.endDate);
+                return r.startDate!==r.endDate ? `<span class="to-card-bdays" title="Weekdays only — weekends aren't counted">${bDays} day${bDays===1?'':'s'}</span>` : '';
+              })()}
               <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
               <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
             </div>
@@ -10123,12 +10132,14 @@ function renderChip(s){
       const c = sup.color || '#5B5F66';
       return `<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`;
     })()}
-    <div class="chip-trail">
+    ${trail.length ? `<div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
-      ${conflicts.length>0 ? `<span class="trail-dot" style="background:var(--rust)" title="Blocked conflict in this area"></span>` : ''}
-      ${displaced ? `<span class="trail-dot" style="background:var(--rust);border-color:var(--rust)" title="Team Lead away from home area"></span>` : ''}
-      ${trail.length || conflicts.length || displaced ? `<span class="trail-label">${repeat?'repeat':''}${repeat&&conflicts.length?' · ':''}${conflicts.length?'blocked':''}${displaced?' · away':''}</span>` : ''}
-    </div>
+    </div>` : ''}
+    ${repeat || conflicts.length>0 || displaced ? `<div class="chip-flags-row">
+      ${repeat?'<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>':''}
+      ${conflicts.length>0?'<span class="chip-blocked-badge" title="Blocked pairing in this area">🚫 blocked</span>':''}
+      ${displaced?'<span class="chip-away-badge" title="Team lead away from home area">📍 away</span>':''}
+    </div>` : ''}
     ${isCovering ? `<div class="chip-covering-row">
       <span class="chip-covering-tag">↩ Return</span>
       <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(state.coverage[s.id].returnToAreaId)?.name||'pool')}</span>
@@ -11551,6 +11562,24 @@ function addDaysToDateStr(isoStr, days){
   const dt = new Date(y, (m||1)-1, d||1);
   dt.setDate(dt.getDate()+days);
   return dt.toISOString().slice(0,10);
+}
+
+// Counts weekdays (Mon-Fri) inclusive of both ends between two ISO date
+// strings — used to size up scheduled leave without counting Sat/Sun
+// against it. The calendar and the exported report still show every day
+// in the range as-is; this is only the "how many days" figure.
+function businessDaysBetween(startIso, endIso){
+  if(!startIso || !endIso) return 0;
+  const [sy,sm,sd] = startIso.split('-').map(Number);
+  const [ey,em,ed] = endIso.split('-').map(Number);
+  const start = new Date(sy, (sm||1)-1, sd||1);
+  const end = new Date(ey, (em||1)-1, ed||1);
+  let count = 0;
+  for(let dt=new Date(start); dt<=end; dt.setDate(dt.getDate()+1)){
+    const dow = dt.getDay();
+    if(dow!==0 && dow!==6) count++;
+  }
+  return count;
 }
 
 // --- supervisor manager (add/edit/delete/list) ---
@@ -16046,12 +16075,14 @@ function attachHandlers(){
         });
 
         // ── Sheet 7: Scheduled Time Off ───────────────────────────────────
-        const sh7 = [['Name','Department','Start Date','End Date','Label','Coverage Person','Coverage Area']];
+        // Business Days excludes Sat/Sun from the count — the Start/End
+        // Date columns still show the full range as scheduled.
+        const sh7 = [['Name','Department','Start Date','End Date','Business Days','Label','Coverage Person','Coverage Area']];
         state.staff.forEach(s=>{
           ((state.timeOff||{})[s.id]||[]).forEach(r=>{
             const cov = r.coverageStaffId ? getStaffById(r.coverageStaffId) : null;
             const covArea = cov ? getAreaById(state.assignments[cov.id]) : null;
-            sh7.push([s.name, s.department||'', r.startDate||'', r.endDate||'', r.label||'', cov?.name||'', covArea?.name||'']);
+            sh7.push([s.name, s.department||'', r.startDate||'', r.endDate||'', businessDaysBetween(r.startDate, r.endDate), r.label||'', cov?.name||'', covArea?.name||'']);
           });
         });
 
@@ -17305,10 +17336,22 @@ function mapSupabaseBoard(board){
   // dashboard). archiveStaff() now cleans its own callout row up, but
   // filter here too as a backstop against any other way a stale one could
   // show up.
+  //
+  // A callout is a same-day flag, not a standing status — someone marked
+  // out Friday is back on the schedule Saturday whether or not anyone
+  // remembered to tap "Mark in". Rather than requiring that manual step
+  // (or a server-side cron to expire rows), a callout row that wasn't
+  // marked today is simply not surfaced as "out" here. The row itself is
+  // left alone (still upsertable by setCallout, still visible in
+  // whatever reporting reads the callouts table directly).
+  const today = todayLabel();
   const activeStaffIds = new Set((board.staff||[]).map(s=>s.id));
   const callouts = {};
   (board.callouts||[]).forEach(row=>{
-    if(activeStaffIds.has(row.staff_id)) callouts[row.staff_id] = true;
+    if(!activeStaffIds.has(row.staff_id)) return;
+    const markedDate = row.marked_at ? String(row.marked_at).slice(0,10) : null;
+    if(markedDate && markedDate !== today) return;
+    callouts[row.staff_id] = true;
   });
 
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
