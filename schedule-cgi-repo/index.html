@@ -5516,6 +5516,20 @@
     background:var(--md-sys-color-surface-container-lowest);
   }
   .area-drop.dragover{background:var(--md-sys-color-primary-container);}
+  /* Desktop only: an area with more than a few people lays its chips out
+     two-per-row instead of one long column — the extra width was mostly
+     going unused next to a short name + a couple of badges, so pairing
+     chips up cuts the column's total height (and how far you scroll to
+     see every area) roughly in half. */
+  @media(min-width:900px){
+    .area-col.multi-col{width:460px;max-width:520px;}
+    .area-col.multi-col .area-drop{
+      display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+      align-content:start;
+    }
+    .area-col.multi-col .area-drop>.tap-target-btn,
+    .area-col.multi-col .area-drop>.area-empty-hint{grid-column:1/-1;}
+  }
   .area-col-more-cue{
     position:absolute;left:0;right:0;bottom:0;height:26px;
     background:linear-gradient(to bottom, transparent, var(--md-sys-color-surface-container-lowest));
@@ -10209,8 +10223,12 @@ function renderAreaCol(area){
   const under = isUnderStaffed(area.id);
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
+  // areas with a handful of people pack two-per-row on desktop instead of
+  // one long single-file list — cuts how much you scroll to see everyone
+  // in a busy area like Communications or Processing.
+  const multiCol = members.length > 3;
   return `
-  <div class="area-col ${under?'understaffed':''}" style="--area-color:${area.color}">
+  <div class="area-col ${under?'understaffed':''} ${multiCol?'multi-col':''}" style="--area-color:${area.color}">
     <div class="area-head" draggable="${readOnly?'false':'true'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="${readOnly?'':'Drag to reorder'}">
       <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
