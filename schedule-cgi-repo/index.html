@@ -380,22 +380,25 @@
   .cd-no-area{padding:8px 16px 12px;font-size:12px;color:var(--c-text-3);font-style:italic;}
 
   /* Candidate cards */
-  .cd-cands{padding:0 12px 0;}
-  .cd-cand{
+  .cd-cands{padding:0 12px 8px;}
+  /* Candidate is a plain <button> now — tapping it assigns immediately
+     instead of just "selecting" it, so there's no separate confirm step
+     and no lingering .sel state to style. */
+  .cd-cand-tap{
     display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
     padding:10px 10px;
     border:1.5px solid var(--c-border);
     border-radius:var(--r-md);
     margin-bottom:6px;
     cursor:pointer;
     background:#fff;
+    font-family:inherit;
     transition:border-color .12s,background .12s;
     position:relative;
   }
-  .cd-cand:hover{border-color:var(--c-accent);background:#F5F8FF;}
-  .cd-cand.sel{border-color:var(--c-accent);background:#EEF3FC;}
-  .cd-cand.best{border-color:#34C759;}
-  .cd-cand.best.sel{border-color:var(--c-accent);}
+  .cd-cand-tap:hover{border-color:var(--c-accent);background:#F5F8FF;}
+  .cd-cand-tap.best{border-color:#34C759;}
   .cd-cand-av{
     width:36px;height:36px;border-radius:50%;
     background:var(--c-surface-3);color:var(--c-text);
@@ -403,7 +406,6 @@
     display:flex;align-items:center;justify-content:center;
     flex-shrink:0;
   }
-  .cd-cand.sel .cd-cand-av{background:var(--c-accent);color:#fff;}
   .cd-cand-body{flex:1;min-width:0;}
   .cd-cand-name{font-size:14px;font-weight:600;color:var(--c-text);letter-spacing:-.01em;}
   .cd-cand-sub{font-size:11px;color:var(--c-text-2);margin-top:2px;}
@@ -413,25 +415,42 @@
     padding:2px 7px;border-radius:99px;
     flex-shrink:0;
   }
-  .cd-sel-check{font-size:16px;color:var(--c-accent);font-weight:700;flex-shrink:0;}
 
-  /* More toggle */
-  .cd-more{padding:0;margin-bottom:6px;}
-  .cd-more summary{
-    font-size:12px;font-weight:600;color:var(--c-accent);
-    padding:6px 2px;cursor:pointer;list-style:none;
+  /* "Others" — collapsed by default so the compact "Best" pick is the only
+     thing shown per person at a glance; expands to the same tap-to-assign
+     rows, just smaller. */
+  .cd-others-details{padding:0 12px;margin-bottom:4px;}
+  .cd-others-bar{
+    display:flex;align-items:center;gap:6px;
+    width:100%;padding:6px 10px;
+    border:1.5px solid var(--c-border);border-radius:var(--r-md);
+    font-size:12px;font-weight:600;color:var(--c-text-2);
+    background:var(--c-surface-2);cursor:pointer;list-style:none;
   }
-  .cd-more summary::-webkit-details-marker{display:none;}
+  .cd-others-bar::-webkit-details-marker{display:none;}
+  .cd-others-bar::before{content:'▸';font-size:9px;transition:transform .15s;}
+  .cd-others-details[open] .cd-others-bar::before{transform:rotate(90deg);}
+  .cd-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--c-surface-3);color:var(--c-text-2);
+    padding:1px 6px;border-radius:99px;
+  }
+  .cd-others-list{margin-top:6px;}
+  .cd-others-list .cd-cand-tap{padding:7px 10px;}
+  .cd-others-list .cd-cand-av{width:26px;height:26px;font-size:11px;}
 
-  /* Assign bar */
-  .cd-assign-bar{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 12px 14px;
-    gap:10px;
+  /* "No coverage needed" */
+  .cd-waive-btn{
+    display:block;width:calc(100% - 24px);margin:0 12px 12px;
+    background:none;border:none;
+    font-size:12px;font-weight:600;color:var(--c-text-3);
+    text-decoration:underline;text-align:center;
+    padding:4px;cursor:pointer;
   }
-  .cd-assign-who{font-size:13px;color:var(--c-text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cd-assign-btn{flex-shrink:0;}
-  .cd-assign-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .cd-waive-btn:hover{color:var(--c-text-2);}
+  .cd-waived-bar{background:var(--c-surface-2);}
+  .cd-waived-bar .cd-cov-check{background:var(--c-surface-3);color:var(--c-text-2);}
+  .cd-waived-bar .cd-cov-name{color:var(--c-text-2);}
 
   /* ── Coverage confirmation screen ── */
   .confirm-cov-avatar{
@@ -1856,22 +1875,25 @@
   .cd-no-area{padding:8px 16px 12px;font-size:12px;color:var(--c-text-3);font-style:italic;}
 
   /* Candidate cards */
-  .cd-cands{padding:0 12px 0;}
-  .cd-cand{
+  .cd-cands{padding:0 12px 8px;}
+  /* Candidate is a plain <button> now — tapping it assigns immediately
+     instead of just "selecting" it, so there's no separate confirm step
+     and no lingering .sel state to style. */
+  .cd-cand-tap{
     display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
     padding:10px 10px;
     border:1.5px solid var(--c-border);
     border-radius:var(--r-md);
     margin-bottom:6px;
     cursor:pointer;
     background:#fff;
+    font-family:inherit;
     transition:border-color .12s,background .12s;
     position:relative;
   }
-  .cd-cand:hover{border-color:var(--c-accent);background:#F5F8FF;}
-  .cd-cand.sel{border-color:var(--c-accent);background:#EEF3FC;}
-  .cd-cand.best{border-color:#34C759;}
-  .cd-cand.best.sel{border-color:var(--c-accent);}
+  .cd-cand-tap:hover{border-color:var(--c-accent);background:#F5F8FF;}
+  .cd-cand-tap.best{border-color:#34C759;}
   .cd-cand-av{
     width:36px;height:36px;border-radius:50%;
     background:var(--c-surface-3);color:var(--c-text);
@@ -1879,7 +1901,6 @@
     display:flex;align-items:center;justify-content:center;
     flex-shrink:0;
   }
-  .cd-cand.sel .cd-cand-av{background:var(--c-accent);color:#fff;}
   .cd-cand-body{flex:1;min-width:0;}
   .cd-cand-name{font-size:14px;font-weight:600;color:var(--c-text);letter-spacing:-.01em;}
   .cd-cand-sub{font-size:11px;color:var(--c-text-2);margin-top:2px;}
@@ -1889,25 +1910,42 @@
     padding:2px 7px;border-radius:99px;
     flex-shrink:0;
   }
-  .cd-sel-check{font-size:16px;color:var(--c-accent);font-weight:700;flex-shrink:0;}
 
-  /* More toggle */
-  .cd-more{padding:0;margin-bottom:6px;}
-  .cd-more summary{
-    font-size:12px;font-weight:600;color:var(--c-accent);
-    padding:6px 2px;cursor:pointer;list-style:none;
+  /* "Others" — collapsed by default so the compact "Best" pick is the only
+     thing shown per person at a glance; expands to the same tap-to-assign
+     rows, just smaller. */
+  .cd-others-details{padding:0 12px;margin-bottom:4px;}
+  .cd-others-bar{
+    display:flex;align-items:center;gap:6px;
+    width:100%;padding:6px 10px;
+    border:1.5px solid var(--c-border);border-radius:var(--r-md);
+    font-size:12px;font-weight:600;color:var(--c-text-2);
+    background:var(--c-surface-2);cursor:pointer;list-style:none;
   }
-  .cd-more summary::-webkit-details-marker{display:none;}
+  .cd-others-bar::-webkit-details-marker{display:none;}
+  .cd-others-bar::before{content:'▸';font-size:9px;transition:transform .15s;}
+  .cd-others-details[open] .cd-others-bar::before{transform:rotate(90deg);}
+  .cd-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--c-surface-3);color:var(--c-text-2);
+    padding:1px 6px;border-radius:99px;
+  }
+  .cd-others-list{margin-top:6px;}
+  .cd-others-list .cd-cand-tap{padding:7px 10px;}
+  .cd-others-list .cd-cand-av{width:26px;height:26px;font-size:11px;}
 
-  /* Assign bar */
-  .cd-assign-bar{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 12px 14px;
-    gap:10px;
+  /* "No coverage needed" */
+  .cd-waive-btn{
+    display:block;width:calc(100% - 24px);margin:0 12px 12px;
+    background:none;border:none;
+    font-size:12px;font-weight:600;color:var(--c-text-3);
+    text-decoration:underline;text-align:center;
+    padding:4px;cursor:pointer;
   }
-  .cd-assign-who{font-size:13px;color:var(--c-text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cd-assign-btn{flex-shrink:0;}
-  .cd-assign-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .cd-waive-btn:hover{color:var(--c-text-2);}
+  .cd-waived-bar{background:var(--c-surface-2);}
+  .cd-waived-bar .cd-cov-check{background:var(--c-surface-3);color:var(--c-text-2);}
+  .cd-waived-bar .cd-cov-name{color:var(--c-text-2);}
 
   /* ── Coverage confirmation screen ── */
   .confirm-cov-avatar{
@@ -3128,22 +3166,25 @@
   .cd-no-area{padding:8px 16px 12px;font-size:12px;color:var(--c-text-3);font-style:italic;}
 
   /* Candidate cards */
-  .cd-cands{padding:0 12px 0;}
-  .cd-cand{
+  .cd-cands{padding:0 12px 8px;}
+  /* Candidate is a plain <button> now — tapping it assigns immediately
+     instead of just "selecting" it, so there's no separate confirm step
+     and no lingering .sel state to style. */
+  .cd-cand-tap{
     display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
     padding:10px 10px;
     border:1.5px solid var(--c-border);
     border-radius:var(--r-md);
     margin-bottom:6px;
     cursor:pointer;
     background:#fff;
+    font-family:inherit;
     transition:border-color .12s,background .12s;
     position:relative;
   }
-  .cd-cand:hover{border-color:var(--c-accent);background:#F5F8FF;}
-  .cd-cand.sel{border-color:var(--c-accent);background:#EEF3FC;}
-  .cd-cand.best{border-color:#34C759;}
-  .cd-cand.best.sel{border-color:var(--c-accent);}
+  .cd-cand-tap:hover{border-color:var(--c-accent);background:#F5F8FF;}
+  .cd-cand-tap.best{border-color:#34C759;}
   .cd-cand-av{
     width:36px;height:36px;border-radius:50%;
     background:var(--c-surface-3);color:var(--c-text);
@@ -3151,7 +3192,6 @@
     display:flex;align-items:center;justify-content:center;
     flex-shrink:0;
   }
-  .cd-cand.sel .cd-cand-av{background:var(--c-accent);color:#fff;}
   .cd-cand-body{flex:1;min-width:0;}
   .cd-cand-name{font-size:14px;font-weight:600;color:var(--c-text);letter-spacing:-.01em;}
   .cd-cand-sub{font-size:11px;color:var(--c-text-2);margin-top:2px;}
@@ -3161,25 +3201,42 @@
     padding:2px 7px;border-radius:99px;
     flex-shrink:0;
   }
-  .cd-sel-check{font-size:16px;color:var(--c-accent);font-weight:700;flex-shrink:0;}
 
-  /* More toggle */
-  .cd-more{padding:0;margin-bottom:6px;}
-  .cd-more summary{
-    font-size:12px;font-weight:600;color:var(--c-accent);
-    padding:6px 2px;cursor:pointer;list-style:none;
+  /* "Others" — collapsed by default so the compact "Best" pick is the only
+     thing shown per person at a glance; expands to the same tap-to-assign
+     rows, just smaller. */
+  .cd-others-details{padding:0 12px;margin-bottom:4px;}
+  .cd-others-bar{
+    display:flex;align-items:center;gap:6px;
+    width:100%;padding:6px 10px;
+    border:1.5px solid var(--c-border);border-radius:var(--r-md);
+    font-size:12px;font-weight:600;color:var(--c-text-2);
+    background:var(--c-surface-2);cursor:pointer;list-style:none;
   }
-  .cd-more summary::-webkit-details-marker{display:none;}
+  .cd-others-bar::-webkit-details-marker{display:none;}
+  .cd-others-bar::before{content:'▸';font-size:9px;transition:transform .15s;}
+  .cd-others-details[open] .cd-others-bar::before{transform:rotate(90deg);}
+  .cd-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--c-surface-3);color:var(--c-text-2);
+    padding:1px 6px;border-radius:99px;
+  }
+  .cd-others-list{margin-top:6px;}
+  .cd-others-list .cd-cand-tap{padding:7px 10px;}
+  .cd-others-list .cd-cand-av{width:26px;height:26px;font-size:11px;}
 
-  /* Assign bar */
-  .cd-assign-bar{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 12px 14px;
-    gap:10px;
+  /* "No coverage needed" */
+  .cd-waive-btn{
+    display:block;width:calc(100% - 24px);margin:0 12px 12px;
+    background:none;border:none;
+    font-size:12px;font-weight:600;color:var(--c-text-3);
+    text-decoration:underline;text-align:center;
+    padding:4px;cursor:pointer;
   }
-  .cd-assign-who{font-size:13px;color:var(--c-text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cd-assign-btn{flex-shrink:0;}
-  .cd-assign-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .cd-waive-btn:hover{color:var(--c-text-2);}
+  .cd-waived-bar{background:var(--c-surface-2);}
+  .cd-waived-bar .cd-cov-check{background:var(--c-surface-3);color:var(--c-text-2);}
+  .cd-waived-bar .cd-cov-name{color:var(--c-text-2);}
 
   /* ── Coverage confirmation screen ── */
   .confirm-cov-avatar{
@@ -4210,22 +4267,25 @@
   .cd-no-area{padding:8px 16px 12px;font-size:12px;color:var(--c-text-3);font-style:italic;}
 
   /* Candidate cards */
-  .cd-cands{padding:0 12px 0;}
-  .cd-cand{
+  .cd-cands{padding:0 12px 8px;}
+  /* Candidate is a plain <button> now — tapping it assigns immediately
+     instead of just "selecting" it, so there's no separate confirm step
+     and no lingering .sel state to style. */
+  .cd-cand-tap{
     display:flex;align-items:center;gap:10px;
+    width:100%;text-align:left;
     padding:10px 10px;
     border:1.5px solid var(--c-border);
     border-radius:var(--r-md);
     margin-bottom:6px;
     cursor:pointer;
     background:#fff;
+    font-family:inherit;
     transition:border-color .12s,background .12s;
     position:relative;
   }
-  .cd-cand:hover{border-color:var(--c-accent);background:#F5F8FF;}
-  .cd-cand.sel{border-color:var(--c-accent);background:#EEF3FC;}
-  .cd-cand.best{border-color:#34C759;}
-  .cd-cand.best.sel{border-color:var(--c-accent);}
+  .cd-cand-tap:hover{border-color:var(--c-accent);background:#F5F8FF;}
+  .cd-cand-tap.best{border-color:#34C759;}
   .cd-cand-av{
     width:36px;height:36px;border-radius:50%;
     background:var(--c-surface-3);color:var(--c-text);
@@ -4233,7 +4293,6 @@
     display:flex;align-items:center;justify-content:center;
     flex-shrink:0;
   }
-  .cd-cand.sel .cd-cand-av{background:var(--c-accent);color:#fff;}
   .cd-cand-body{flex:1;min-width:0;}
   .cd-cand-name{font-size:14px;font-weight:600;color:var(--c-text);letter-spacing:-.01em;}
   .cd-cand-sub{font-size:11px;color:var(--c-text-2);margin-top:2px;}
@@ -4243,25 +4302,42 @@
     padding:2px 7px;border-radius:99px;
     flex-shrink:0;
   }
-  .cd-sel-check{font-size:16px;color:var(--c-accent);font-weight:700;flex-shrink:0;}
 
-  /* More toggle */
-  .cd-more{padding:0;margin-bottom:6px;}
-  .cd-more summary{
-    font-size:12px;font-weight:600;color:var(--c-accent);
-    padding:6px 2px;cursor:pointer;list-style:none;
+  /* "Others" — collapsed by default so the compact "Best" pick is the only
+     thing shown per person at a glance; expands to the same tap-to-assign
+     rows, just smaller. */
+  .cd-others-details{padding:0 12px;margin-bottom:4px;}
+  .cd-others-bar{
+    display:flex;align-items:center;gap:6px;
+    width:100%;padding:6px 10px;
+    border:1.5px solid var(--c-border);border-radius:var(--r-md);
+    font-size:12px;font-weight:600;color:var(--c-text-2);
+    background:var(--c-surface-2);cursor:pointer;list-style:none;
   }
-  .cd-more summary::-webkit-details-marker{display:none;}
+  .cd-others-bar::-webkit-details-marker{display:none;}
+  .cd-others-bar::before{content:'▸';font-size:9px;transition:transform .15s;}
+  .cd-others-details[open] .cd-others-bar::before{transform:rotate(90deg);}
+  .cd-others-count{
+    font-size:10px;font-weight:700;
+    background:var(--c-surface-3);color:var(--c-text-2);
+    padding:1px 6px;border-radius:99px;
+  }
+  .cd-others-list{margin-top:6px;}
+  .cd-others-list .cd-cand-tap{padding:7px 10px;}
+  .cd-others-list .cd-cand-av{width:26px;height:26px;font-size:11px;}
 
-  /* Assign bar */
-  .cd-assign-bar{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 12px 14px;
-    gap:10px;
+  /* "No coverage needed" */
+  .cd-waive-btn{
+    display:block;width:calc(100% - 24px);margin:0 12px 12px;
+    background:none;border:none;
+    font-size:12px;font-weight:600;color:var(--c-text-3);
+    text-decoration:underline;text-align:center;
+    padding:4px;cursor:pointer;
   }
-  .cd-assign-who{font-size:13px;color:var(--c-text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cd-assign-btn{flex-shrink:0;}
-  .cd-assign-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .cd-waive-btn:hover{color:var(--c-text-2);}
+  .cd-waived-bar{background:var(--c-surface-2);}
+  .cd-waived-bar .cd-cov-check{background:var(--c-surface-3);color:var(--c-text-2);}
+  .cd-waived-bar .cd-cov-name{color:var(--c-text-2);}
 
   /* ── Coverage confirmation screen ── */
   .confirm-cov-avatar{
@@ -8424,6 +8500,7 @@ let state = {
   rotationFlows: [],// [{id, name, color, stages:[{id,areaId,requiredRotations,label}]}]
   proficiency: {}, // {staffId: {areaId: {rating:1-5, ratings:[{period,teamLeadRating,teamLeadId,teamLeadNote,supervisorRating,supervisorId,supervisorApproved,overrideReason}]}}}
   priorExperience: {}, // {staffId: [{id, areaId, note}]} manually-marked "worked here before this system" flags
+  coverageWaived: {}, // {staffId: true} "no coverage needed" flags from the Coverage dashboard
   pendingFeedback: [], // [{staffId,areaId,toAreaId,...}]
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
@@ -10007,10 +10084,12 @@ function renderCalloutBanner(){
   // split into three groups
   const unassigned  = outIds.filter(id => !state.assignments[id]);           // out & no area
   const uncovered   = outIds.filter(id => {
+    if((state.coverageWaived||{})[id]) return false; // "no coverage needed" — doesn't need action
     const aId = state.assignments[id];
     return aId && !coveredAreaIds.has(aId);
   });
   const covered     = outIds.filter(id => {
+    if((state.coverageWaived||{})[id]) return true;
     const aId = state.assignments[id];
     return aId && coveredAreaIds.has(aId);
   });
@@ -11498,6 +11577,7 @@ function renderCalloutDashModal(m){
     const s      = getStaffById(sid);
     const areaId = state.assignments[sid];
     const area   = areaId ? getAreaById(areaId) : null;
+    const waived = !!(state.coverageWaived||{})[sid];
     let covererId = null;
     if(areaId){
       const slot = areaSlotsClaimed[areaId]||0;
@@ -11505,7 +11585,7 @@ function renderCalloutDashModal(m){
       areaSlotsClaimed[areaId] = slot+1;
     }
     const coverPerson = covererId ? getStaffById(covererId) : null;
-    const raw  = areaId ? rankCandidatesForArea(areaId,[sid]) : [];
+    const raw  = (areaId && !waived) ? rankCandidatesForArea(areaId,[sid]) : [];
     const cands = raw.filter(c=>{
       if((state.coverage||{})[c.staff.id]) return false;
       if(candidateClaimedThisRender.has(c.staff.id)) return false;
@@ -11518,29 +11598,36 @@ function renderCalloutDashModal(m){
       ? all.filter(c=>c.staff.name.toLowerCase().includes(searchQ)
           || (getAreaById(c.currentArea)?.name||'').toLowerCase().includes(searchQ))
       : all;
-    const selId = (m.selects||{})[sid]
-      ?? (filtered.find(c=>c.staff.id===(m.selects||{})[sid])?.staff.id)
-      ?? filtered[0]?.staff.id ?? null;
-    if(!coverPerson && selId) candidateClaimedThisRender.add(selId);
-    return {sid,s,area,areaId,covererId,coverPerson,candidates:filtered,selId};
+    if(!coverPerson && !waived && filtered[0]) candidateClaimedThisRender.add(filtered[0].staff.id);
+    return {sid,s,area,areaId,covererId,coverPerson,waived,candidates:filtered};
   });
-  const pendingCount = rows.filter(r=>!r.coverPerson&&r.area).length;
+  // Pending rows first (with the fewest-slack ones effectively "next up"),
+  // so assigning one and having the list re-render always surfaces the next
+  // thing to do at the top instead of leaving the admin to scroll for it.
+  rows.sort((a,b)=>{
+    const aPending = a.area && !a.coverPerson && !a.waived;
+    const bPending = b.area && !b.coverPerson && !b.waived;
+    if(aPending!==bPending) return aPending?-1:1;
+    return a.s.name.localeCompare(b.s.name);
+  });
+  const pendingCount = rows.filter(r=>!r.coverPerson&&!r.waived&&r.area).length;
   const allDone = pendingCount===0;
 
-  const candCard = (c,sid,selId,showBest) => {
+  // Compact single-line candidate row — tapping it assigns immediately
+  // (no separate "select then confirm" step), matching the pattern used
+  // for the Time Off tab's coverage picks.
+  const candRow = (c,sid,areaId,isBest) => {
     const from = getAreaById(c.currentArea);
-    const isSel = c.staff.id===selId;
     const exp  = c.hasExperience?(c.sinceWorked===0?'Last rotation':c.timesWorked+'×'):'New here';
-    return '<div class="cd-cand '+(isSel?'sel':'')+(showBest&&!c.wouldDisplaceLead&&!c.conflicts.length?' best':'')+'"'
-      +' data-sel-candidate="'+sid+'" data-cand-id="'+c.staff.id+'">'
+    return '<button class="cd-cand-tap'+(isBest?' best':'')+'"'
+      +' data-cover="'+c.staff.id+'" data-cover-area="'+areaId+'" data-cover-out="'+sid+'">'
       +'<div class="cd-cand-av">'+escapeHtml(c.staff.name.charAt(0))+'</div>'
       +'<div class="cd-cand-body">'
         +'<div class="cd-cand-name">'+escapeHtml(c.staff.name)+'</div>'
         +'<div class="cd-cand-sub">'+exp+(from?(' · '+escapeHtml(from.name)):'')+'</div>'
       +'</div>'
-      +(showBest&&!c.wouldDisplaceLead&&!c.conflicts.length?'<div class="cd-best-tag">Best</div>':'')
-      +(isSel?'<div class="cd-sel-check">✓</div>':'')
-      +'</div>';
+      +(isBest?'<div class="cd-best-tag">Best</div>':'')
+      +'</button>';
   };
 
   return '<div class="modal" style="max-width:460px;max-height:88vh;">'
@@ -11556,8 +11643,8 @@ function renderCalloutDashModal(m){
       +(m.search?'<button class="cd-search-clear" id="cd-search-clear">✕</button>':'')
     +'</div>'
     +'<div class="modal-body" style="padding:0;">'
-      +rows.map(({sid,s,area,areaId,covererId,coverPerson,candidates,selId})=>{
-        return '<div class="cd-row '+(coverPerson?'cd-done':'cd-pending')+'">'
+      +rows.map(({sid,s,area,areaId,covererId,coverPerson,waived,candidates})=>{
+        return '<div class="cd-row '+(coverPerson?'cd-done':waived?'cd-waived':'cd-pending')+'">'
 
           // ── Who's out ──
           +'<div class="cd-out-bar">'
@@ -11579,6 +11666,14 @@ function renderCalloutDashModal(m){
               +'<button class="cd-undo-btn" data-remove-cover="'+(covererId||coverPerson.id)+'">✕</button>'
             +'</div>'
 
+            // ── Waived ──
+            :waived
+            ?'<div class="cd-covered-bar cd-waived-bar">'
+              +'<div class="cd-cov-check">–</div>'
+              +'<div class="cd-cov-text"><div class="cd-cov-name">No coverage needed</div></div>'
+              +'<button class="cd-undo-btn" data-unwaive="'+sid+'">✕</button>'
+            +'</div>'
+
             // ── No area ──
             :!area
             ?'<div class="cd-no-area">No area — nothing to cover</div>'
@@ -11586,23 +11681,18 @@ function renderCalloutDashModal(m){
             // ── No candidates ──
             :candidates.length===0
             ?'<div class="cd-no-area">No available staff</div>'
+              +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
 
-            // ── Candidate picker ──
+            // ── Candidate picker: best pick inline, rest collapsed ──
             :'<div class="cd-cands">'
-              +candidates.slice(0,4).map((c,i)=>candCard(c,sid,selId,i===0)).join('')
-              +(candidates.length>4
-                ?'<details class="cd-more"><summary>+'+(candidates.length-4)+' more</summary>'
-                  +candidates.slice(4).map(c=>candCard(c,sid,selId,false)).join('')
+              +candRow(candidates[0],sid,areaId,true)
+              +(candidates.length>1
+                ?'<details class="cd-others-details"><summary class="cd-others-bar">Others <span class="cd-others-count">'+(candidates.length-1)+'</span></summary>'
+                  +'<div class="cd-others-list">'+candidates.slice(1).map(c=>candRow(c,sid,areaId,false)).join('')+'</div>'
                 +'</details>'
                 :'')
             +'</div>'
-            +'<div class="cd-assign-bar">'
-              +'<span class="cd-assign-who">'+(selId?escapeHtml(getStaffById(selId)?.name||''):'Select above')+'</span>'
-              +'<button class="cd-assign-btn btn btn-primary btn-sm"'
-                +' data-cover="'+selId+'" data-cover-area="'+areaId+'" data-cover-out="'+sid+'"'
-                +(selId?'':' disabled')
-              +'>✓ Assign</button>'
-            +'</div>'
+            +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
           )
 
           +'</div>';
@@ -13887,6 +13977,10 @@ function attachHandlers(){
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
       syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
+      if((state.coverageWaived||{})[sid]){
+        delete state.coverageWaived[sid];
+        syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:sid}), 'coverage waive');
+      }
       maybeReturnCoverageFor(state.assignments[sid]);
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
@@ -13940,6 +14034,10 @@ function attachHandlers(){
     if(state.callouts[id]){
       delete state.callouts[id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      if((state.coverageWaived||{})[id]){
+        delete state.coverageWaived[id];
+        syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:id}), 'coverage waive');
+      }
       maybeReturnCoverageFor(state.assignments[id]);
     } else {
       state.callouts[id] = true;
@@ -15513,6 +15611,10 @@ function attachHandlers(){
       const _person = getStaffById(_id);
       delete state.callouts[_id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      if((state.coverageWaived||{})[_id]){
+        delete state.coverageWaived[_id];
+        syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:_id}), 'coverage waive');
+      }
       maybeReturnCoverageFor(state.assignments[_id]);
       saveState();
       const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id]);
@@ -15534,8 +15636,8 @@ function attachHandlers(){
         const q = cdSearch.value.toLowerCase().trim();
         activeModal.search = cdSearch.value; // update without re-render
         _cdTimer = setTimeout(()=>{
-          // filter candidate cards by CSS without full render
-          document.querySelectorAll('.cd-cand').forEach(card=>{
+          // filter candidate rows by CSS without full render
+          document.querySelectorAll('.cd-cand-tap').forEach(card=>{
             const name = card.querySelector('.cd-cand-name')?.textContent?.toLowerCase()||'';
             const sub  = card.querySelector('.cd-cand-sub')?.textContent?.toLowerCase()||'';
             card.style.display = (!q || name.includes(q) || sub.includes(q)) ? '' : 'none';
@@ -15549,29 +15651,24 @@ function attachHandlers(){
         if(e.key==='Escape'){
           cdSearch.value='';
           activeModal.search='';
-          document.querySelectorAll('.cd-cand').forEach(c=>c.style.display='');
+          document.querySelectorAll('.cd-cand-tap').forEach(c=>c.style.display='');
         }
       });
     }
     on('cd-search-clear', ()=>{
       const el=document.getElementById('cd-search');
       if(el){ el.value=''; activeModal.search=''; }
-      document.querySelectorAll('.cd-cand').forEach(c=>c.style.display='');
+      document.querySelectorAll('.cd-cand-tap').forEach(c=>c.style.display='');
       render();
     });
 
-    // Dismiss "all covered" banner
-    // Candidate card tap — select that person
-    document.querySelectorAll('[data-sel-candidate]').forEach(card=>card.addEventListener('click', ()=>{
-      const selects = {...(activeModal.selects||{}), [card.dataset.selCandidate]: card.dataset.candId};
-      openModal({...activeModal, selects});
-    }));
-
-    // Assign button
-    document.querySelectorAll('.cd-assign-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+    // Candidate tap — assigns immediately (no separate select-then-confirm
+    // step). assignCoverage() itself shows the confirmation toast naming
+    // who's covering whom; we just re-open the modal so the next pending
+    // person (sorted to the top) is right there to act on next.
+    document.querySelectorAll('.cd-cand-tap').forEach(btn=>btn.addEventListener('click', ()=>{
       const coverId  = btn.dataset.cover;
       const areaId   = btn.dataset.coverArea;
-      const outId    = btn.dataset.coverOut;
       if(!coverId || !areaId) return;
       if(isTeamLeadDisplaced(coverId, areaId)){
         openModal({type:'team-lead-warning', staffId:coverId, targetAreaId:areaId, returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
@@ -15592,6 +15689,32 @@ function attachHandlers(){
       } else {
         openModal({type:'callout-dash', selects:activeModal.selects||{}});
       }
+    }));
+
+    // "Not necessary to find coverage" — waives this slot so it stops
+    // counting toward the pending list and every "N need coverage" badge,
+    // without pretending someone's actually covering it.
+    document.querySelectorAll('[data-waive]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const staffId = btn.dataset.waive;
+      if(!state.coverageWaived) state.coverageWaived = {};
+      state.coverageWaived[staffId] = true;
+      saveState();
+      syncBoardWrite(()=>window.RC.waiveCoverage({staffId, actingAccountId: authState.account.id}), 'coverage waive');
+      const allCovered = calloutCoverageGaps().length===0;
+      if(allCovered){
+        closeModal();
+        showToast('All positions covered ✓','teal');
+      } else {
+        showToast('Marked as not needing coverage','teal');
+        openModal({type:'callout-dash', selects:activeModal.selects||{}});
+      }
+    }));
+    document.querySelectorAll('[data-unwaive]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const staffId = btn.dataset.unwaive;
+      delete (state.coverageWaived||{})[staffId];
+      saveState();
+      syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId}), 'coverage waive');
+      openModal({type:'callout-dash', selects:activeModal.selects||{}});
     }));
 
     // Done button — all covered, close
@@ -17227,6 +17350,7 @@ function calloutCoverageGaps(){
   const outCountByArea = {};
   Object.keys(state.callouts).forEach(sid=>{
     if(!state.callouts[sid]) return;
+    if((state.coverageWaived||{})[sid]) return; // "no coverage needed" — doesn't count as a gap
     const aId = state.assignments[sid];
     if(!aId) return;
     outCountByArea[aId] = (outCountByArea[aId]||0)+1;
@@ -17566,6 +17690,9 @@ function mapSupabaseBoard(board){
     priorExperience[row.staff_id].push({ id: row.id, areaId: row.area_id, note: row.note || '' });
   });
 
+  const coverageWaived = {};
+  (board.coverageWaivers||[]).forEach(row=>{ coverageWaived[row.staff_id] = true; });
+
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
     if(!stagesByFlow[st.flow_id]) stagesByFlow[st.flow_id] = [];
@@ -17589,7 +17716,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -17621,6 +17748,7 @@ function applyMappedBoard(mapped){
   state.lunchTimes = mapped.lunchTimes;
   state.breakTimes = mapped.breakTimes;
   state.priorExperience = mapped.priorExperience;
+  state.coverageWaived = mapped.coverageWaived;
   state.languages = mapped.languages;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;

@@ -167,6 +167,7 @@ export async function loadBoard() {
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
+    { data: coverageWaivers },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -185,11 +186,12 @@ export async function loadBoard() {
     supabase.from('lunch_times').select('*').order('sort_order'),
     supabase.from('break_times').select('*').order('sort_order'),
     supabase.from('staff_prior_experience').select('*'),
+    supabase.from('coverage_waivers').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience,
+    timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
   };
 }
 
@@ -257,6 +259,23 @@ export async function clearCallout({ staffId, actingAccountId, staffName }) {
     description: `marked ${staffName || staffId} back in`,
     staff_id: staffId,
   });
+}
+
+// "No coverage needed" on the Coverage dashboard — same shape as callouts,
+// one row per staff member. No audit_log entry: this is a lightweight UI
+// convenience (skip a slot in the pending list), not a security-relevant
+// action worth its own audit_action enum value.
+export async function waiveCoverage({ staffId, actingAccountId }) {
+  const { error } = await supabase.from('coverage_waivers').upsert({
+    staff_id: staffId,
+    waived_by: actingAccountId,
+  });
+  if (error) throw error;
+}
+
+export async function unwaiveCoverage({ staffId }) {
+  const { error } = await supabase.from('coverage_waivers').delete().eq('staff_id', staffId);
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -870,7 +889,7 @@ const REALTIME_TABLES = [
   'areas', 'staff', 'assignments', 'departments', 'callouts', 'supervisors',
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
-  'lunch_times', 'break_times', 'staff_prior_experience',
+  'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
 ];
 
 let realtimeChannel = null;
@@ -908,6 +927,8 @@ window.RC = {
   swapStaff,
   setCallout,
   clearCallout,
+  waiveCoverage,
+  unwaiveCoverage,
   ensureDepartment,
   createStaff,
   updateStaff,
