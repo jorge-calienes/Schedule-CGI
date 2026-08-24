@@ -73,7 +73,7 @@ export async function signInWithPin(name, pin) {
     throw new Error(`[setSession] ${e && e.message || e}`);
   }
 
-  return body.account; // { id, name, role, assigned_area_id }
+  return body.account; // { id, name, role, assigned_area_ids }
 }
 
 export async function requestAccess(name) {
@@ -88,7 +88,7 @@ export async function requestAccess(name) {
 // Admin-only — the server re-verifies admin status itself (see
 // api/accounts/grant.js) rather than trusting the client, so this Bearer
 // token is what actually gates the request, not anything in this file.
-export async function grantAccess({ accountId, role, assignedAreaId, pin }) {
+export async function grantAccess({ accountId, role, assignedAreaIds, pin }) {
   const { data: { session } } = await supabase.auth.getSession();
   const res = await fetch('/api/accounts/grant', {
     method: 'POST',
@@ -96,7 +96,7 @@ export async function grantAccess({ accountId, role, assignedAreaId, pin }) {
       'Content-Type': 'application/json',
       ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
-    body: JSON.stringify({ accountId, role, assignedAreaId, pin }),
+    body: JSON.stringify({ accountId, role, assignedAreaIds, pin }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || 'Could not grant access.');
@@ -148,7 +148,7 @@ export async function getCurrentAccount() {
 
   const { data, error } = await supabase
     .from('accounts')
-    .select('id, name, role, assigned_area_id')
+    .select('id, name, role, assigned_area_ids')
     .eq('user_id', session.user.id)
     .single();
   if (error || !data) return null;

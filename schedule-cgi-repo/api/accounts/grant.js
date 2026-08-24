@@ -1,6 +1,6 @@
 // POST /api/accounts/grant
 //   { accountId, role: "team_lead" | "supervisor" | "admin",
-//     assignedAreaId: "<uuid>" | null, pin: "1234" }
+//     assignedAreaIds: ["<uuid>", ...] | [], pin: "1234" }
 //
 // Called from the "Manage accounts" screen. Requires the CALLER to already
 // be signed in as an admin — we re-check that server-side against their
@@ -48,15 +48,15 @@ export default async function handler(req, res) {
     const caller = await requireAdmin(supabaseAdmin, req);
     if (!caller) return res.status(403).json({ error: 'Admin access required.' });
 
-    const { accountId, role, assignedAreaId, pin } = req.body || {};
+    const { accountId, role, assignedAreaIds, pin } = req.body || {};
     if (!accountId || !role) {
       return res.status(400).json({ error: 'accountId and role are required.' });
     }
     if (pin && !/^\d{4}$/.test(pin)) {
       return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
     }
-    if (role === 'team_lead' && !assignedAreaId) {
-      return res.status(400).json({ error: 'Team leads need an assigned area.' });
+    if (role === 'team_lead' && !(Array.isArray(assignedAreaIds) && assignedAreaIds.length > 0)) {
+      return res.status(400).json({ error: 'Team leads need at least one assigned area.' });
     }
 
     const { data: pending, error: fetchErr } = await supabaseAdmin
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
         user_id: userId,
         role,
         status: 'active',
-        assigned_area_id: role === 'team_lead' ? assignedAreaId : null,
+        assigned_area_ids: role === 'team_lead' ? assignedAreaIds : [],
         approved_at: new Date().toISOString(),
         approved_by: caller.id,
       })
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
       actor_id: caller.id,
       action: 'account_grant',
       description: `${caller.name} ${wasActive ? 'updated' : 'granted'} ${role} access for ${pending.name}${pin ? ' (PIN reset)' : ''}`,
-      metadata: { accountId, role, assignedAreaId, pinReset: !!pin },
+      metadata: { accountId, role, assignedAreaIds, pinReset: !!pin },
     });
 
     return res.status(200).json({

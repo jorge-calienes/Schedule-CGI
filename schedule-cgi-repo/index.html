@@ -8530,7 +8530,7 @@ let authState = {
   pin: '',
   error: '',
   errorDetail: '', // muted technical detail shown under `error`, for diagnosing unexpected failures
-  account: null, // {id, name, role, assigned_area_id}
+  account: null, // {id, name, role, assigned_area_ids}
   showRequestForm: false,
   requestName: '',
   requestStatus: 'idle', // 'idle' | 'submitting' | 'done'
@@ -9993,14 +9993,17 @@ function renderTabBar(){
 function renderNavDrawer(){
   const isOpen = navDrawerOpen;
   if(isTeamLeadRole()){
-    // Team leads: evaluations + board view + their own area's lunch/break
-    // times (the one data mutation RLS actually grants them, per migration
-    // 0009) — every other nav item opens something manager-only server-side.
+    // Team leads: evaluations + board view + their designated areas' lunch/
+    // break times (the one data mutation RLS actually grants them, per
+    // migration 0009/0017) — every other nav item opens something
+    // manager-only server-side.
+    const leadAreaNames = (authState.account?.assigned_area_ids||[]).map(id=>getAreaById(id)?.name).filter(Boolean);
     return `
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
       <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
+      ${leadAreaNames.length ? `<div class="nav-account">Designated area${leadAreaNames.length>1?'s':''}: <b>${escapeHtml(leadAreaNames.join(', '))}</b></div>` : ''}
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
@@ -10947,7 +10950,7 @@ function renderStaffStatsModal(m){
         ${currentArea ? `<span class="stats-current-area"><span class="area-swatch" style="background:${currentArea.color}"></span>${escapeHtml(currentArea.name)}</span>` : '<span class="small-muted"><em>Unassigned</em></span>'}
       </div>
 
-      ${isTeamLeadRole() && currentAreaId && currentAreaId===authState.account.assigned_area_id ? `
+      ${isTeamLeadRole() && currentAreaId && (authState.account.assigned_area_ids||[]).includes(currentAreaId) ? `
       <div class="field" style="margin-top:14px;">
         <label>Lunch time</label>
         <select id="stats-lunch-input" data-staff-id="${s.id}"><option value="">— Select —</option>
@@ -12288,7 +12291,8 @@ function renderManageAccountsModal(m){
   const pending = accounts.filter(a=>a.status==='pending');
   const active = accounts.filter(a=>a.status==='active');
   const revoked = accounts.filter(a=>a.status==='revoked');
-  const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&a.assigned_area_id?' · '+escapeHtml(getAreaById(a.assigned_area_id)?.name||''):''}`;
+  const areaNames = a => (a.assigned_area_ids||[]).map(id=>getAreaById(id)?.name).filter(Boolean).join(', ');
+  const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&areaNames(a)?' · '+escapeHtml(areaNames(a)):''}`;
   return `
   <div class="modal" style="max-width:560px;">
     <div class="modal-head">
@@ -12315,7 +12319,7 @@ function renderManageAccountsModal(m){
         <div class="option-list" style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
           ${active.map(a=>`
             <div class="option-card" style="cursor:default;">
-              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-area="${a.assigned_area_id||''}" style="cursor:pointer;flex:1;">
+              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-areas="${(a.assigned_area_ids||[]).join(',')}" style="cursor:pointer;flex:1;">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)}</span>
               </div>
@@ -12326,7 +12330,7 @@ function renderManageAccountsModal(m){
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Revoked</div>
         <div class="option-list" style="max-height:200px;overflow-y:auto;">
           ${revoked.map(a=>`
-            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-area="${a.assigned_area_id||''}" style="opacity:.65;">
+            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-areas="${(a.assigned_area_ids||[]).join(',')}" style="opacity:.65;">
               <div class="oc-left">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)} · access revoked</span>
@@ -12351,9 +12355,11 @@ function renderAccountGrantFormModal(m){
   const pin = m.pin||'';
   const pinRequired = mode!=='edit';
   const pinValid = pinRequired ? /^\d{4}$/.test(pin) : (pin==='' || /^\d{4}$/.test(pin));
-  const canSubmit = m.name.trim() && pinValid && (role!=='team_lead' || m.assignedAreaId) && !m.saving;
+  const assignedAreaIds = m.assignedAreaIds||[];
+  const canSubmit = m.name.trim() && pinValid && (role!=='team_lead' || assignedAreaIds.length>0) && !m.saving;
   if(m.result){
     const noPinToShow = mode==='edit' && !pin;
+    const areaNames = assignedAreaIds.map(id=>getAreaById(id)?.name).filter(Boolean).join(', ');
     return `
     <div class="modal" style="max-width:440px;">
       <div class="modal-head">
@@ -12363,7 +12369,7 @@ function renderAccountGrantFormModal(m){
         ${noPinToShow?'':`<div class="rc-pin-dots" style="justify-content:center;gap:12px;margin:8px 0 20px;">
           ${pin.split('').map(d=>`<span style="font-size:32px;font-weight:800;font-family:var(--mono);">${d}</span>`).join('')}
         </div>`}
-        <div class="small-muted" style="text-align:center;">Name: <b>${escapeHtml(m.name)}</b> · Role: <b>${ACCOUNT_ROLE_LABELS[role]}</b>${role==='team_lead'?` · Area: <b>${escapeHtml(getAreaById(m.assignedAreaId)?.name||'')}</b>`:''}</div>
+        <div class="small-muted" style="text-align:center;">Name: <b>${escapeHtml(m.name)}</b> · Role: <b>${ACCOUNT_ROLE_LABELS[role]}</b>${role==='team_lead'?` · Areas: <b>${escapeHtml(areaNames)}</b>`:''}</div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-primary" id="account-grant-done" style="margin-left:auto;">Done</button>
@@ -12389,11 +12395,11 @@ function renderAccountGrantFormModal(m){
       </div>
       ${role==='team_lead'?`
       <div class="field">
-        <label>Assigned area</label>
-        <select id="grant-area-input">
-          <option value="">— Select —</option>
-          ${state.areas.map(ar=>`<option value="${ar.id}" ${m.assignedAreaId===ar.id?'selected':''}>${escapeHtml(ar.name)}</option>`).join('')}
-        </select>
+        <label>Designated areas</label>
+        <div class="lang-cert-grid" id="grant-area-grid">${state.areas.map(ar=>{
+          const checked = assignedAreaIds.includes(ar.id);
+          return '<label class="lang-cert-chip grant-area-chip'+(checked?' checked':'')+'"><input type="checkbox" class="grant-area-cb" data-area-id="'+ar.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+escapeHtml(ar.name)+'</label>';
+        }).join('')}</div>
       </div>`:''}
       <div class="field">
         <label>${pinRequired?'PIN (4 digits)':'New PIN (optional)'}</label>
@@ -12753,19 +12759,20 @@ function renderBreakTimesTabBody(m){
     `;
 }
 
-// Bulk break/lunch editor: team leads see just their own area's staff (the
-// only slice they're allowed to edit — no more hunting through each
-// person's stats modal one at a time); admin/supervisor see everyone, with
-// an area filter to jump straight to one team lead's area instead of
+// Bulk break/lunch editor: team leads see just their designated areas'
+// staff (the only slice they're allowed to edit — no more hunting through
+// each person's stats modal one at a time); admin/supervisor see everyone,
+// with an area filter to jump straight to one team lead's area instead of
 // scrolling the full roster.
 function renderTeamBreaksTabBody(m){
   const isLead = isTeamLeadRole();
   const areaFilter = m.areaFilter || '';
+  const leadAreaIds = authState.account?.assigned_area_ids||[];
   const scopeStaff = isLead
-    ? state.staff.filter(s=>s.active!==false && state.assignments[s.id]===authState.account.assigned_area_id)
+    ? state.staff.filter(s=>s.active!==false && leadAreaIds.includes(state.assignments[s.id]))
     : state.staff.filter(s=>s.active!==false && (!areaFilter || state.assignments[s.id]===areaFilter));
   return `
-    <div class="small-muted" style="margin-bottom:10px;">${isLead ? 'Set break and lunch time for people currently in your area.' : 'Set break and lunch time for any staff member.'}</div>
+    <div class="small-muted" style="margin-bottom:10px;">${isLead ? `Set break and lunch time for people currently in your area${leadAreaIds.length>1?'s':''}.` : 'Set break and lunch time for any staff member.'}</div>
     ${isLead ? '' : `
     <div class="field" style="margin-bottom:14px;">
       <label>Filter by area</label>
@@ -16883,18 +16890,18 @@ function attachHandlers(){
   // --- manage accounts ---
   if(activeModal.type==='manage-accounts'){
     on('btn-add-account', ()=>{
-      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaIds:[], pin:''});
     });
     document.querySelectorAll('[data-grant-account]').forEach(el=>el.addEventListener('click', ()=>{
-      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaId:null, pin:''});
+      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaIds:[], pin:''});
     }));
     document.querySelectorAll('[data-edit-account]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'account-grant-form', mode:'edit', accountId:el.dataset.editAccount, name:el.dataset.editName,
-        role:el.dataset.editRole||'team_lead', assignedAreaId:el.dataset.editArea||null, pin:''});
+        role:el.dataset.editRole||'team_lead', assignedAreaIds:(el.dataset.editAreas||'').split(',').filter(Boolean), pin:''});
     }));
     document.querySelectorAll('[data-restore-account]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'account-grant-form', mode:'restore', accountId:el.dataset.restoreAccount, name:el.dataset.restoreName,
-        role:el.dataset.restoreRole||'team_lead', assignedAreaId:el.dataset.restoreArea||null, pin:''});
+        role:el.dataset.restoreRole||'team_lead', assignedAreaIds:(el.dataset.restoreAreas||'').split(',').filter(Boolean), pin:''});
     }));
     document.querySelectorAll('[data-revoke-account]').forEach(el=>el.addEventListener('click', async e=>{
       e.stopPropagation();
@@ -16994,27 +17001,37 @@ function attachHandlers(){
       if(roleSel) roleSel.addEventListener('change', ()=>{
         openModal({...m, name: nameInput?nameInput.value:m.name, role: roleSel.value});
       });
-      const areaSel = document.getElementById('grant-area-input');
-      if(areaSel) areaSel.addEventListener('change', ()=>{ activeModal.assignedAreaId = areaSel.value; });
       const pinRequired = m.mode!=='edit';
       const pinIsValid = p => pinRequired ? /^\d{4}$/.test(p) : (p==='' || /^\d{4}$/.test(p));
+      const refreshSubmitState = () => {
+        const btn = document.getElementById('grant-submit-btn');
+        if(btn) btn.disabled = !(activeModal.name.trim() && pinIsValid(activeModal.pin) && (activeModal.role!=='team_lead' || (activeModal.assignedAreaIds||[]).length>0) && !activeModal.saving);
+      };
+      document.querySelectorAll('.grant-area-chip').forEach(chip=>{
+        chip.addEventListener('click', ()=>{
+          const cb = chip.querySelector('input');
+          cb.checked = !cb.checked;
+          chip.classList.toggle('checked', cb.checked);
+          activeModal.assignedAreaIds = Array.from(document.querySelectorAll('.grant-area-cb:checked')).map(el=>el.dataset.areaId);
+          refreshSubmitState();
+        });
+      });
       const pinInput = document.getElementById('grant-pin-input');
       if(pinInput) pinInput.addEventListener('input', ()=>{
         const cleaned = pinInput.value.replace(/\D/g,'').slice(0,4);
         if(cleaned!==pinInput.value) pinInput.value = cleaned;
         activeModal.pin = cleaned;
-        const btn = document.getElementById('grant-submit-btn');
-        if(btn) btn.disabled = !(activeModal.name.trim() && pinIsValid(cleaned) && (activeModal.role!=='team_lead' || activeModal.assignedAreaId) && !activeModal.saving);
+        refreshSubmitState();
       });
       on('grant-random-pin', ()=>{ openModal({...m, name: nameInput?nameInput.value:m.name, pin: randomPin()}); });
       on('grant-cancel-btn', ()=>openManageAccounts());
       on('grant-submit-btn', async ()=>{
         const name = (nameInput?nameInput.value:m.name).trim();
         const role = roleSel?roleSel.value:m.role;
-        const assignedAreaId = role==='team_lead' ? (areaSel?areaSel.value:m.assignedAreaId) : null;
+        const assignedAreaIds = role==='team_lead' ? (activeModal.assignedAreaIds||[]) : [];
         const pin = pinInput?pinInput.value:m.pin;
-        if(!name || !pinIsValid(pin) || (role==='team_lead'&&!assignedAreaId)) return;
-        openModal({...m, name, role, assignedAreaId, pin, saving:true, error:''});
+        if(!name || !pinIsValid(pin) || (role==='team_lead'&&assignedAreaIds.length===0)) return;
+        openModal({...m, name, role, assignedAreaIds, pin, saving:true, error:''});
         try{
           let accountId = m.accountId;
           if(!accountId){
@@ -17022,10 +17039,10 @@ function attachHandlers(){
             if(!reqResult.accountId) throw new Error(reqResult.message || 'Could not create that account — a person with that name may already exist.');
             accountId = reqResult.accountId;
           }
-          await window.RC.grantAccess({accountId, role, assignedAreaId, pin: pin||undefined});
-          openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaId, pin, result:true});
+          await window.RC.grantAccess({accountId, role, assignedAreaIds, pin: pin||undefined});
+          openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaIds, pin, result:true});
         }catch(e){
-          openModal({...m, name, role, assignedAreaId, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
+          openModal({...m, name, role, assignedAreaIds, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
         }
       });
     }
