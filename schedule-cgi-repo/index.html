@@ -6508,6 +6508,16 @@
 
 
   .area-col.understaffed .area-head{border-bottom:2px solid var(--md-sys-color-error-container);}
+  /* A team lead's own designated area(s) — called out so they're easy to
+     spot among every other area on the board. */
+  .area-col.lead-mine{border:2px solid var(--area-color, var(--md-sys-color-primary));}
+  .area-col.lead-mine .area-head{background:var(--md-sys-color-surface-container-low, #F5F5F7);}
+  .lead-mine-badge{
+    font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+    padding:2px 7px;border-radius:999px;
+    background:var(--area-color, var(--md-sys-color-primary));
+    color:#fff;flex-shrink:0;
+  }
 
   /* ── Rotation history timeline ── */
   .timeline-row{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin;}
@@ -9316,6 +9326,28 @@ function isTeamLeadDisplaced(staffId, targetAreaId){
   return targetAreaId !== s.homeAreaId;
 }
 
+// A team lead's own column order — kept out of state.areaOrder (the
+// shared order admin/supervisor dragging writes to) and persisted per
+// account in this browser's localStorage instead, so reordering the board
+// to put their designated areas up front is theirs alone: it never
+// touches, and is never seen by, anyone else.
+let _personalAreaOrderCache = null;
+function personalAreaOrderKey(){ return 'rc-lead-area-order:'+(authState.account?.id||''); }
+function getPersonalAreaOrder(){
+  if(_personalAreaOrderCache===null){
+    try{
+      const raw = localStorage.getItem(personalAreaOrderKey());
+      _personalAreaOrderCache = raw ? JSON.parse(raw) : {};
+    }catch(e){ _personalAreaOrderCache = {}; }
+  }
+  return _personalAreaOrderCache;
+}
+function setPersonalAreaOrder(dept, order){
+  const ao = getPersonalAreaOrder();
+  ao[dept] = order;
+  try{ localStorage.setItem(personalAreaOrderKey(), JSON.stringify(ao)); }catch(e){}
+}
+
 function areasByDepartment(){
   const map = {};
   // include ALL areas (fixed and non-fixed) so Fixed Positions row appears
@@ -9326,9 +9358,10 @@ function areasByDepartment(){
   });
   const allDepts = Object.keys(map);
   const ordered  = state.departments.filter(d=>map[d]).concat(allDepts.filter(d=>!state.departments.includes(d)));
+  const isLead   = isTeamLeadRole();
   return ordered.map(dept=>{
     let areas = map[dept];
-    const ao  = (state.areaOrder||{})[dept];
+    const ao  = isLead ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
     if(ao && ao.length){
       const inOrder = ao.map(id=>areas.find(a=>a.id===id)).filter(Boolean);
       const rest    = areas.filter(a=>!ao.includes(a.id));
@@ -10358,10 +10391,18 @@ function renderAreaCol(area){
   // one long single-file list — cuts how much you scroll to see everyone
   // in a busy area like Communications or Processing.
   const multiCol = members.length > 3;
+  // A team lead can't edit areas (readOnly), but CAN still drag to reorder
+  // the board — just as a personal, this-browser-only preference (see
+  // personalAreaOrder) rather than the shared order admin/supervisor
+  // dragging writes to state.areaOrder. Doesn't apply to anyone else's view.
+  const isLead = isTeamLeadRole();
+  const isMine = isLead && (authState.account?.assigned_area_ids||[]).includes(area.id);
+  const canDrag = !readOnly || isLead;
+  const dragTitle = !canDrag ? '' : isLead ? 'Drag to reorder — just for you' : 'Drag to reorder';
   return `
-  <div class="area-col ${under?'understaffed':''} ${multiCol?'multi-col':''}" style="--area-color:${area.color}">
-    <div class="area-head" draggable="${readOnly?'false':'true'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" title="${readOnly?'':'Drag to reorder'}">
-      <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
+  <div class="area-col ${under?'understaffed':''} ${multiCol?'multi-col':''} ${isMine?'lead-mine':''}" style="--area-color:${area.color}">
+    <div class="area-head" draggable="${canDrag?'true':'false'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" data-drag-personal="${isLead?'true':'false'}" title="${dragTitle}">
+      <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${isMine?'<span class="lead-mine-badge">Yours</span>':''}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <span class="area-count ${over?'over':under?'under':present>0?'ok':''}">${present}/${area.capacity}</span>
         ${readOnly ? '' : `<button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>`}
@@ -13874,17 +13915,22 @@ function attachHandlers(){
   });
 
   // ── Area column drag-to-reorder within a row ──────────────────────────
-  let _dragAreaId = null, _dragAreaDept = null;
+  // A team lead's drag (data-drag-personal) writes to their own
+  // localStorage-backed order instead of the shared state.areaOrder — see
+  // personalAreaOrder above.
+  let _dragAreaId = null, _dragAreaDept = null, _dragPersonal = false;
   document.querySelectorAll('[data-drag-area]').forEach(el=>{
     el.addEventListener('dragstart', e=>{
       _dragAreaId   = el.dataset.dragArea;
       _dragAreaDept = el.dataset.dragDept;
+      _dragPersonal = el.dataset.dragPersonal === 'true';
       boardInteractionInProgress = true;
       e.dataTransfer.effectAllowed = 'move';
       e.stopPropagation();
     });
     el.addEventListener('dragend', ()=>{
       _dragAreaId = _dragAreaDept = null;
+      _dragPersonal = false;
       boardInteractionInProgress = false;
       document.querySelectorAll('.area-col.drag-over').forEach(c=>c.classList.remove('drag-over'));
     });
@@ -13912,7 +13958,8 @@ function attachHandlers(){
       if(!targetId || targetId === _dragAreaId) return;
       const dept  = _dragAreaDept;
       const areas = state.areas.filter(a=>a.department===dept);
-      const ao    = ((state.areaOrder||{})[dept] || areas.map(a=>a.id)).slice();
+      const existing = _dragPersonal ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
+      const ao    = (existing || areas.map(a=>a.id)).slice();
       // ensure both ids are in the order list
       areas.forEach(a=>{ if(!ao.includes(a.id)) ao.push(a.id); });
       const from  = ao.indexOf(_dragAreaId);
@@ -13920,9 +13967,14 @@ function attachHandlers(){
       if(from<0||to<0) return;
       ao.splice(from, 1);
       ao.splice(to, 0, _dragAreaId);
-      if(!state.areaOrder) state.areaOrder = {};
-      state.areaOrder[dept] = ao;
-      saveState(); render();
+      if(_dragPersonal){
+        setPersonalAreaOrder(dept, ao);
+      } else {
+        if(!state.areaOrder) state.areaOrder = {};
+        state.areaOrder[dept] = ao;
+        saveState();
+      }
+      render();
     });
   });
 
@@ -15159,6 +15211,7 @@ function attachHandlers(){
     }
     authState = { status:'signed-out', name:'', pin:'', error:'', account:null };
     state.loaded = false;
+    _personalAreaOrderCache = null; // next sign-in may be a different team lead
     render();
   });
 
