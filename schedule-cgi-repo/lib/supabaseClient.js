@@ -129,7 +129,14 @@ export async function revokeAccess({ accountId, actingAccountId }) {
 }
 
 export async function signOut() {
-  await supabase.auth.signOut();
+  // scope:'local' clears the locally-persisted session without a round trip
+  // to revoke it server-side. Global (default) scope needs that server call
+  // to succeed to clear anything — but the whole point of signing out here
+  // is often to recover from a session that's already broken/expired
+  // server-side, so a network call gated on that same session can hang or
+  // fail and leave the user stuck unable to sign out at all. Nobody using
+  // this app needs "revoke this session on every other device" semantics.
+  await supabase.auth.signOut({ scope: 'local' });
 }
 
 // Restores "who's signed in" across page reloads: supabase-js persists the

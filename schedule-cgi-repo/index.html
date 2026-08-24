@@ -15042,7 +15042,15 @@ function attachHandlers(){
       window.RC.unsubscribeFromBoardChanges();
     }
     if(window.RC && typeof window.RC.signOut==='function'){
-      try{ await window.RC.signOut(); }catch(e){}
+      // Race against a timeout so a slow/hung network call can never trap
+      // someone signed in — getting back to the sign-in screen matters more
+      // here than confirming the server-side session was actually revoked.
+      try{
+        await Promise.race([
+          window.RC.signOut(),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error('sign-out timed out')), 4000)),
+        ]);
+      }catch(e){}
     }
     authState = { status:'signed-out', name:'', pin:'', error:'', account:null };
     state.loaded = false;
