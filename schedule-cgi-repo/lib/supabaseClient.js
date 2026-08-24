@@ -167,7 +167,7 @@ export async function loadBoard() {
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
-    { data: coverageWaivers },
+    { data: coverageWaivers }, { data: attendanceEvents },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -187,11 +187,13 @@ export async function loadBoard() {
     supabase.from('break_times').select('*').order('sort_order'),
     supabase.from('staff_prior_experience').select('*'),
     supabase.from('coverage_waivers').select('*'),
+    supabase.from('attendance_events').select('*').order('event_date', { ascending: false }),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
+    attendanceEvents,
   };
 }
 
@@ -247,6 +249,17 @@ export async function setCallout({ staffId, actingAccountId, staffName, reason }
     description: `marked ${staffName || staffId} as out${reason ? ' — ' + reason : ''}`,
     staff_id: staffId,
   });
+
+  // A separate, never-deleted record of the callout for the attendance
+  // report — the callouts row above is just a "currently out" flag and
+  // gets deleted the moment they're marked back in.
+  await supabase.from('attendance_events').insert({
+    staff_id: staffId,
+    event_type: 'callout',
+    event_date: new Date().toISOString().slice(0, 10),
+    note: reason || null,
+    created_by: actingAccountId,
+  });
 }
 
 export async function clearCallout({ staffId, actingAccountId, staffName }) {
@@ -275,6 +288,28 @@ export async function waiveCoverage({ staffId, actingAccountId }) {
 
 export async function unwaiveCoverage({ staffId }) {
   const { error } = await supabase.from('coverage_waivers').delete().eq('staff_id', staffId);
+  if (error) throw error;
+}
+
+// Late arrival / left early — a same-day flag for the board chip (see the
+// event_date filter the client applies) that's also a permanent row for
+// the attendance report. eventDate is passed in (rather than defaulted
+// here) so it always matches the browser's notion of "today" — the same
+// value index.html's todayLabel() computes.
+export async function markAttendanceEvent({ staffId, eventType, eventDate, note, actingAccountId }) {
+  const { data, error } = await supabase.from('attendance_events').insert({
+    staff_id: staffId,
+    event_type: eventType,
+    event_date: eventDate,
+    note: note || null,
+    created_by: actingAccountId,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function clearAttendanceEvent({ eventId }) {
+  const { error } = await supabase.from('attendance_events').delete().eq('id', eventId);
   if (error) throw error;
 }
 
@@ -890,6 +925,7 @@ const REALTIME_TABLES = [
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
+  'attendance_events',
 ];
 
 let realtimeChannel = null;
@@ -929,6 +965,8 @@ window.RC = {
   clearCallout,
   waiveCoverage,
   unwaiveCoverage,
+  markAttendanceEvent,
+  clearAttendanceEvent,
   ensureDepartment,
   createStaff,
   updateStaff,

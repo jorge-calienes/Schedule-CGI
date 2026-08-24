@@ -6409,6 +6409,8 @@
   .chip-name .lead-star{color:#F59E0B;font-size:12px;}
   .chip-name .accom-icon{font-size:12px;}
   .chip-out-tag{font-size:10px;font-weight:700;background:#fee2e2;color:#dc2626;padding:2px 6px;border-radius:6px;}
+  .chip-late-arrival-tag{font-size:10px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 6px;border-radius:6px;}
+  .chip-left-early-tag{font-size:10px;font-weight:700;background:#e5e7eb;color:#4b5563;padding:2px 6px;border-radius:6px;}
   .chip-tags{font-size:11px;color:#6B7280;letter-spacing:0;}
   .chip-hours{font-size:11.5px;color:#6B7280;font-variant-numeric:tabular-nums;}
   .chip-certs{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px;}
@@ -7687,6 +7689,21 @@
     font-size:12px;color:var(--ink-soft);
   }
   .nav-account b{color:var(--c-text);font-weight:600;}
+
+  /* ── Attendance report ── */
+  .ar-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .ar-controls input[type="month"]{padding:7px 10px;border:1px solid var(--c-border,#E5E5EA);border-radius:8px;font-family:inherit;font-size:13px;background:var(--c-surface,#fff);}
+  .ar-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .ar-stat{flex:1 1 120px;min-width:110px;background:var(--c-surface-2,#F5F5F7);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;}
+  .ar-stat-num{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--c-text,#1D1D1F);}
+  .ar-stat-label{font-size:11.5px;color:var(--c-text-2,#6E6E73);}
+  .ar-table-wrap{overflow-x:auto;border:1px solid var(--c-border,#E5E5EA);border-radius:10px;}
+  .ar-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .ar-table th,.ar-table td{padding:8px 12px;text-align:left;white-space:nowrap;}
+  .ar-table th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--c-text-2,#6E6E73);border-bottom:1px solid var(--c-border,#E5E5EA);}
+  .ar-table td{border-bottom:1px solid var(--c-border,#E5E5EA);}
+  .ar-table th:not(:first-child),.ar-table td:not(:first-child){text-align:right;}
+  .ar-table tbody tr:last-child td{border-bottom:none;}
 </style>
 </head>
 <body>
@@ -8511,6 +8528,7 @@ let state = {
   proficiency: {}, // {staffId: {areaId: {rating:1-5, ratings:[{period,teamLeadRating,teamLeadId,teamLeadNote,supervisorRating,supervisorId,supervisorApproved,overrideReason}]}}}
   priorExperience: {}, // {staffId: [{id, areaId, note}]} manually-marked "worked here before this system" flags
   coverageWaived: {}, // {staffId: true} "no coverage needed" flags from the Coverage dashboard
+  attendanceEvents: [], // [{id, staffId, eventType:'callout'|'late_arrival'|'left_early', eventDate, note}] durable log backing the attendance report + today's late/left-early chip badges
   pendingFeedback: [], // [{staffId,areaId,toAreaId,...}]
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
@@ -10070,6 +10088,7 @@ function renderNavDrawer(){
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
@@ -10254,6 +10273,11 @@ function renderChip(s){
   const timeOffRec  = ((state.timeOff||{})[s.id]||[]).find(r=>today>=r.startDate&&today<=r.endDate);
   const isScheduled = !!timeOffRec;                // has a scheduled time-off record today
   const hasCoverage = !!(timeOffRec?.coverageStaffId); // coverage person has been assigned
+  // Late arrival / left early — same-day flags, distinct from a full-day
+  // callout: the person is still working today's shift, just not for the
+  // whole thing. See state.attendanceEvents (also feeds the attendance report).
+  const lateEvent      = (state.attendanceEvents||[]).find(e=>e.staffId===s.id && e.eventType==='late_arrival' && e.eventDate===today);
+  const leftEarlyEvent = (state.attendanceEvents||[]).find(e=>e.staffId===s.id && e.eventType==='left_early' && e.eventDate===today);
   const readOnly = isTeamLeadRole();
   return `
   <div class="chip ${flagged?'flagged':''} ${(isOut||isScheduled)?'out':''} ${s.isTeamLead?'lead':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''} ${dimmed?'search-dim':''} ${searched?'search-match':''} ${isCovering?'covering':''}" draggable="${readOnly?'false':'true'}" data-staff-id="${s.id}" title="${escapeHtml(s.name)}${s.tdisNumber?' · TDIS '+escapeHtml(s.tdisNumber):''}">
@@ -10268,6 +10292,8 @@ function renderChip(s){
       <div class="chip-status-badges">
         ${streak>=2&&!area?.fixed?`<span class="streak-badge" title="${streak} rotations in a row">🔥${streak}</span>`:''}
         ${isScheduled&&!hasCoverage?'<span class="chip-out-tag chip-out-scheduled">📅</span>':isScheduled&&hasCoverage?'<span class="chip-out-tag chip-out-covered">✓</span>':isOut?'<span class="chip-out-tag">Out</span>':''}
+        ${lateEvent?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
+        ${leftEarlyEvent?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
       </div>
       ${readOnly ? '' : `
       <!-- Mobile only: ○ + ··· -->
@@ -10327,6 +10353,8 @@ function renderChip(s){
       <button class="cia-btn primary act-move ${isSelected?'active':''}" data-id="${s.id}">${isSelected?'Cancel':'Move'}</button>
       <button class="cia-btn act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}">Swap</button>
       <button class="cia-btn act-callout" data-id="${s.id}">${isOut?'Mark in':'Call out'}</button>
+      <button class="cia-btn act-late-arrival" data-id="${s.id}">${lateEvent?'Undo late arrival':'Late arrival'}</button>
+      <button class="cia-btn act-left-early" data-id="${s.id}">${leftEarlyEvent?'Undo left early':'Left early'}</button>
       <button class="cia-btn act-edit" data-id="${s.id}">Edit</button>
       <button class="cia-btn danger act-remove" data-id="${s.id}">Remove</button>
     </div>` : ''}
@@ -10954,6 +10982,7 @@ function renderModal(){
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
+  else if(m.type==='attendance-report') inner = renderAttendanceReportModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
@@ -12590,6 +12619,115 @@ function renderTeamDashboardModal(m){
   </div>`;
 }
 
+// --- Attendance report (admin/supervisor) — callouts, late arrivals,
+// left-early, and scheduled leave, rolled up by month/quarter/year and
+// broken out per person. Callouts/late/left-early come from
+// state.attendanceEvents (a durable log — see 0018_attendance_events.sql);
+// scheduled leave comes straight from state.timeOff, clipped to the
+// selected period so a leave spanning a period boundary only counts the
+// days that actually fall inside it. ---
+function attendancePeriodRange(periodType, anchorMonth){
+  const [y, mo] = (anchorMonth||todayLabel().slice(0,7)).split('-').map(Number);
+  const pad = n => String(n).padStart(2,'0');
+  const lastDayOfMonth = (year, month1to12) => new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
+  if(periodType==='year') return { start:`${y}-01-01`, end:`${y}-12-31`, label:String(y) };
+  if(periodType==='quarter'){
+    const q = Math.floor((mo-1)/3)+1;
+    const startMonth = (q-1)*3+1, endMonth = startMonth+2;
+    return { start:`${y}-${pad(startMonth)}-01`, end:`${y}-${pad(endMonth)}-${pad(lastDayOfMonth(y,endMonth))}`, label:`Q${q} ${y}` };
+  }
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return { start:`${y}-${pad(mo)}-01`, end:`${y}-${pad(mo)}-${pad(lastDayOfMonth(y,mo))}`, label:`${monthNames[mo-1]} ${y}` };
+}
+
+function computeAttendanceReport(periodType, anchorMonth){
+  const range = attendancePeriodRange(periodType, anchorMonth);
+  const inRange = d => d>=range.start && d<=range.end;
+  const byStaff = {};
+  const ensure = id => byStaff[id] || (byStaff[id] = {callout:0, late_arrival:0, left_early:0, leaveDays:0});
+
+  (state.attendanceEvents||[]).forEach(e=>{
+    if(!inRange(e.eventDate)) return;
+    ensure(e.staffId)[e.eventType] = (ensure(e.staffId)[e.eventType]||0) + 1;
+  });
+
+  Object.keys(state.timeOff||{}).forEach(staffId=>{
+    (state.timeOff[staffId]||[]).forEach(rec=>{
+      const start = rec.startDate > range.start ? rec.startDate : range.start;
+      const end   = rec.endDate   < range.end   ? rec.endDate   : range.end;
+      if(start > end) return;
+      const days = Math.round((new Date(end+'T00:00:00Z') - new Date(start+'T00:00:00Z')) / 86400000) + 1;
+      ensure(staffId).leaveDays += days;
+    });
+  });
+
+  const rows = Object.keys(byStaff).map(staffId=>{
+    const r = byStaff[staffId];
+    const name = getStaffById(staffId)?.name || '(former staff)';
+    const total = r.callout + r.late_arrival + r.left_early + r.leaveDays;
+    return { staffId, name, callout:r.callout, lateArrival:r.late_arrival, leftEarly:r.left_early, leaveDays:r.leaveDays, total };
+  }).sort((a,b)=> b.total-a.total || a.name.localeCompare(b.name));
+
+  const totals = rows.reduce((acc,r)=>{
+    acc.callout += r.callout; acc.lateArrival += r.lateArrival; acc.leftEarly += r.leftEarly; acc.leaveDays += r.leaveDays;
+    return acc;
+  }, {callout:0, lateArrival:0, leftEarly:0, leaveDays:0});
+
+  return { range, rows, totals };
+}
+
+function renderAttendanceReportModal(m){
+  const periodType = m.periodType || 'month';
+  const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
+  const report = computeAttendanceReport(periodType, anchorMonth);
+  const search = (m.search||'').trim().toLowerCase();
+  const rows = search ? report.rows.filter(r=>r.name.toLowerCase().includes(search)) : report.rows;
+
+  return `
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-head">
+      <div><h2>🗓 Attendance report</h2><p>Callouts, late arrivals, left-early, and scheduled leave — ${escapeHtml(report.range.label)}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ar-controls">
+        <div class="rp-view-tabs">
+          <button class="rp-view-tab ${periodType==='month'?'active':''}" id="ar-period-month">Month</button>
+          <button class="rp-view-tab ${periodType==='quarter'?'active':''}" id="ar-period-quarter">Quarter</button>
+          <button class="rp-view-tab ${periodType==='year'?'active':''}" id="ar-period-year">Year</button>
+        </div>
+        <input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>
+      </div>
+
+      <div class="ar-summary">
+        <div class="ar-stat"><span class="ar-stat-num">${report.totals.callout}</span><span class="ar-stat-label">Callouts</span></div>
+        <div class="ar-stat"><span class="ar-stat-num">${report.totals.lateArrival}</span><span class="ar-stat-label">Late arrivals</span></div>
+        <div class="ar-stat"><span class="ar-stat-num">${report.totals.leftEarly}</span><span class="ar-stat-label">Left early</span></div>
+        <div class="ar-stat"><span class="ar-stat-num">${report.totals.leaveDays}</span><span class="ar-stat-label">Scheduled leave days</span></div>
+      </div>
+
+      <input type="text" id="ar-search" class="team-dash-search" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
+
+      ${rows.length===0 ? `<div class="small-muted" style="padding:12px 0;">Nothing recorded for this period.</div>` : `
+      <div class="ar-table-wrap">
+        <table class="ar-table">
+          <thead><tr><th>Name</th><th>Callouts</th><th>Late</th><th>Left early</th><th>Leave days</th><th>Total</th></tr></thead>
+          <tbody>
+            ${rows.map(r=>`<tr>
+              <td>${escapeHtml(r.name)}</td>
+              <td>${r.callout||''}</td>
+              <td>${r.lateArrival||''}</td>
+              <td>${r.leftEarly||''}</td>
+              <td>${r.leaveDays||''}</td>
+              <td><b>${r.total}</b></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
+  </div>`;
+}
+
 // --- Pending evaluations review queue (admin/supervisor) — the
 // supervisor-must-accept-it half of the evaluation workflow. A team_lead's
 // submission lands here as 'pending' (see 0006_evaluation_review_workflow.sql)
@@ -14104,6 +14242,37 @@ function attachHandlers(){
     }
     saveState(); render();
   }));
+  // Late arrival / left early — same-day toggle, same "mark / undo" shape
+  // as Call out above, but these don't touch state.callouts: the person is
+  // still working today's shift, just not for all of it. Both write to
+  // state.attendanceEvents, which also backs the attendance report.
+  const toggleAttendanceEvent = (id, eventType) => {
+    const today = todayLabel();
+    const existing = (state.attendanceEvents||[]).find(e=>e.staffId===id && e.eventType===eventType && e.eventDate===today);
+    if(existing){
+      state.attendanceEvents = state.attendanceEvents.filter(e=>e!==existing);
+      syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existing.id}), 'attendance event');
+    } else {
+      const localId = uid('ae');
+      state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId:id, eventType, eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+      syncBoardWrite(async ()=>{
+        const row = await window.RC.markAttendanceEvent({staffId:id, eventType, eventDate:today, actingAccountId:authState.account.id});
+        const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
+        if(ev && row) ev.id = row.id; // reconcile so a later undo targets the real row
+      }, 'attendance event');
+    }
+    saveState(); render();
+  };
+  document.querySelectorAll('.act-late-arrival,.cia-btn.act-late-arrival').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation();
+    chipMenuOpen = null;
+    toggleAttendanceEvent(b.dataset.id, 'late_arrival');
+  }));
+  document.querySelectorAll('.act-left-early,.cia-btn.act-left-early').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation();
+    chipMenuOpen = null;
+    toggleAttendanceEvent(b.dataset.id, 'left_early');
+  }));
   document.querySelectorAll('.act-remove,.cia-btn.act-remove').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
     chipMenuOpen = null;
@@ -15189,6 +15358,7 @@ function attachHandlers(){
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
+  on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
@@ -17014,6 +17184,30 @@ function attachHandlers(){
     }));
   }
 
+  // --- attendance report ---
+  if(activeModal.type==='attendance-report'){
+    const m = activeModal;
+    on('ar-period-month',   ()=>openModal({...m, periodType:'month'}));
+    on('ar-period-quarter', ()=>openModal({...m, periodType:'quarter'}));
+    on('ar-period-year',    ()=>openModal({...m, periodType:'year'}));
+    const monthInput = document.getElementById('ar-anchor-month');
+    if(monthInput) monthInput.addEventListener('change', ()=>{
+      if(monthInput.value) openModal({...m, anchorMonth:monthInput.value});
+    });
+    const searchInput = document.getElementById('ar-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('ar-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+  }
+
   // --- pending evaluations review queue ---
   if(activeModal.type==='pending-evals'){
     const m = activeModal;
@@ -17763,6 +17957,11 @@ function mapSupabaseBoard(board){
   const coverageWaived = {};
   (board.coverageWaivers||[]).forEach(row=>{ coverageWaived[row.staff_id] = true; });
 
+  const attendanceEvents = (board.attendanceEvents||[]).map(row=>({
+    id: row.id, staffId: row.staff_id, eventType: row.event_type, eventDate: row.event_date,
+    note: row.note || '', createdBy: row.created_by, createdAt: row.created_at,
+  }));
+
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
     if(!stagesByFlow[st.flow_id]) stagesByFlow[st.flow_id] = [];
@@ -17786,7 +17985,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -17819,6 +18018,7 @@ function applyMappedBoard(mapped){
   state.breakTimes = mapped.breakTimes;
   state.priorExperience = mapped.priorExperience;
   state.coverageWaived = mapped.coverageWaived;
+  state.attendanceEvents = mapped.attendanceEvents;
   state.languages = mapped.languages;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
