@@ -159,7 +159,7 @@ export async function loadBoard() {
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
-    { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes },
+    { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -177,11 +177,12 @@ export async function loadBoard() {
     supabase.from('coverage_assignments').select('*'),
     supabase.from('lunch_times').select('*').order('sort_order'),
     supabase.from('break_times').select('*').order('sort_order'),
+    supabase.from('staff_prior_experience').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
-    timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes,
+    timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience,
   };
 }
 
@@ -475,6 +476,23 @@ export async function updateBreakTime({ breakTimeId, label, sortOrder }) {
 }
 export async function deleteBreakTime({ breakTimeId }) {
   const { error } = await supabase.from('break_times').delete().eq('id', breakTimeId);
+  if (error) throw error;
+}
+
+// Manual "worked this area before this system tracked rotations" flag —
+// one row per (staff, area), upserted so re-checking an unchecked box
+// (or editing the note) never creates a duplicate.
+export async function setPriorExperience({ staffId, areaId, note, actingAccountId }) {
+  const { data, error } = await supabase
+    .from('staff_prior_experience')
+    .upsert({ staff_id: staffId, area_id: areaId, note: note || null, added_by: actingAccountId }, { onConflict: 'staff_id,area_id' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+export async function clearPriorExperience({ staffId, areaId }) {
+  const { error } = await supabase.from('staff_prior_experience').delete().eq('staff_id', staffId).eq('area_id', areaId);
   if (error) throw error;
 }
 
@@ -845,7 +863,7 @@ const REALTIME_TABLES = [
   'areas', 'staff', 'assignments', 'departments', 'callouts', 'supervisors',
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
-  'lunch_times', 'break_times',
+  'lunch_times', 'break_times', 'staff_prior_experience',
 ];
 
 let realtimeChannel = null;
@@ -916,6 +934,8 @@ window.RC = {
   createBreakTime,
   updateBreakTime,
   deleteBreakTime,
+  setPriorExperience,
+  clearPriorExperience,
   createLanguage,
   updateLanguage,
   deleteLanguage,

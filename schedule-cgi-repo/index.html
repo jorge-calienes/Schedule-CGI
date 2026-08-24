@@ -6983,6 +6983,20 @@
   .stats-never-label{font-size:var(--md-sys-typescale-label-medium-size);text-transform:uppercase;letter-spacing:.04em;color:var(--md-sys-color-on-surface-variant);font-weight:700;margin:var(--md-space-3) 0 var(--md-space-2);}
   .stats-never-chip{display:inline-flex;align-items:center;gap:4px;font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);border-radius:var(--md-sys-shape-corner-full);padding:3px 10px;margin:3px;}
 
+  .stats-prior-exp-summary{cursor:pointer;font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);padding:4px 0;}
+  .stats-prior-exp-list{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto;margin-top:4px;}
+  .stats-prior-exp-row{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:var(--md-sys-shape-corner-small);}
+  .stats-prior-exp-row:hover{background:var(--md-sys-color-surface-container-lowest);}
+  .stats-prior-exp-check-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0;font-size:var(--md-sys-typescale-body-medium-size);}
+  .stats-prior-exp-check{cursor:pointer;}
+  .stats-prior-exp-name{color:var(--md-sys-color-on-surface);}
+  .stats-prior-exp-note{
+    flex:1;min-width:0;font-family:inherit;font-size:12px;
+    border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);
+    padding:4px 8px;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);
+  }
+  .stats-prior-exp-note:focus{outline:none;border-color:var(--md-sys-color-primary);}
+
   /* ── Performance evaluations (Stats tab + team dashboard) ── */
   .eval-summary-grid{display:flex;gap:var(--md-space-4);flex-wrap:wrap;margin-bottom:var(--md-space-2);}
   .eval-summary-stat{display:flex;flex-direction:column;gap:2px;}
@@ -8409,6 +8423,7 @@ let state = {
   supervisors: [],// [{id, name, color}] maintained list, like areas
   rotationFlows: [],// [{id, name, color, stages:[{id,areaId,requiredRotations,label}]}]
   proficiency: {}, // {staffId: {areaId: {rating:1-5, ratings:[{period,teamLeadRating,teamLeadId,teamLeadNote,supervisorRating,supervisorId,supervisorApproved,overrideReason}]}}}
+  priorExperience: {}, // {staffId: [{id, areaId, note}]} manually-marked "worked here before this system" flags
   pendingFeedback: [], // [{staffId,areaId,toAreaId,...}]
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
@@ -9047,6 +9062,17 @@ function periodsSinceWorked(staffId, areaId){
   return Infinity;
 }
 
+// manually-marked "worked this area before this system tracked rotations" —
+// a supplement to state.history for staff whose real prior experience
+// predates the app (or predates when rotations started being recorded).
+function hasManualPriorExperience(staffId, areaId){
+  return (state.priorExperience[staffId]||[]).some(e=>e.areaId===areaId);
+}
+function getManualPriorExperienceNote(staffId, areaId){
+  const entry = (state.priorExperience[staffId]||[]).find(e=>e.areaId===areaId);
+  return entry ? entry.note : '';
+}
+
 // full per-area experience breakdown for one staff member, across every completed rotation
 // plus their current live placement (if any). Sorted by times worked (most experienced first),
 // then by most recent. Areas never worked are omitted entirely (only areas with real history show).
@@ -9125,16 +9151,20 @@ function staffExperienceBreakdown(staffId){
     const c = counts[area.id];
     const timesWorked = c ? c.timesWorked : 0;
     const periodsAgo = c ? (totalCompletedRotations - 1 - c.lastPeriodIndex) : Infinity;
+    const manualPrior = hasManualPriorExperience(staffId, area.id);
     return {
       areaId: area.id, area,
       timesWorked,
-      hasExperience: timesWorked > 0,
+      hasExperience: timesWorked > 0 || manualPrior,
       periodsAgo,
+      manualPrior,
+      manualNote: manualPrior ? getManualPriorExperienceNote(staffId, area.id) : '',
     };
   });
   rows.sort((a,b)=>{
     if(a.timesWorked !== b.timesWorked) return b.timesWorked - a.timesWorked;
     if(a.periodsAgo !== b.periodsAgo) return a.periodsAgo - b.periodsAgo;
+    if(a.manualPrior !== b.manualPrior) return a.manualPrior ? -1 : 1;
     return a.area.name.localeCompare(b.area.name);
   });
 
@@ -9163,15 +9193,18 @@ function rankCandidatesForArea(areaId, excludeStaffIds){
       const repeat = isRepeatArea(s.id, areaId);
       const sinceWorked = periodsSinceWorked(s.id, areaId);
       const timesWorked = timesWorkedArea(s.id, areaId);
-      const hasExperience = sinceWorked !== Infinity;
+      const manualPrior = hasManualPriorExperience(s.id, areaId);
+      const hasExperience = sinceWorked !== Infinity || manualPrior;
       const wouldDisplaceLead = isTeamLeadDisplaced(s.id, areaId);
-      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, hasExperience, currentArea: state.assignments[s.id], wouldDisplaceLead};
+      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, hasExperience, manualPrior, currentArea: state.assignments[s.id], wouldDisplaceLead};
     })
     .sort((a,b)=>{
       // avoid pulling team leads off their own area first; then fewer conflicts;
-      // then prefer staff who've actually worked this area before (most recent experience first,
-      // then most times worked), since they need the least re-training to cover it well;
-      // people who've never worked the area rank last.
+      // then prefer staff who've worked this area before — via real rotation
+      // history (most recent first, then most times worked) or a manually-
+      // marked prior-experience flag (ranks after any real-history match,
+      // since we don't know how recent it was) — since they need the least
+      // re-training to cover it well; people with neither rank last.
       if((a.wouldDisplaceLead?1:0) !== (b.wouldDisplaceLead?1:0)) return (a.wouldDisplaceLead?1:0)-(b.wouldDisplaceLead?1:0);
       if(a.conflicts.length!==b.conflicts.length) return a.conflicts.length-b.conflicts.length;
       if(a.hasExperience !== b.hasExperience) return a.hasExperience ? -1 : 1;
@@ -9524,6 +9557,7 @@ let swapMode      = null; // {staffId} first person selected for quick-swap
 let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
+let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
 
 function render(){
   const root = document.getElementById('root');
@@ -9642,9 +9676,10 @@ function suggestCoverageFor(areaId, absentStaffId){
     const rating  = getAreaRating(r.staff.id, areaId);
     const lvl     = getProficiencyLevel(rating);
     let fitLabel, fitColor;
-    if(r.timesWorked >= 3)       { fitLabel='Expert fit';   fitColor='#2E7D32'; }
-    else if(r.timesWorked >= 1)  { fitLabel='Has exp.';     fitColor='#1565C0'; }
-    else                         { fitLabel='No exp.';      fitColor='#9E9E9E'; }
+    if(r.timesWorked >= 3)              { fitLabel='Expert fit';   fitColor='#2E7D32'; }
+    else if(r.timesWorked >= 1)         { fitLabel='Has exp.';     fitColor='#1565C0'; }
+    else if(r.manualPrior)              { fitLabel='Prior exp.';   fitColor='#6A1B9A'; }
+    else                                { fitLabel='No exp.';      fitColor='#9E9E9E'; }
     return { ...r, rating, lvl, fitLabel, fitColor };
   });
 }
@@ -10809,6 +10844,8 @@ function renderStaffStatsModal(m){
   const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(s.id);
   const currentArea = currentAreaId ? getAreaById(currentAreaId) : null;
   const maxTimes = rows.length ? Math.max(...rows.map(r=>r.timesWorked)) : 0;
+  const hasAnyExperienceData = rows.some(r=>r.hasExperience);
+  const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
   return `
   <div class="modal">
     <div class="modal-head">
@@ -10841,15 +10878,38 @@ function renderStaffStatsModal(m){
       </div>
       ` : ''}
 
-      ${totalCompletedRotations===0 ? `
-        <div class="small-muted" style="line-height:1.6;margin-top:14px;">No rotations have been completed yet, so there's no history to show. Experience will build up here once you start using "Rotate now".</div>
+      ${!isTeamLeadRole() ? `
+      <details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:14px;" ${statsPriorExpOpen?'open':''}>
+        <summary class="stats-prior-exp-summary">Prior area experience (before this system)${priorMarkedCount?' — '+priorMarkedCount+' marked':''}</summary>
+        <div class="field-hint" style="margin:6px 0 8px;">Check off areas ${escapeHtml(s.name.split(' ')[0])} worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>
+        <div class="stats-prior-exp-list">
+          ${state.areas.filter(a=>!a.fixed).map(area=>{
+            const entry = (state.priorExperience[s.id]||[]).find(e=>e.areaId===area.id);
+            return `
+            <div class="stats-prior-exp-row">
+              <label class="stats-prior-exp-check-wrap">
+                <input type="checkbox" class="stats-prior-exp-check" data-staff-id="${s.id}" data-area-id="${area.id}" ${entry?'checked':''}/>
+                <span class="area-swatch" style="background:${area.color}"></span>
+                <span class="stats-prior-exp-name">${escapeHtml(area.name)}</span>
+              </label>
+              ${entry?`<input type="text" class="stats-prior-exp-note" data-staff-id="${s.id}" data-area-id="${area.id}" placeholder="Optional note" value="${escapeHtml(entry.note||'')}"/>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </details>
+      ` : ''}
+
+      ${!hasAnyExperienceData ? `
+        <div class="small-muted" style="line-height:1.6;margin-top:14px;">No rotations have been completed and no prior experience is marked yet, so there's no history to show. Experience will build up here once you start using "Rotate now" — or mark prior experience above.</div>
       ` : `
         ${bestFit ? `
         <div class="stats-bestfit-banner">
           <span class="stats-bestfit-icon">🎯</span>
           <div>
             <div class="stats-bestfit-title">Best fit to cover <b>${escapeHtml(bestFit.area.name)}</b></div>
-            <div class="stats-bestfit-sub">${bestFit.timesWorked}× experience${bestFit.periodsAgo===0?' · worked it last rotation':' · last there '+bestFit.periodsAgo+' rotation'+(bestFit.periodsAgo===1?'':'s')+' ago'}</div>
+            <div class="stats-bestfit-sub">${bestFit.timesWorked>0
+              ? bestFit.timesWorked+'× experience'+(bestFit.periodsAgo===0?' · worked it last rotation':' · last there '+bestFit.periodsAgo+' rotation'+(bestFit.periodsAgo===1?'':'s')+' ago')
+              : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):'')}</div>
           </div>
         </div>` : `
         <div class="stats-bestfit-banner stats-bestfit-none">
@@ -10861,7 +10921,7 @@ function renderStaffStatsModal(m){
         </div>`}
 
         <div class="small-muted" style="margin:16px 0 10px;font-weight:700;">
-          Area history <span style="font-weight:400;">· based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}</span>
+          Area history <span style="font-weight:400;">· based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}${priorMarkedCount?' + '+priorMarkedCount+' marked prior':''}</span>
         </div>
         <div class="stats-bar-list">
           ${rows.map(r=>{
@@ -10879,12 +10939,14 @@ function renderStaffStatsModal(m){
                 ${rating?`<span class="proficiency-mini-badge" style="background:${lvl.color};">${rating} ${lvl.label}</span>`:''}
               </div>
               <div class="stats-bar-track">
-                <div class="stats-bar-fill" style="width:${r.hasExperience ? Math.max(8, Math.round(r.timesWorked/maxTimes*100)) : 0}%; background:${r.area.color};"></div>
+                <div class="stats-bar-fill" style="width:${r.timesWorked>0 ? Math.max(8, Math.round(r.timesWorked/(maxTimes||1)*100)) : (r.hasExperience?8:0)}%; background:${r.area.color};"></div>
               </div>
               <div class="stats-bar-count">
-                ${r.hasExperience
+                ${r.timesWorked>0
                   ? `${r.timesWorked}× <span class="small-muted">· ${r.periodsAgo===0?'last rotation':r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since'}${lastRated?` · rated ${lastRated.period}`:''}</span>`
-                  : `<span class="small-muted">never worked here</span>`}
+                  : r.manualPrior
+                    ? `<span class="small-muted">prior experience (marked)${r.manualNote?': '+escapeHtml(r.manualNote):''}</span>`
+                    : `<span class="small-muted">never worked here</span>`}
               </div>
             </div>`;
           }).join('')}
@@ -11165,8 +11227,8 @@ function renderStaffManagerModal(m){
     })();
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
-    if(totalCompletedRotations===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet. Stats will appear after the first Rotate Now.</div>';
     const worked = rows.filter(r=>r.hasExperience);
+    if(worked.length===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
@@ -11182,7 +11244,9 @@ function renderStaffManagerModal(m){
       (bestFit?
         '<div class="stats-bestfit-banner" style="margin:12px 0;"><span class="stats-bestfit-icon">🎯</span><div>'+
         '<div class="stats-bestfit-title">Best fit: <b>'+escapeHtml(bestFit.area.name)+'</b></div>'+
-        '<div class="stats-bestfit-sub">'+bestFit.timesWorked+'× experience · '+(bestFit.periodsAgo===0?'last rotation':bestFit.periodsAgo+' rotations ago')+'</div></div></div>':'')+
+        '<div class="stats-bestfit-sub">'+(bestFit.timesWorked>0
+          ? bestFit.timesWorked+'× experience · '+(bestFit.periodsAgo===0?'last rotation':bestFit.periodsAgo+' rotations ago')
+          : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):''))+'</div></div></div>':'')+
 
       // ── Worked areas with proficiency ──
       '<div class="stats-prof-section-label">Proficiency by area</div>'+
@@ -11203,8 +11267,9 @@ function renderStaffManagerModal(m){
           stars(rating)+
           (rating?'<span class="stats-prof-badge" style="background:'+lvl.color+'">'+lvl.label+'</span>':'')+'</div>'+
           '<div class="stats-prof-meta">'+
-          r.timesWorked+'× worked'+
-          (r.periodsAgo===0?' · last rotation':' · '+r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since')+
+          (r.timesWorked>0
+            ? r.timesWorked+'× worked'+(r.periodsAgo===0?' · last rotation':' · '+r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since')
+            : 'Marked as prior experience'+(r.manualNote?': '+escapeHtml(r.manualNote):''))+
           (lastRated?' · rated '+lastRated.period:' · not yet rated')+
           '</div>'+
           '</div>';
@@ -12675,6 +12740,42 @@ async function applyBreakOrLunchChange(staffId, part, newValue){
 // touches the lunch half.
 function applyLunchChange(staffId, newLunch){
   return applyBreakOrLunchChange(staffId, 'lunch', newLunch);
+}
+
+// Checks/unchecks (or edits the note on) a manual "worked this area before
+// this system tracked rotations" mark — the staff-stats "Prior area
+// experience" checklist. checked=false always clears the row regardless
+// of note; checked=true upserts it (used both for the checkbox itself and
+// for committing a note edit on an already-checked row).
+async function togglePriorExperience(staffId, areaId, checked, note){
+  const s = getStaffById(staffId);
+  if(!s) return false;
+  if(!checked){
+    const sync = await syncCrudWrite(()=>window.RC.clearPriorExperience({staffId, areaId}));
+    if(sync.ok){
+      state.priorExperience[staffId] = (state.priorExperience[staffId]||[]).filter(e=>e.areaId!==areaId);
+      saveState();
+      showToast('Prior experience cleared — saved to database ✓', 'teal');
+    } else {
+      showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+    }
+    return sync.ok;
+  }
+  const existing = (state.priorExperience[staffId]||[]).find(e=>e.areaId===areaId);
+  const finalNote = note!==undefined ? note : (existing?.note || '');
+  const sync = await syncCrudWrite(()=>window.RC.setPriorExperience({
+    staffId, areaId, note: finalNote, actingAccountId: authState.account.id,
+  }));
+  if(sync.ok){
+    if(!state.priorExperience[staffId]) state.priorExperience[staffId] = [];
+    if(existing){ existing.note = finalNote; }
+    else state.priorExperience[staffId].push({id: sync.ok ? sync.result.id : uid('pex'), areaId, note: finalNote});
+    saveState();
+    showToast('Prior experience saved ✓', 'teal');
+  } else {
+    showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
+  }
+  return sync.ok;
 }
 
 // --- Languages manager (admin) ---
@@ -15058,6 +15159,18 @@ function attachHandlers(){
       await applyLunchChange(lunchSel.dataset.staffId, lunchSel.value);
       render();
     });
+    const priorExpDetails = document.getElementById('stats-prior-exp-details');
+    if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
+    document.querySelectorAll('.stats-prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
+      statsPriorExpOpen = true;
+      await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
+      render();
+    }));
+    document.querySelectorAll('.stats-prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
+      statsPriorExpOpen = true;
+      await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
+      render();
+    }));
   }
 
   // ── Position request: approve / deny ──
@@ -17439,6 +17552,12 @@ function mapSupabaseBoard(board){
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
   const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
+  const priorExperience = {};
+  (board.priorExperience||[]).forEach(row=>{
+    if(!priorExperience[row.staff_id]) priorExperience[row.staff_id] = [];
+    priorExperience[row.staff_id].push({ id: row.id, areaId: row.area_id, note: row.note || '' });
+  });
+
   const stagesByFlow = {};
   (board.rotationFlowStages||[]).forEach(st=>{
     if(!stagesByFlow[st.flow_id]) stagesByFlow[st.flow_id] = [];
@@ -17462,7 +17581,7 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, rotationFlows, timeOff, blocks, coverage };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, rotationFlows, timeOff, blocks, coverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -17493,6 +17612,7 @@ function applyMappedBoard(mapped){
   state.shifts = mapped.shifts;
   state.lunchTimes = mapped.lunchTimes;
   state.breakTimes = mapped.breakTimes;
+  state.priorExperience = mapped.priorExperience;
   state.languages = mapped.languages;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
