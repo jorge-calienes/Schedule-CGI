@@ -250,16 +250,21 @@ export async function setCallout({ staffId, actingAccountId, staffName, reason }
     staff_id: staffId,
   });
 
-  // A separate, never-deleted record of the callout for the attendance
-  // report — the callouts row above is just a "currently out" flag and
-  // gets deleted the moment they're marked back in.
-  await supabase.from('attendance_events').insert({
+  // A separate, never-deleted-by-default record of the callout for the
+  // attendance report — the callouts row above is just a "currently out"
+  // flag and gets deleted the moment they're marked back in. (clearCallout
+  // below DOES delete this one specific case: today's own callout, undone
+  // the same day — see the comment there.) Not awaited-and-thrown: the
+  // callout itself already succeeded above, and failing the whole action
+  // over a logging row succeeding would be misleading.
+  const { error: aeError } = await supabase.from('attendance_events').insert({
     staff_id: staffId,
     event_type: 'callout',
     event_date: new Date().toISOString().slice(0, 10),
     note: reason || null,
     created_by: actingAccountId,
   });
+  if (aeError) console.warn('setCallout: attendance_events insert failed:', aeError.message);
 }
 
 export async function clearCallout({ staffId, actingAccountId, staffName }) {
@@ -272,6 +277,20 @@ export async function clearCallout({ staffId, actingAccountId, staffName }) {
     description: `marked ${staffName || staffId} back in`,
     staff_id: staffId,
   });
+
+  // If this callout is being undone the SAME day it was marked, it never
+  // lasted through the day — a mistap or a quick correction, not a real
+  // callout — so retract today's attendance_events row too rather than
+  // let it inflate the report. A callout from an earlier day (someone
+  // still out overnight, only now marked back in) already represents a
+  // completed day and is left alone.
+  const today = new Date().toISOString().slice(0, 10);
+  const { error: aeError } = await supabase.from('attendance_events')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('event_type', 'callout')
+    .eq('event_date', today);
+  if (aeError) console.warn('clearCallout: attendance_events cleanup failed:', aeError.message);
 }
 
 // "No coverage needed" on the Coverage dashboard — same shape as callouts,
