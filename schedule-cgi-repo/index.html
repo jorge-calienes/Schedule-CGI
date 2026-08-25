@@ -1119,16 +1119,18 @@
 
   .chip-cia-popup .cia-btn{
     flex:0 0 auto;
-    width:36px;height:36px;
-    display:flex;align-items:center;justify-content:center;
-    padding:0;
-    font-size:16px;
+    width:54px;min-height:44px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;
+    padding:4px 2px;
     border-radius:8px;
     border:none;cursor:pointer;
     font-family:inherit;
     transition:background .1s,color .1s;
   }
   .chip-cia-popup .cia-btn:hover{filter:brightness(.94);}
+  .cia-btn-icon{font-size:15px;line-height:1;}
+  .cia-btn-label{font-size:9px;font-weight:700;line-height:1;white-space:nowrap;letter-spacing:.01em;}
 
   /* ── Chip mobile: only show ··· button ── */
   @media(max-width:699px){
@@ -10241,6 +10243,18 @@ function renderSidebar(){
   </div>`;
 }
 
+// Chip menu (⋯) action button — icon + a short label rather than icon
+// alone: the label is also exposed via title/aria-label, but that's a
+// hover tooltip and this menu is used mostly on touch devices (there's a
+// whole separate mobile "⋯" popup vs. desktop's always-visible text pills
+// specifically because this app is touch-first), where hover never fires.
+// A mistap on an icon-only "Remove" isn't a cheap mistake to recover from.
+function ciaBtn(classes, staffId, icon, label, title){
+  return `<button class="cia-btn ${classes}" data-id="${staffId}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
+    + `<span class="cia-btn-icon">${icon}</span><span class="cia-btn-label">${escapeHtml(label)}</span>`
+    + `</button>`;
+}
+
 function renderChip(s){
   const areaId   = state.assignments[s.id];
   const area     = areaId ? getAreaById(areaId) : null;
@@ -10339,13 +10353,13 @@ function renderChip(s){
       ${readOnly ? '' : `<button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>`}
     </div>` : ''}
     ${(!readOnly && chipMenuOpen===s.id) ? `<div class="chip-cia-popup">
-      <button class="cia-btn primary act-move ${isSelected?'active':''}" data-id="${s.id}" title="${isSelected?'Cancel move':'Move'}" aria-label="${isSelected?'Cancel move':'Move'}">${isSelected?'✕':'🔀'}</button>
-      <button class="cia-btn act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}" title="${isSwapFirst?'Cancel swap':'Swap'}" aria-label="${isSwapFirst?'Cancel swap':'Swap'}">${isSwapFirst?'✕':'⇄'}</button>
-      <button class="cia-btn act-callout" data-id="${s.id}" title="${isOut?'Mark in':'Call out'}" aria-label="${isOut?'Mark in':'Call out'}">${isOut?'✅':'⚠️'}</button>
-      <button class="cia-btn act-late-arrival ${lateEvent?'active':''}" data-id="${s.id}" title="${lateEvent?'Undo late arrival':'Late arrival'}" aria-label="${lateEvent?'Undo late arrival':'Late arrival'}">⏰</button>
-      <button class="cia-btn act-left-early ${leftEarlyEvent?'active':''}" data-id="${s.id}" title="${leftEarlyEvent?'Undo left early':'Left early'}" aria-label="${leftEarlyEvent?'Undo left early':'Left early'}">🚪</button>
-      <button class="cia-btn act-edit" data-id="${s.id}" title="Edit" aria-label="Edit">✏️</button>
-      <button class="cia-btn danger act-remove" data-id="${s.id}" title="Remove" aria-label="Remove">🗑</button>
+      ${ciaBtn('primary act-move'+(isSelected?' active':''), s.id, isSelected?'✕':'🔀', isSelected?'Cancel':'Move', isSelected?'Cancel move':'Move')}
+      ${ciaBtn('act-swap-init'+(isSwapFirst?' active':''), s.id, isSwapFirst?'✕':'⇄', isSwapFirst?'Cancel':'Swap', isSwapFirst?'Cancel swap':'Swap')}
+      ${ciaBtn('act-callout', s.id, isOut?'✅':'⚠️', isOut?'In':'Out', isOut?'Mark in':'Call out')}
+      ${ciaBtn('act-late-arrival'+(lateEvent?' active':''), s.id, '⏰', 'Late', lateEvent?'Undo late arrival':'Late arrival')}
+      ${ciaBtn('act-left-early'+(leftEarlyEvent?' active':''), s.id, '🚪', 'Early', leftEarlyEvent?'Undo left early':'Left early')}
+      ${ciaBtn('act-edit', s.id, '✏️', 'Edit', 'Edit')}
+      ${ciaBtn('danger act-remove', s.id, '🗑', 'Remove', 'Remove')}
     </div>` : ''}
   </div>`;
 }
