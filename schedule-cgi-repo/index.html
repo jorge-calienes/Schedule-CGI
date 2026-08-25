@@ -12661,6 +12661,12 @@ function computeAttendanceReport(periodType, anchorMonth){
 
   (state.attendanceEvents||[]).forEach(e=>{
     if(!inRange(e.eventDate)) return;
+    // Scheduled leave already accounts for this day — a callout/late/
+    // left-early logged on the same date (e.g. marking someone out on
+    // the board when they're already on approved time off) shouldn't
+    // also count as a separate incident on top of it.
+    const onLeave = ((state.timeOff||{})[e.staffId]||[]).some(r=>e.eventDate>=r.startDate && e.eventDate<=r.endDate);
+    if(onLeave) return;
     ensure(e.staffId)[e.eventType].push(e.eventDate);
   });
 
