@@ -10089,6 +10089,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
+      <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
@@ -12710,6 +12711,77 @@ function arLeaveRangeLabel(rg){
   return days>1 ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
 }
 
+// ── Outlook export (.ics) ──────────────────────────────────────────────
+// A downloadable calendar file rather than a live Outlook integration —
+// no Microsoft 365 admin approval or OAuth needed, and any calendar app
+// (not just Outlook) can open it. Every callout/late-arrival/left-early
+// becomes its own all-day event so whoever's translating the phone line
+// into the calendar gets one line per person instead of retyping names.
+const AR_EVENT_LABELS = { callout: 'Called out', late_arrival: 'Late arrival', left_early: 'Left early' };
+
+function icsEscapeText(s){
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+}
+function icsDate(iso){ return iso.replace(/-/g,''); }
+function icsNextDay(iso){
+  const d = new Date(iso+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()+1);
+  return icsDate(d.toISOString().slice(0,10));
+}
+
+// Flattens computeAttendanceReport()'s per-person date arrays (already
+// filtered for the selected period and for scheduled-leave overlap) back
+// into one row per event — exactly what the report currently shows.
+function attendanceReportToEvents(report){
+  const out = [];
+  report.rows.forEach(r=>{
+    r.callout.forEach(d=>out.push({staffId:r.staffId, eventType:'callout', eventDate:d}));
+    r.lateArrival.forEach(d=>out.push({staffId:r.staffId, eventType:'late_arrival', eventDate:d}));
+    r.leftEarly.forEach(d=>out.push({staffId:r.staffId, eventType:'left_early', eventDate:d}));
+  });
+  return out;
+}
+
+function buildAttendanceIcs(events){
+  const stamp = new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rotation Control//Attendance Export//EN','CALSCALE:GREGORIAN'];
+  events.forEach(e=>{
+    const name = getStaffById(e.staffId)?.name || 'Unknown';
+    const label = AR_EVENT_LABELS[e.eventType] || e.eventType;
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:attendance-'+e.eventType+'-'+e.staffId+'-'+e.eventDate+'@rotation-control');
+    lines.push('DTSTAMP:'+stamp);
+    lines.push('DTSTART;VALUE=DATE:'+icsDate(e.eventDate));
+    lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventDate));
+    lines.push('SUMMARY:'+icsEscapeText(name+' — '+label));
+    if(e.note) lines.push('DESCRIPTION:'+icsEscapeText(e.note));
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function downloadIcsFile(filename, icsText){
+  const blob = new Blob([icsText], {type:'text/calendar;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+// Today's events only, applying the same "already covered by scheduled
+// leave" exclusion as the report (see computeAttendanceReport) so the
+// export never asks her to double-log someone who's on approved time off.
+function todaysAttendanceEvents(){
+  const today = todayLabel();
+  return (state.attendanceEvents||[]).filter(e=>{
+    if(e.eventDate!==today) return false;
+    const onLeave = ((state.timeOff||{})[e.staffId]||[]).some(r=>today>=r.startDate && today<=r.endDate);
+    return !onLeave;
+  });
+}
+
 // Icons match the ones already used for these same events elsewhere (the
 // chip menu, AUDIT_ACTION_ICONS) so the report reads at a glance instead
 // of needing four more column headers spelled out per row.
@@ -12781,6 +12853,9 @@ function renderAttendanceReportModal(m){
           </div>`;
         }).join('')}
       </div>`}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="ar-export-ics" style="margin-left:auto;">📅 Export to Outlook (.ics)</button>
     </div>
   </div>`;
 }
@@ -14636,6 +14711,15 @@ function attachHandlers(){
   on('nav-print-board', ()=>{
     navDrawerOpen=false;
     openModal({type:'report-preview', sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true}});
+    render();
+  });
+  // ── export today's callouts/late/left-early to an Outlook-importable .ics ──
+  on('nav-export-outlook', ()=>{
+    navDrawerOpen=false;
+    const events = todaysAttendanceEvents();
+    if(events.length===0){ showToast('Nothing to export for today', 'rust'); render(); return; }
+    downloadIcsFile(`attendance-${todayLabel()}.ics`, buildAttendanceIcs(events));
+    showToast(`Exported ${events.length} event${events.length===1?'':'s'} — open the file to add them to Outlook`, 'teal');
     render();
   });
 
@@ -17268,6 +17352,15 @@ function attachHandlers(){
       m.expandedStaffId = m.expandedStaffId===id ? null : id;
       render();
     }));
+    on('ar-export-ics', ()=>{
+      const periodType = m.periodType || 'month';
+      const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
+      const report = computeAttendanceReport(periodType, anchorMonth);
+      const events = attendanceReportToEvents(report);
+      if(events.length===0){ showToast('Nothing to export for this period', 'rust'); return; }
+      downloadIcsFile(`attendance-${anchorMonth}-${periodType}.ics`, buildAttendanceIcs(events));
+      showToast(`Exported ${events.length} event${events.length===1?'':'s'} — open the file to add them to Outlook`, 'teal');
+    });
   }
 
   // --- pending evaluations review queue ---
