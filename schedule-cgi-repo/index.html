@@ -7695,6 +7695,12 @@
   .ar-stat-num{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--c-text,#1D1D1F);margin-top:2px;}
   .ar-count-pill{font-size:11.5px;font-weight:600;background:var(--c-surface-2,#F5F5F7);color:var(--c-text-2,#6E6E73);padding:2px 7px;border-radius:999px;white-space:nowrap;}
   .ar-total-badge{font-family:var(--mono);font-weight:800;font-size:14px;background:var(--c-surface-2,#F5F5F7);color:var(--c-text,#1D1D1F);padding:4px 11px;border-radius:999px;flex-shrink:0;}
+  .ar-expand-caret{font-size:11px;color:var(--c-text-3,#9A9AA2);margin-left:8px;flex-shrink:0;transition:transform .12s;}
+  .ar-expand-caret.open{transform:rotate(180deg);}
+  .ar-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--c-border,#E5E5EA);display:flex;flex-direction:column;gap:6px;}
+  .ar-detail-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;flex-wrap:wrap;}
+  .ar-detail-label{color:var(--c-text-2,#6E6E73);font-weight:600;flex-shrink:0;}
+  .ar-detail-dates{color:var(--c-text,#1D1D1F);text-align:right;}
 </style>
 </head>
 <body>
@@ -12643,15 +12649,19 @@ function attendancePeriodRange(periodType, anchorMonth){
   return { start:`${y}-${pad(mo)}-01`, end:`${y}-${pad(mo)}-${pad(lastDayOfMonth(y,mo))}`, label:`${monthNames[mo-1]} ${y}` };
 }
 
+// Keeps the actual dates (not just a count) per category, so the report
+// can drill down into "which days" on demand instead of only showing a
+// number — the count alone doesn't say whether two callouts landed back
+// to back or a month apart.
 function computeAttendanceReport(periodType, anchorMonth){
   const range = attendancePeriodRange(periodType, anchorMonth);
   const inRange = d => d>=range.start && d<=range.end;
   const byStaff = {};
-  const ensure = id => byStaff[id] || (byStaff[id] = {callout:0, late_arrival:0, left_early:0, leaveDays:0});
+  const ensure = id => byStaff[id] || (byStaff[id] = {callout:[], late_arrival:[], left_early:[], leaveRanges:[]});
 
   (state.attendanceEvents||[]).forEach(e=>{
     if(!inRange(e.eventDate)) return;
-    ensure(e.staffId)[e.eventType] = (ensure(e.staffId)[e.eventType]||0) + 1;
+    ensure(e.staffId)[e.eventType].push(e.eventDate);
   });
 
   Object.keys(state.timeOff||{}).forEach(staffId=>{
@@ -12659,24 +12669,39 @@ function computeAttendanceReport(periodType, anchorMonth){
       const start = rec.startDate > range.start ? rec.startDate : range.start;
       const end   = rec.endDate   < range.end   ? rec.endDate   : range.end;
       if(start > end) return;
-      const days = Math.round((new Date(end+'T00:00:00Z') - new Date(start+'T00:00:00Z')) / 86400000) + 1;
-      ensure(staffId).leaveDays += days;
+      ensure(staffId).leaveRanges.push({start, end, label: rec.label||''});
     });
   });
+
+  const rangeDays = rg => Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
 
   const rows = Object.keys(byStaff).map(staffId=>{
     const r = byStaff[staffId];
     const name = getStaffById(staffId)?.name || '(former staff)';
-    const total = r.callout + r.late_arrival + r.left_early + r.leaveDays;
-    return { staffId, name, callout:r.callout, lateArrival:r.late_arrival, leftEarly:r.left_early, leaveDays:r.leaveDays, total };
+    const callout = r.callout.slice().sort();
+    const lateArrival = r.late_arrival.slice().sort();
+    const leftEarly = r.left_early.slice().sort();
+    const leaveRanges = r.leaveRanges.slice().sort((a,b)=>a.start.localeCompare(b.start));
+    const leaveDays = leaveRanges.reduce((sum,rg)=>sum+rangeDays(rg),0);
+    const total = callout.length + lateArrival.length + leftEarly.length + leaveDays;
+    return { staffId, name, callout, lateArrival, leftEarly, leaveRanges, leaveDays, total };
   }).sort((a,b)=> b.total-a.total || a.name.localeCompare(b.name));
 
   const totals = rows.reduce((acc,r)=>{
-    acc.callout += r.callout; acc.lateArrival += r.lateArrival; acc.leftEarly += r.leftEarly; acc.leaveDays += r.leaveDays;
+    acc.callout += r.callout.length; acc.lateArrival += r.lateArrival.length; acc.leftEarly += r.leftEarly.length; acc.leaveDays += r.leaveDays;
     return acc;
   }, {callout:0, lateArrival:0, leftEarly:0, leaveDays:0});
 
   return { range, rows, totals };
+}
+
+function arShortDate(iso){
+  const parts = (iso||'').split('-');
+  return parts.length===3 ? `${parts[1]}/${parts[2]}` : iso;
+}
+function arLeaveRangeLabel(rg){
+  const days = Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
+  return days>1 ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
 }
 
 // Icons match the ones already used for these same events elsewhere (the
@@ -12684,6 +12709,19 @@ function computeAttendanceReport(periodType, anchorMonth){
 // of needing four more column headers spelled out per row.
 const AR_ICONS = { callout:'⚠️', lateArrival:'⏰', leftEarly:'🚪', leaveDays:'📅' };
 function arCountPill(icon, n){ return n>0 ? `<span class="ar-count-pill">${icon} ${n}</span>` : ''; }
+
+// The expanded, click-to-open detail under a person's row — same four
+// categories as the pills above, but listing which actual dates within
+// the current period made up each count.
+function arPersonDetail(r){
+  const rowsHtml = [
+    r.callout.length ? `<div class="ar-detail-row"><span class="ar-detail-label">${AR_ICONS.callout} Callouts (${r.callout.length})</span><span class="ar-detail-dates">${r.callout.map(arShortDate).join(', ')}</span></div>` : '',
+    r.lateArrival.length ? `<div class="ar-detail-row"><span class="ar-detail-label">${AR_ICONS.lateArrival} Late arrivals (${r.lateArrival.length})</span><span class="ar-detail-dates">${r.lateArrival.map(arShortDate).join(', ')}</span></div>` : '',
+    r.leftEarly.length ? `<div class="ar-detail-row"><span class="ar-detail-label">${AR_ICONS.leftEarly} Left early (${r.leftEarly.length})</span><span class="ar-detail-dates">${r.leftEarly.map(arShortDate).join(', ')}</span></div>` : '',
+    r.leaveRanges.length ? `<div class="ar-detail-row"><span class="ar-detail-label">${AR_ICONS.leaveDays} Scheduled leave (${r.leaveRanges.length})</span><span class="ar-detail-dates">${r.leaveRanges.map(rg=>escapeHtml(arLeaveRangeLabel(rg))+(rg.label?' — '+escapeHtml(rg.label):'')).join(', ')}</span></div>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="ar-detail">${rowsHtml}</div>`;
+}
 
 function renderAttendanceReportModal(m){
   const periodType = m.periodType || 'month';
@@ -12719,16 +12757,23 @@ function renderAttendanceReportModal(m){
 
       ${rows.length===0 ? `<div class="small-muted" style="padding:12px 0;">Nothing recorded for this period.</div>` : `
       <div class="option-list" style="max-height:400px;overflow-y:auto;">
-        ${rows.map(r=>`
-          <div class="option-card" style="cursor:default;">
-            <div class="oc-left" style="flex:1;">
-              <span class="oc-name">${escapeHtml(r.name)}</span>
-              <div class="oc-sub" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
-                ${arCountPill(AR_ICONS.callout, r.callout)}${arCountPill(AR_ICONS.lateArrival, r.lateArrival)}${arCountPill(AR_ICONS.leftEarly, r.leftEarly)}${arCountPill(AR_ICONS.leaveDays, r.leaveDays)}
+        ${rows.map(r=>{
+          const expanded = m.expandedStaffId===r.staffId;
+          return `
+          <div class="option-card ar-person-card" data-toggle-person="${r.staffId}" style="cursor:pointer;flex-direction:column;align-items:stretch;">
+            <div style="display:flex;align-items:center;">
+              <div class="oc-left" style="flex:1;">
+                <span class="oc-name">${escapeHtml(r.name)}</span>
+                <div class="oc-sub" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                  ${arCountPill(AR_ICONS.callout, r.callout.length)}${arCountPill(AR_ICONS.lateArrival, r.lateArrival.length)}${arCountPill(AR_ICONS.leftEarly, r.leftEarly.length)}${arCountPill(AR_ICONS.leaveDays, r.leaveDays)}
+                </div>
               </div>
+              <span class="ar-total-badge" title="Total">${r.total}</span>
+              <span class="ar-expand-caret ${expanded?'open':''}">▾</span>
             </div>
-            <span class="ar-total-badge" title="Total">${r.total}</span>
-          </div>`).join('')}
+            ${expanded ? arPersonDetail(r) : ''}
+          </div>`;
+        }).join('')}
       </div>`}
     </div>
   </div>`;
@@ -17212,6 +17257,11 @@ function attachHandlers(){
         }
       });
     }
+    document.querySelectorAll('[data-toggle-person]').forEach(el=>el.addEventListener('click', ()=>{
+      const id = el.dataset.togglePerson;
+      m.expandedStaffId = m.expandedStaffId===id ? null : id;
+      render();
+    }));
   }
 
   // --- pending evaluations review queue ---
