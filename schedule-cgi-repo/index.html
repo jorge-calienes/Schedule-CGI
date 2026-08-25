@@ -1118,18 +1118,15 @@
   @keyframes cia-pop{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
 
   .chip-cia-popup .cia-btn{
-    flex:1 1 auto;
-    min-width:60px;
-    text-align:center;
-    justify-content:center;
-    padding:6px 10px;
-    min-height:32px;
-    font-size:12px;font-weight:700;
+    flex:0 0 auto;
+    width:36px;height:36px;
+    display:flex;align-items:center;justify-content:center;
+    padding:0;
+    font-size:16px;
     border-radius:8px;
     border:none;cursor:pointer;
     font-family:inherit;
     transition:background .1s,color .1s;
-    white-space:nowrap;
   }
   .chip-cia-popup .cia-btn:hover{filter:brightness(.94);}
 
@@ -7693,17 +7690,9 @@
   /* ── Attendance report ── */
   .ar-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .ar-controls input[type="month"]{padding:7px 10px;border:1px solid var(--c-border,#E5E5EA);border-radius:8px;font-family:inherit;font-size:13px;background:var(--c-surface,#fff);}
-  .ar-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
-  .ar-stat{flex:1 1 120px;min-width:110px;background:var(--c-surface-2,#F5F5F7);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;}
-  .ar-stat-num{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--c-text,#1D1D1F);}
-  .ar-stat-label{font-size:11.5px;color:var(--c-text-2,#6E6E73);}
-  .ar-table-wrap{overflow-x:auto;border:1px solid var(--c-border,#E5E5EA);border-radius:10px;}
-  .ar-table{width:100%;border-collapse:collapse;font-size:13px;}
-  .ar-table th,.ar-table td{padding:8px 12px;text-align:left;white-space:nowrap;}
-  .ar-table th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--c-text-2,#6E6E73);border-bottom:1px solid var(--c-border,#E5E5EA);}
-  .ar-table td{border-bottom:1px solid var(--c-border,#E5E5EA);}
-  .ar-table th:not(:first-child),.ar-table td:not(:first-child){text-align:right;}
-  .ar-table tbody tr:last-child td{border-bottom:none;}
+  .ar-stat-num{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--c-text,#1D1D1F);margin-top:2px;}
+  .ar-count-pill{font-size:11.5px;font-weight:600;background:var(--c-surface-2,#F5F5F7);color:var(--c-text-2,#6E6E73);padding:2px 7px;border-radius:999px;white-space:nowrap;}
+  .ar-total-badge{font-family:var(--mono);font-weight:800;font-size:14px;background:var(--c-surface-2,#F5F5F7);color:var(--c-text,#1D1D1F);padding:4px 11px;border-radius:999px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -10350,13 +10339,13 @@ function renderChip(s){
       ${readOnly ? '' : `<button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>`}
     </div>` : ''}
     ${(!readOnly && chipMenuOpen===s.id) ? `<div class="chip-cia-popup">
-      <button class="cia-btn primary act-move ${isSelected?'active':''}" data-id="${s.id}">${isSelected?'Cancel':'Move'}</button>
-      <button class="cia-btn act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}">Swap</button>
-      <button class="cia-btn act-callout" data-id="${s.id}">${isOut?'Mark in':'Call out'}</button>
-      <button class="cia-btn act-late-arrival" data-id="${s.id}">${lateEvent?'Undo late arrival':'Late arrival'}</button>
-      <button class="cia-btn act-left-early" data-id="${s.id}">${leftEarlyEvent?'Undo left early':'Left early'}</button>
-      <button class="cia-btn act-edit" data-id="${s.id}">Edit</button>
-      <button class="cia-btn danger act-remove" data-id="${s.id}">Remove</button>
+      <button class="cia-btn primary act-move ${isSelected?'active':''}" data-id="${s.id}" title="${isSelected?'Cancel move':'Move'}" aria-label="${isSelected?'Cancel move':'Move'}">${isSelected?'✕':'🔀'}</button>
+      <button class="cia-btn act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}" title="${isSwapFirst?'Cancel swap':'Swap'}" aria-label="${isSwapFirst?'Cancel swap':'Swap'}">${isSwapFirst?'✕':'⇄'}</button>
+      <button class="cia-btn act-callout" data-id="${s.id}" title="${isOut?'Mark in':'Call out'}" aria-label="${isOut?'Mark in':'Call out'}">${isOut?'✅':'⚠️'}</button>
+      <button class="cia-btn act-late-arrival ${lateEvent?'active':''}" data-id="${s.id}" title="${lateEvent?'Undo late arrival':'Late arrival'}" aria-label="${lateEvent?'Undo late arrival':'Late arrival'}">⏰</button>
+      <button class="cia-btn act-left-early ${leftEarlyEvent?'active':''}" data-id="${s.id}" title="${leftEarlyEvent?'Undo left early':'Left early'}" aria-label="${leftEarlyEvent?'Undo left early':'Left early'}">🚪</button>
+      <button class="cia-btn act-edit" data-id="${s.id}" title="Edit" aria-label="Edit">✏️</button>
+      <button class="cia-btn danger act-remove" data-id="${s.id}" title="Remove" aria-label="Remove">🗑</button>
     </div>` : ''}
   </div>`;
 }
@@ -12676,6 +12665,12 @@ function computeAttendanceReport(periodType, anchorMonth){
   return { range, rows, totals };
 }
 
+// Icons match the ones already used for these same events elsewhere (the
+// chip menu, AUDIT_ACTION_ICONS) so the report reads at a glance instead
+// of needing four more column headers spelled out per row.
+const AR_ICONS = { callout:'⚠️', lateArrival:'⏰', leftEarly:'🚪', leaveDays:'📅' };
+function arCountPill(icon, n){ return n>0 ? `<span class="ar-count-pill">${icon} ${n}</span>` : ''; }
+
 function renderAttendanceReportModal(m){
   const periodType = m.periodType || 'month';
   const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
@@ -12684,9 +12679,9 @@ function renderAttendanceReportModal(m){
   const rows = search ? report.rows.filter(r=>r.name.toLowerCase().includes(search)) : report.rows;
 
   return `
-  <div class="modal" style="max-width:760px;">
+  <div class="modal" style="max-width:560px;">
     <div class="modal-head">
-      <div><h2>🗓 Attendance report</h2><p>Callouts, late arrivals, left-early, and scheduled leave — ${escapeHtml(report.range.label)}</p></div>
+      <div><h2>🗓 Attendance report</h2><p>${AR_ICONS.callout} Callouts · ${AR_ICONS.lateArrival} Late · ${AR_ICONS.leftEarly} Left early · ${AR_ICONS.leaveDays} Leave — ${escapeHtml(report.range.label)}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
@@ -12699,30 +12694,27 @@ function renderAttendanceReportModal(m){
         <input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>
       </div>
 
-      <div class="ar-summary">
-        <div class="ar-stat"><span class="ar-stat-num">${report.totals.callout}</span><span class="ar-stat-label">Callouts</span></div>
-        <div class="ar-stat"><span class="ar-stat-num">${report.totals.lateArrival}</span><span class="ar-stat-label">Late arrivals</span></div>
-        <div class="ar-stat"><span class="ar-stat-num">${report.totals.leftEarly}</span><span class="ar-stat-label">Left early</span></div>
-        <div class="ar-stat"><span class="ar-stat-num">${report.totals.leaveDays}</span><span class="ar-stat-label">Scheduled leave days</span></div>
+      <div class="team-dash-summary">
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.callout} Callouts</span><span class="ar-stat-num">${report.totals.callout}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.lateArrival} Late</span><span class="ar-stat-num">${report.totals.lateArrival}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leftEarly} Left early</span><span class="ar-stat-num">${report.totals.leftEarly}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leaveDays} Leave days</span><span class="ar-stat-num">${report.totals.leaveDays}</span></div>
       </div>
 
       <input type="text" id="ar-search" class="team-dash-search" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
 
       ${rows.length===0 ? `<div class="small-muted" style="padding:12px 0;">Nothing recorded for this period.</div>` : `
-      <div class="ar-table-wrap">
-        <table class="ar-table">
-          <thead><tr><th>Name</th><th>Callouts</th><th>Late</th><th>Left early</th><th>Leave days</th><th>Total</th></tr></thead>
-          <tbody>
-            ${rows.map(r=>`<tr>
-              <td>${escapeHtml(r.name)}</td>
-              <td>${r.callout||''}</td>
-              <td>${r.lateArrival||''}</td>
-              <td>${r.leftEarly||''}</td>
-              <td>${r.leaveDays||''}</td>
-              <td><b>${r.total}</b></td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+      <div class="option-list" style="max-height:400px;overflow-y:auto;">
+        ${rows.map(r=>`
+          <div class="option-card" style="cursor:default;">
+            <div class="oc-left" style="flex:1;">
+              <span class="oc-name">${escapeHtml(r.name)}</span>
+              <div class="oc-sub" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                ${arCountPill(AR_ICONS.callout, r.callout)}${arCountPill(AR_ICONS.lateArrival, r.lateArrival)}${arCountPill(AR_ICONS.leftEarly, r.leftEarly)}${arCountPill(AR_ICONS.leaveDays, r.leaveDays)}
+              </div>
+            </div>
+            <span class="ar-total-badge" title="Total">${r.total}</span>
+          </div>`).join('')}
       </div>`}
     </div>
   </div>`;
