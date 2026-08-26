@@ -167,7 +167,7 @@ export async function loadBoard() {
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
-    { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation },
+    { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -189,12 +189,13 @@ export async function loadBoard() {
     supabase.from('coverage_waivers').select('*'),
     supabase.from('attendance_events').select('*').order('event_date', { ascending: false }),
     supabase.from('active_rotation').select('*').maybeSingle(),
+    supabase.from('temp_moves').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
-    attendanceEvents, activeRotation,
+    attendanceEvents, activeRotation, tempMoves,
   };
 }
 
@@ -759,6 +760,43 @@ export async function returnFromCoverage({ staffId, returnToAreaId, actingAccoun
   });
 }
 
+// A move or swap marked "just for today" — bookkeeping only. The actual
+// board-position write and its audit_log entry already happen via the
+// moveStaff()/swapStaff() call that runs alongside this one (attemptPlace()/
+// doSwap() in index.html fire both); this just remembers where to snap the
+// person back to once the day is over (see reconcileStaleTempMoves() there).
+export async function createTempMove({ staffId, returnToAreaId, actingAccountId }) {
+  const { error } = await supabase.from('temp_moves').upsert({
+    staff_id: staffId,
+    return_to_area_id: returnToAreaId,
+    started_date: new Date().toISOString().slice(0, 10),
+    created_by: actingAccountId,
+  });
+  if (error) throw error;
+}
+
+// The revert side — unlike createTempMove above, this DOES also move the
+// person back on the board and log it, the same all-in-one shape as
+// returnFromCoverage(), since neither the next-day auto-revert nor a
+// manual "return now" tap has some other call already doing that part.
+export async function clearTempMove({ staffId, returnToAreaId, actingAccountId, staffName }) {
+  const { error: delErr } = await supabase.from('temp_moves').delete().eq('staff_id', staffId);
+  if (delErr) throw delErr;
+
+  const { error: moveErr } = await supabase.from('assignments').upsert({
+    staff_id: staffId, area_id: returnToAreaId, updated_by: actingAccountId, updated_at: new Date().toISOString(),
+  });
+  if (moveErr) throw moveErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `${staffName || staffId} returned to their regular rotation spot`,
+    staff_id: staffId,
+    metadata: { returnToAreaId },
+  });
+}
+
 export async function setTimeOffCoverage({ timeOffId, coveringStaffId }) {
   const { error } = await supabase.from('time_off').update({ covering_staff_id: coveringStaffId }).eq('id', timeOffId);
   if (error) throw error;
@@ -960,7 +998,7 @@ const REALTIME_TABLES = [
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
-  'attendance_events', 'active_rotation',
+  'attendance_events', 'active_rotation', 'temp_moves',
 ];
 
 let realtimeChannel = null;
@@ -1054,6 +1092,8 @@ window.RC = {
   assignCoverage,
   returnFromCoverage,
   setTimeOffCoverage,
+  createTempMove,
+  clearTempMove,
   fetchStaffEvaluationHistory,
   fetchTeamPerformanceOverview,
 };
