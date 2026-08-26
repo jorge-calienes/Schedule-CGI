@@ -9771,7 +9771,7 @@ function renderTopbar(){
       ${unplaced>0?`<span class="topbar-unplaced">${unplaced} unplaced</span>`:''}
     </div>
     <div class="topbar-actions">
-      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addDaysToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), (Number(state.rotationWeeks)||2)*7))}">📅 ${friendlyDate(state.currentPeriod)||'—'} <span class="period-pill-sub">→ ${friendlyDate(addDaysToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), (Number(state.rotationWeeks)||2)*7))}</span></button>
+      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}">📅 ${friendlyDate(state.currentPeriod)||'—'} <span class="period-pill-sub">→ ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}</span></button>
       <button class="topbar-icon-btn ${boardSearch?'active':''}" id="btn-toggle-search" aria-label="Search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
@@ -11863,7 +11863,7 @@ function renderConfirmRotateModal(m){
 function nextPeriodLabel(){
   const weeks = Number(state.rotationWeeks)||2;
   const base = state.rotationStartDate || state.currentPeriod || todayLabel();
-  return addDaysToDateStr(base, weeks*7);
+  return addBusinessWeeksToDateStr(base, weeks);
 }
 
 // adds N days to an ISO date string (YYYY-MM-DD), returns ISO date string
@@ -11871,6 +11871,26 @@ function addDaysToDateStr(isoStr, days){
   const [y,m,d] = (isoStr||todayLabel()).split('-').map(Number);
   const dt = new Date(y, (m||1)-1, d||1);
   dt.setDate(dt.getDate()+days);
+  return dt.toISOString().slice(0,10);
+}
+
+// A rotation's "N weeks" counts business days (Mon-Fri), not calendar days —
+// a 2-week rotation starting Mon Aug 24 runs through Fri Sep 4 (10 weekdays
+// inclusive of the start date), not the 14 calendar days that would land on
+// a Monday. Walks forward a day at a time, only counting weekdays, until
+// weeks*5 of them (including the start date, if it's itself a weekday) have
+// been counted, and returns that last day.
+function addBusinessWeeksToDateStr(isoStr, weeks){
+  const targetWeekdays = (Number(weeks)||2) * 5;
+  const [y,m,d] = (isoStr||todayLabel()).split('-').map(Number);
+  const dt = new Date(y, (m||1)-1, d||1);
+  let count = 0;
+  while(count < targetWeekdays){
+    const dow = dt.getDay();
+    if(dow!==0 && dow!==6) count++;
+    if(count>=targetWeekdays) break;
+    dt.setDate(dt.getDate()+1);
+  }
   return dt.toISOString().slice(0,10);
 }
 
@@ -13781,7 +13801,7 @@ function renderFeedbackModal(m){
 function renderRotatePreviewModal(m){
   const weeks     = m.weeks!==undefined ? m.weeks : (Number(state.rotationWeeks)||2);
   const startDate = m.startDate || nextPeriodLabel();
-  const endDate   = addDaysToDateStr(startDate, weeks*7);
+  const endDate   = addBusinessWeeksToDateStr(startDate, weeks);
   const suggestions = computeFlowAdvancement();
   const advances = suggestions.filter(s=>s.type==='advance');
   const stays    = suggestions.filter(s=>s.type==='stay');
