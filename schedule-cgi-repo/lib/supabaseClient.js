@@ -167,7 +167,7 @@ export async function loadBoard() {
     { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
-    { data: coverageWaivers }, { data: attendanceEvents },
+    { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -188,12 +188,13 @@ export async function loadBoard() {
     supabase.from('staff_prior_experience').select('*'),
     supabase.from('coverage_waivers').select('*'),
     supabase.from('attendance_events').select('*').order('event_date', { ascending: false }),
+    supabase.from('active_rotation').select('*').maybeSingle(),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
-    attendanceEvents,
+    attendanceEvents, activeRotation,
   };
 }
 
@@ -329,6 +330,21 @@ export async function markAttendanceEvent({ staffId, eventType, eventDate, note,
 
 export async function clearAttendanceEvent({ eventId }) {
   const { error } = await supabase.from('attendance_events').delete().eq('id', eventId);
+  if (error) throw error;
+}
+
+// The in-progress rotation period's start date / length / label — a
+// singleton row (id is always `true`) so every device shows the same
+// window instead of each browser defaulting it back to "today" on load.
+export async function setActiveRotation({ periodLabel, startDate, weeks, actingAccountId }) {
+  const { error } = await supabase.from('active_rotation').upsert({
+    id: true,
+    period_label: periodLabel,
+    start_date: startDate,
+    weeks,
+    updated_by: actingAccountId,
+    updated_at: new Date().toISOString(),
+  });
   if (error) throw error;
 }
 
@@ -944,7 +960,7 @@ const REALTIME_TABLES = [
   'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
-  'attendance_events',
+  'attendance_events', 'active_rotation',
 ];
 
 let realtimeChannel = null;
@@ -986,6 +1002,7 @@ window.RC = {
   unwaiveCoverage,
   markAttendanceEvent,
   clearAttendanceEvent,
+  setActiveRotation,
   ensureDepartment,
   createStaff,
   updateStaff,

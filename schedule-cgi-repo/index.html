@@ -9605,10 +9605,15 @@ function parseBreakTimes(raw){
   const breakMins = parseClockToken(breakRaw);
   const lunchMins = lunchRaw ? parseClockToken(lunchRaw) : null;
   const parseable = breakMins!==null || lunchMins!==null;
+  // Labels are normalized to a canonical "10:00 AM" clock string (by
+  // parsed minutes, not the raw text) rather than echoing whatever was
+  // typed — otherwise "10:00", "10:00AM" and "10:00 am" for the same
+  // actual time show up as separate, non-matching filter chips in the
+  // Breaks view (distinctBreakLunchLabels/staffOnBreakOrLunch below).
   return {
     raw:text, parseable,
-    breakLabel: breakMins!==null ? breakRaw.replace(/\s+/g,'') : null,
-    lunchLabel: lunchMins!==null ? lunchRaw.replace(/\s+/g,'') : null,
+    breakLabel: breakMins!==null ? formatMinutesAsClock(breakMins) : null,
+    lunchLabel: lunchMins!==null ? formatMinutesAsClock(lunchMins) : null,
     breakMins, lunchMins,
   };
 }
@@ -9771,7 +9776,7 @@ function renderTopbar(){
       ${unplaced>0?`<span class="topbar-unplaced">${unplaced} unplaced</span>`:''}
     </div>
     <div class="topbar-actions">
-      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addDaysToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), (Number(state.rotationWeeks)||2)*7))}">📅 ${friendlyDate(state.currentPeriod)||'—'} <span class="period-pill-sub">→ ${friendlyDate(addDaysToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), (Number(state.rotationWeeks)||2)*7))}</span></button>
+      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}">📅 ${friendlyDate(state.currentPeriod)||'—'} <span class="period-pill-sub">→ ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}</span></button>
       <button class="topbar-icon-btn ${boardSearch?'active':''}" id="btn-toggle-search" aria-label="Search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
@@ -11863,7 +11868,7 @@ function renderConfirmRotateModal(m){
 function nextPeriodLabel(){
   const weeks = Number(state.rotationWeeks)||2;
   const base = state.rotationStartDate || state.currentPeriod || todayLabel();
-  return addDaysToDateStr(base, weeks*7);
+  return addBusinessWeeksToDateStr(base, weeks);
 }
 
 // adds N days to an ISO date string (YYYY-MM-DD), returns ISO date string
@@ -11871,6 +11876,26 @@ function addDaysToDateStr(isoStr, days){
   const [y,m,d] = (isoStr||todayLabel()).split('-').map(Number);
   const dt = new Date(y, (m||1)-1, d||1);
   dt.setDate(dt.getDate()+days);
+  return dt.toISOString().slice(0,10);
+}
+
+// A rotation's "N weeks" counts business days (Mon-Fri), not calendar days —
+// a 2-week rotation starting Mon Aug 24 runs through Fri Sep 4 (10 weekdays
+// inclusive of the start date), not the 14 calendar days that would land on
+// a Monday. Walks forward a day at a time, only counting weekdays, until
+// weeks*5 of them (including the start date, if it's itself a weekday) have
+// been counted, and returns that last day.
+function addBusinessWeeksToDateStr(isoStr, weeks){
+  const targetWeekdays = (Number(weeks)||2) * 5;
+  const [y,m,d] = (isoStr||todayLabel()).split('-').map(Number);
+  const dt = new Date(y, (m||1)-1, d||1);
+  let count = 0;
+  while(count < targetWeekdays){
+    const dow = dt.getDay();
+    if(dow!==0 && dow!==6) count++;
+    if(count>=targetWeekdays) break;
+    dt.setDate(dt.getDate()+1);
+  }
   return dt.toISOString().slice(0,10);
 }
 
@@ -12637,8 +12662,14 @@ function renderTeamDashboardModal(m){
 // selected period so a leave spanning a period boundary only counts the
 // days that actually fall inside it. ---
 function attendancePeriodRange(periodType, anchorMonth){
-  const [y, mo] = (anchorMonth||todayLabel().slice(0,7)).split('-').map(Number);
   const pad = n => String(n).padStart(2,'0');
+  if(periodType==='today'){
+    const today = todayLabel();
+    const [ty,tm,td] = today.split('-').map(Number);
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return { start:today, end:today, label:`Today — ${monthNames[tm-1]} ${td}, ${ty}` };
+  }
+  const [y, mo] = (anchorMonth||todayLabel().slice(0,7)).split('-').map(Number);
   const lastDayOfMonth = (year, month1to12) => new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
   if(periodType==='year') return { start:`${y}-01-01`, end:`${y}-12-31`, label:String(y) };
   if(periodType==='quarter'){
@@ -12684,20 +12715,18 @@ function computeAttendanceReport(periodType, anchorMonth){
 
   const rows = Object.keys(byStaff).map(staffId=>{
     const r = byStaff[staffId];
-    const name = getStaffById(staffId)?.name || '(former staff)';
+    const s = getStaffById(staffId);
+    const name = s?.name || '(former staff)';
     const callout = r.callout.slice().sort();
     const lateArrival = r.late_arrival.slice().sort();
     const leftEarly = r.left_early.slice().sort();
     const leaveRanges = r.leaveRanges.slice().sort((a,b)=>a.start.localeCompare(b.start));
     const leaveDays = leaveRanges.reduce((sum,rg)=>sum+rangeDays(rg),0);
     const total = callout.length + lateArrival.length + leftEarly.length + leaveDays;
-    return { staffId, name, callout, lateArrival, leftEarly, leaveRanges, leaveDays, total };
+    return { staffId, name, supervisorId: s?.supervisorId||null, callout, lateArrival, leftEarly, leaveRanges, leaveDays, total };
   }).sort((a,b)=> b.total-a.total || a.name.localeCompare(b.name));
 
-  const totals = rows.reduce((acc,r)=>{
-    acc.callout += r.callout.length; acc.lateArrival += r.lateArrival.length; acc.leftEarly += r.leftEarly.length; acc.leaveDays += r.leaveDays;
-    return acc;
-  }, {callout:0, lateArrival:0, leftEarly:0, leaveDays:0});
+  const totals = sumAttendanceRows(rows);
 
   return { range, rows, totals };
 }
@@ -12787,6 +12816,12 @@ function todaysAttendanceEvents(){
 // of needing four more column headers spelled out per row.
 const AR_ICONS = { callout:'⚠️', lateArrival:'⏰', leftEarly:'🚪', leaveDays:'📅' };
 function arCountPill(icon, n){ return n>0 ? `<span class="ar-count-pill">${icon} ${n}</span>` : ''; }
+function sumAttendanceRows(rows){
+  return rows.reduce((acc,r)=>{
+    acc.callout += r.callout.length; acc.lateArrival += r.lateArrival.length; acc.leftEarly += r.leftEarly.length; acc.leaveDays += r.leaveDays;
+    return acc;
+  }, {callout:0, lateArrival:0, leftEarly:0, leaveDays:0});
+}
 
 // The expanded, click-to-open detail under a person's row — same four
 // categories as the pills above, but listing which actual dates within
@@ -12806,7 +12841,15 @@ function renderAttendanceReportModal(m){
   const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
   const report = computeAttendanceReport(periodType, anchorMonth);
   const search = (m.search||'').trim().toLowerCase();
-  const rows = search ? report.rows.filter(r=>r.name.toLowerCase().includes(search)) : report.rows;
+  const supervisorFilter = m.supervisorFilter || '';
+  let rows = report.rows;
+  if(search) rows = rows.filter(r=>r.name.toLowerCase().includes(search));
+  if(supervisorFilter==='__unassigned__') rows = rows.filter(r=>!r.supervisorId);
+  else if(supervisorFilter) rows = rows.filter(r=>r.supervisorId===supervisorFilter);
+  // Stat tiles reflect whatever's currently filtered (search + supervisor),
+  // not the whole period — "how is this supervisor's team doing" only
+  // means something if the numbers above the list match the list below.
+  const totals = sumAttendanceRows(rows);
 
   return `
   <div class="modal" style="max-width:560px;">
@@ -12817,21 +12860,29 @@ function renderAttendanceReportModal(m){
     <div class="modal-body">
       <div class="ar-controls">
         <div class="rp-view-tabs">
+          <button class="rp-view-tab ${periodType==='today'?'active':''}" id="ar-period-today">Today</button>
           <button class="rp-view-tab ${periodType==='month'?'active':''}" id="ar-period-month">Month</button>
           <button class="rp-view-tab ${periodType==='quarter'?'active':''}" id="ar-period-quarter">Quarter</button>
           <button class="rp-view-tab ${periodType==='year'?'active':''}" id="ar-period-year">Year</button>
         </div>
-        <input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>
+        ${periodType==='today' ? '' : `<input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>`}
       </div>
 
       <div class="team-dash-summary">
-        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.callout} Callouts</span><span class="ar-stat-num">${report.totals.callout}</span></div>
-        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.lateArrival} Late</span><span class="ar-stat-num">${report.totals.lateArrival}</span></div>
-        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leftEarly} Left early</span><span class="ar-stat-num">${report.totals.leftEarly}</span></div>
-        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leaveDays} Leave days</span><span class="ar-stat-num">${report.totals.leaveDays}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.callout} Callouts</span><span class="ar-stat-num">${totals.callout}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.lateArrival} Late</span><span class="ar-stat-num">${totals.lateArrival}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leftEarly} Left early</span><span class="ar-stat-num">${totals.leftEarly}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">${AR_ICONS.leaveDays} Leave days</span><span class="ar-stat-num">${totals.leaveDays}</span></div>
       </div>
 
-      <input type="text" id="ar-search" class="team-dash-search" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <input type="text" id="ar-search" class="team-dash-search" style="flex:2;min-width:140px;margin-bottom:0;" placeholder="Search staff…" value="${escapeHtml(m.search||'')}"/>
+        <select id="ar-supervisor-filter" style="flex:1;min-width:140px;border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:0 10px;font-family:inherit;font-size:14px;background:var(--c-surface,#fff);">
+          <option value="">All supervisors</option>
+          ${state.supervisors.map(sv=>`<option value="${sv.id}" ${supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+          <option value="__unassigned__" ${supervisorFilter==='__unassigned__'?'selected':''}>Unassigned</option>
+        </select>
+      </div>
 
       ${rows.length===0 ? `<div class="small-muted" style="padding:12px 0;">Nothing recorded for this period.</div>` : `
       <div class="option-list" style="max-height:400px;overflow-y:auto;">
@@ -13755,7 +13806,7 @@ function renderFeedbackModal(m){
 function renderRotatePreviewModal(m){
   const weeks     = m.weeks!==undefined ? m.weeks : (Number(state.rotationWeeks)||2);
   const startDate = m.startDate || nextPeriodLabel();
-  const endDate   = addDaysToDateStr(startDate, weeks*7);
+  const endDate   = addBusinessWeeksToDateStr(startDate, weeks);
   const suggestions = computeFlowAdvancement();
   const advances = suggestions.filter(s=>s.type==='advance');
   const stays    = suggestions.filter(s=>s.type==='stay');
@@ -14601,12 +14652,18 @@ function attachHandlers(){
   }
 
   // --- app bar ---
-  on('btn-period-pill', ()=>{
+  on('btn-period-pill', async ()=>{
     const curr = state.currentPeriod || todayLabel();
     const newDate = prompt('Set rotation date (YYYY-MM-DD):', curr);
     if(newDate && newDate.match(/^\d{4}-\d{2}-\d{2}$/)){
-      state.currentPeriod = newDate; saveState(); render();
-      showToast('Period set to '+friendlyDate(newDate),'teal');
+      state.currentPeriod = newDate;
+      state.rotationStartDate = newDate;
+      saveState(); render();
+      const weeks = Number(state.rotationWeeks)||2;
+      const rotationSync = await syncCrudWrite(()=>window.RC.setActiveRotation({
+        periodLabel: newDate, startDate: newDate, weeks, actingAccountId: authState.account.id,
+      }));
+      showToast(rotationSync.ok ? 'Period set to '+friendlyDate(newDate) : 'Period set locally, but not saved to the database — try again', rotationSync.ok?'teal':'rust');
     }
   });
   // Banner dismiss — set a dismissed flag so it stays gone for this session
@@ -17031,10 +17088,17 @@ function attachHandlers(){
       state.rotationWeeks = weeks;
       state.callouts = {};
       applyScheduledTimeOff(); // auto-callout anyone with scheduled time off today
+      // Persist the new window itself (not just its close-out record above)
+      // so every device shows this rotation's real start/length instead of
+      // each one silently resetting to "today" on its next reload.
+      const rotationSync = await syncCrudWrite(()=>window.RC.setActiveRotation({
+        periodLabel: newLabel, startDate, weeks, actingAccountId: authState.account.id,
+      }));
       saveState();
       closeModal();
+      const allSynced = sync.ok && rotationSync.ok;
       const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`;
-      showToast(sync.ok ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
 
@@ -17328,6 +17392,7 @@ function attachHandlers(){
   // --- attendance report ---
   if(activeModal.type==='attendance-report'){
     const m = activeModal;
+    on('ar-period-today',   ()=>openModal({...m, periodType:'today'}));
     on('ar-period-month',   ()=>openModal({...m, periodType:'month'}));
     on('ar-period-quarter', ()=>openModal({...m, periodType:'quarter'}));
     on('ar-period-year',    ()=>openModal({...m, periodType:'year'}));
@@ -17347,6 +17412,10 @@ function attachHandlers(){
         }
       });
     }
+    const supervisorFilterSel = document.getElementById('ar-supervisor-filter');
+    if(supervisorFilterSel) supervisorFilterSel.addEventListener('change', ()=>{
+      openModal({...m, supervisorFilter:supervisorFilterSel.value});
+    });
     document.querySelectorAll('[data-toggle-person]').forEach(el=>el.addEventListener('click', ()=>{
       const id = el.dataset.togglePerson;
       m.expandedStaffId = m.expandedStaffId===id ? null : id;
@@ -18140,7 +18209,13 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage };
+  const activeRotation = board.activeRotation ? {
+    periodLabel: board.activeRotation.period_label,
+    startDate: board.activeRotation.start_date,
+    weeks: board.activeRotation.weeks,
+  } : null;
+
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -18181,6 +18256,16 @@ function applyMappedBoard(mapped){
   state.timeOff = mapped.timeOff;
   state.blocks = mapped.blocks;
   state.coverage = mapped.coverage;
+  // Only overwrite the in-progress rotation's window from the server once
+  // someone has actually saved one — an empty active_rotation table (fresh
+  // project, or before anyone has hit "Rotate Now" yet) should leave the
+  // today-based fallback from seedDemoData()/loadState() alone rather than
+  // null it out.
+  if(mapped.activeRotation){
+    state.currentPeriod = mapped.activeRotation.periodLabel;
+    state.rotationStartDate = mapped.activeRotation.startDate;
+    state.rotationWeeks = mapped.activeRotation.weeks;
+  }
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
