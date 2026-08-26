@@ -9605,10 +9605,15 @@ function parseBreakTimes(raw){
   const breakMins = parseClockToken(breakRaw);
   const lunchMins = lunchRaw ? parseClockToken(lunchRaw) : null;
   const parseable = breakMins!==null || lunchMins!==null;
+  // Labels are normalized to a canonical "10:00 AM" clock string (by
+  // parsed minutes, not the raw text) rather than echoing whatever was
+  // typed — otherwise "10:00", "10:00AM" and "10:00 am" for the same
+  // actual time show up as separate, non-matching filter chips in the
+  // Breaks view (distinctBreakLunchLabels/staffOnBreakOrLunch below).
   return {
     raw:text, parseable,
-    breakLabel: breakMins!==null ? breakRaw.replace(/\s+/g,'') : null,
-    lunchLabel: lunchMins!==null ? lunchRaw.replace(/\s+/g,'') : null,
+    breakLabel: breakMins!==null ? formatMinutesAsClock(breakMins) : null,
+    lunchLabel: lunchMins!==null ? formatMinutesAsClock(lunchMins) : null,
     breakMins, lunchMins,
   };
 }
