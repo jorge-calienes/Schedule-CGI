@@ -629,26 +629,35 @@
   }
   .selection-cancel-btn:hover{background:#EEF3FC;}
 
-  /* Temp-scope toggle — shared by the Move and Swap in-progress banners.
-     Cycles Permanent -> Today only (blue) -> This rotation (violet). */
-  .banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
-  .banner-temp-toggle{
+  /* Move/Swap in-progress banners now stack two rows: the original title +
+     Cancel row (…-top), and a second row of always-visible "Today only" /
+     "This rotation" buttons — both shown at once rather than hidden behind
+     a cycling single button, which tapping-once made look like there was
+     only ever a "Today only" option. Neither of the 4 duplicated
+     .swap-banner{}/.selection-banner{} declarations elsewhere in this file
+     set flex-direction, so this addition doesn't conflict with any of them
+     regardless of source order. */
+  .swap-banner, .selection-banner{flex-direction:column;align-items:stretch;gap:6px;}
+  .swap-banner-top, .selection-banner-top{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .temp-scope-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .temp-scope-label{font-size:11px;font-weight:700;color:#6B7280;flex-shrink:0;}
+  .temp-scope-btn{
     flex-shrink:0;
     background:#fff;
     border:1.5px solid rgba(0,0,0,.15);
     border-radius:8px;
-    padding:6px 10px;
+    padding:5px 10px;
     font-family:inherit;font-size:12px;font-weight:700;
     color:#374151;cursor:pointer;
     transition:background .12s,border-color .12s,color .12s;white-space:nowrap;
   }
-  .banner-temp-toggle:hover{background:#F5F5F7;}
-  .banner-temp-toggle.active{
+  .temp-scope-btn:hover{background:#F5F5F7;}
+  .temp-scope-btn.active{
     background:var(--c-accent);
     border-color:var(--c-accent);
     color:#fff;
   }
-  .banner-temp-toggle.active.rotation{
+  .temp-scope-btn.rotation.active{
     background:#7A5C8E;
     border-color:#7A5C8E;
   }
@@ -9796,17 +9805,17 @@ function render(){
     ${isTeamLeadRole() ? '' : renderTabBar()}
     ${renderCalloutBanner()}
     ${swapMode ? `<div class="swap-banner">
-      <div class="swap-banner-left">
-        <span class="swap-banner-icon">⇄</span>
-        <div class="swap-banner-text">
-          <span class="swap-banner-title">Swapping <b>${escapeHtml(getStaffById(swapMode.staffId)?.name?.split(' ')[0]||'')}</b></span>
-          <span class="swap-banner-sub">Tap any other person on the board to swap their positions</span>
+      <div class="swap-banner-top">
+        <div class="swap-banner-left">
+          <span class="swap-banner-icon">⇄</span>
+          <div class="swap-banner-text">
+            <span class="swap-banner-title">Swapping <b>${escapeHtml(getStaffById(swapMode.staffId)?.name?.split(' ')[0]||'')}</b></span>
+            <span class="swap-banner-sub">Tap any other person on the board to swap their positions</span>
+          </div>
         </div>
-      </div>
-      <div class="banner-actions">
-        ${renderTempScopeToggle('Both swap back to their own spot')}
         <button class="swap-cancel-btn" id="btn-cancel-swap">✕ Cancel</button>
       </div>
+      ${renderTempScopeButtons('Both swap back to their own spot')}
     </div>` : ''}
     ${dragModes ? renderSelectionBanner() : ''}
     <div class="layout">
@@ -10189,33 +10198,35 @@ function renderSelectionBanner(){
   const s = getStaffById(selectedStaffId);
   if(!s) return '';
   return `<div class="selection-banner">
-    <div class="selection-banner-left">
-      <span class="selection-banner-icon">↗</span>
-      <div class="selection-banner-text">
-        <span class="selection-banner-title">Moving ${escapeHtml(s.name.split(' ')[0])}</span>
-        <span class="selection-banner-sub">Tap any area or chip to place them</span>
+    <div class="selection-banner-top">
+      <div class="selection-banner-left">
+        <span class="selection-banner-icon">↗</span>
+        <div class="selection-banner-text">
+          <span class="selection-banner-title">Moving ${escapeHtml(s.name.split(' ')[0])}</span>
+          <span class="selection-banner-sub">Tap any area or chip to place them</span>
+        </div>
       </div>
-    </div>
-    <div class="banner-actions">
-      ${renderTempScopeToggle('Moves back to their own spot')}
       <button class="selection-cancel-btn" id="btn-cancel-move">✕ Cancel</button>
     </div>
+    ${renderTempScopeButtons('Moves back to their own spot')}
   </div>`;
 }
 
-// Shared by the Move and Swap in-progress banners — a single button that
-// cycles Permanent → Today only → This rotation → Permanent, so marking a
-// change temporary doesn't need a second row of buttons on a narrow phone
-// screen. subjectPhrase fills in "___ automatically" for the tooltip
-// ("Moves back to their own spot", "Both swap back to their own spot").
-function renderTempScopeToggle(subjectPhrase){
-  if(tempMoveScope==='rotation'){
-    return `<button class="banner-temp-toggle active rotation" id="btn-toggle-temp-move" title="${subjectPhrase} automatically the next time you rotate">✓ This rotation</button>`;
-  }
-  if(tempMoveScope==='day'){
-    return `<button class="banner-temp-toggle active" id="btn-toggle-temp-move" title="${subjectPhrase} automatically tomorrow">✓ Today only</button>`;
-  }
-  return `<button class="banner-temp-toggle" id="btn-toggle-temp-move" title="Tap to make this temporary — just for today, or just for this rotation">Permanent</button>`;
+// Shared by the Move and Swap in-progress banners — two always-visible
+// buttons rather than one that cycles through a hidden third state (that
+// design meant tapping once only ever showed "Today only", with "This
+// rotation" invisible unless you tapped again — not discoverable). Tapping
+// either button toggles it: on (switching off the other if it was on) or
+// back to Permanent if it was already the active one. subjectPhrase fills
+// in "___ automatically" for the tooltips ("Moves back to their own spot",
+// "Both swap back to their own spot").
+function renderTempScopeButtons(subjectPhrase){
+  return `
+  <div class="temp-scope-row">
+    <span class="temp-scope-label">Temporary:</span>
+    <button class="temp-scope-btn ${tempMoveScope==='day'?'active':''}" id="btn-scope-day" title="${subjectPhrase} automatically tomorrow">Today only</button>
+    <button class="temp-scope-btn rotation ${tempMoveScope==='rotation'?'active':''}" id="btn-scope-rotation" title="${subjectPhrase} automatically the next time you rotate">This rotation</button>
+  </div>`;
 }
 
 function renderCalloutBanner(){
@@ -14640,10 +14651,8 @@ function attachHandlers(){
     render();
   }));
   on('btn-cancel-move', ()=>{ selectedStaffId = null; tempMoveScope = null; render(); });
-  on('btn-toggle-temp-move', ()=>{
-    tempMoveScope = tempMoveScope===null ? 'day' : tempMoveScope==='day' ? 'rotation' : null;
-    render();
-  });
+  on('btn-scope-day', ()=>{ tempMoveScope = tempMoveScope==='day' ? null : 'day'; render(); });
+  on('btn-scope-rotation', ()=>{ tempMoveScope = tempMoveScope==='rotation' ? null : 'rotation'; render(); });
   document.querySelectorAll('[data-tap-place-area]').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
     if(!selectedStaffId) return;
