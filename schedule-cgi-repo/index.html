@@ -14627,12 +14627,18 @@ function attachHandlers(){
   }
 
   // --- app bar ---
-  on('btn-period-pill', ()=>{
+  on('btn-period-pill', async ()=>{
     const curr = state.currentPeriod || todayLabel();
     const newDate = prompt('Set rotation date (YYYY-MM-DD):', curr);
     if(newDate && newDate.match(/^\d{4}-\d{2}-\d{2}$/)){
-      state.currentPeriod = newDate; saveState(); render();
-      showToast('Period set to '+friendlyDate(newDate),'teal');
+      state.currentPeriod = newDate;
+      state.rotationStartDate = newDate;
+      saveState(); render();
+      const weeks = Number(state.rotationWeeks)||2;
+      const rotationSync = await syncCrudWrite(()=>window.RC.setActiveRotation({
+        periodLabel: newDate, startDate: newDate, weeks, actingAccountId: authState.account.id,
+      }));
+      showToast(rotationSync.ok ? 'Period set to '+friendlyDate(newDate) : 'Period set locally, but not saved to the database — try again', rotationSync.ok?'teal':'rust');
     }
   });
   // Banner dismiss — set a dismissed flag so it stays gone for this session
@@ -17057,10 +17063,17 @@ function attachHandlers(){
       state.rotationWeeks = weeks;
       state.callouts = {};
       applyScheduledTimeOff(); // auto-callout anyone with scheduled time off today
+      // Persist the new window itself (not just its close-out record above)
+      // so every device shows this rotation's real start/length instead of
+      // each one silently resetting to "today" on its next reload.
+      const rotationSync = await syncCrudWrite(()=>window.RC.setActiveRotation({
+        periodLabel: newLabel, startDate, weeks, actingAccountId: authState.account.id,
+      }));
       saveState();
       closeModal();
+      const allSynced = sync.ok && rotationSync.ok;
       const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`;
-      showToast(sync.ok ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
 
@@ -18171,7 +18184,13 @@ function mapSupabaseBoard(board){
     coverage[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage };
+  const activeRotation = board.activeRotation ? {
+    periodLabel: board.activeRotation.period_label,
+    startDate: board.activeRotation.start_date,
+    weeks: board.activeRotation.weeks,
+  } : null;
+
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -18212,6 +18231,16 @@ function applyMappedBoard(mapped){
   state.timeOff = mapped.timeOff;
   state.blocks = mapped.blocks;
   state.coverage = mapped.coverage;
+  // Only overwrite the in-progress rotation's window from the server once
+  // someone has actually saved one — an empty active_rotation table (fresh
+  // project, or before anyone has hit "Rotate Now" yet) should leave the
+  // today-based fallback from seedDemoData()/loadState() alone rather than
+  // null it out.
+  if(mapped.activeRotation){
+    state.currentPeriod = mapped.activeRotation.periodLabel;
+    state.rotationStartDate = mapped.activeRotation.startDate;
+    state.rotationWeeks = mapped.activeRotation.weeks;
+  }
 }
 
 // Runs the existing localStorage/seed boot path (for everything Step 3+
