@@ -7491,7 +7491,7 @@
   @media (max-width:599px){
     html{font-size:15px;}
 
-    /* compact: app bar stays single row, tab bar scrolls horizontally */
+    /* compact: app bar stays a single row */
     .topbar{padding:0 var(--md-space-2);gap:var(--md-space-1);}
     .search-box{width:80px !important;font-size:13px;}
     .search-box:focus{width:120px !important;}
@@ -7499,12 +7499,31 @@
     .period-pill{font-size:10px;padding:var(--md-space-1) var(--md-space-2);white-space:nowrap;}
     .btn-primary{font-size:12px;padding:7px 12px;}
     .rotate-label{display:none;}
-    .tab-bar{height:64px;}
+    /* bottom tab bar (iOS/Android native pattern) instead of a top row —
+       fixed above the home indicator so it stays reachable with a thumb
+       and doesn't scroll away with the content. */
+    .tab-bar{
+      height:64px;
+      position:fixed;
+      left:0; right:0; bottom:0;
+      z-index:15;
+      border-bottom:none;
+      border-top:1px solid rgba(0,0,0,.08);
+      padding-bottom:env(safe-area-inset-bottom);
+      height:calc(64px + env(safe-area-inset-bottom));
+    }
+    /* the underline pill made sense as a divider against the content below
+       it when the bar sat under the app header — sitting at the screen's
+       bottom edge now, the tinted icon/label is enough to show what's
+       active, same as a native tab bar. */
+    .tab-btn.active::after{display:none;}
     .tab-btn{min-width:72px;padding:8px var(--md-space-2) 10px;}
 
     .tab-icon{font-size:22px;}
     .tab-label{font-size:10px;}
-    .layout{height:calc(100vh - 120px);position:relative;}
+    /* only the app header is still in normal flow above .layout — the tab
+       bar is fixed now, so it no longer needs subtracting here too. */
+    .layout{height:calc(100vh - 60px);position:relative;}
 
     /* sidebar becomes a slide-in drawer, hidden off-canvas until opened */
     .sidebar{
@@ -7516,7 +7535,8 @@
       transform:translateX(-100%);
       transition:transform .2s ease;
       box-shadow:var(--md-sys-elevation-3);
-      padding-top:120px;
+      padding-top:60px;
+      padding-bottom:calc(64px + env(safe-area-inset-bottom) + 16px);
     }
     .sidebar.drawer-open{transform:translateX(0);}
     /* the desktop/tablet collapse-to-a-rail trick doesn't apply here — the
@@ -7525,8 +7545,12 @@
     .sidebar.sidebar-collapsed{width:82vw;max-width:320px;align-items:stretch;}
     .drawer-scrim{display:block;}
 
-    /* board mobile: full-width stacked, page is the scrollbar */
-    .board-wrap{padding:0 0 24px;width:100%;box-sizing:border-box;overflow-x:hidden;}
+    /* board mobile: full-width stacked, page is the scrollbar — bottom
+       padding keeps the last card from sitting under the fixed tab bar */
+    .board-wrap{padding:0 0 calc(64px + env(safe-area-inset-bottom) + 16px);width:100%;box-sizing:border-box;overflow-x:hidden;}
+    /* Overview/Roster/Breaks/Time Off all scroll inside .view-container
+       (not the page) — same reserve, same reason. */
+    .view-container{padding-bottom:calc(64px + env(safe-area-inset-bottom) + 16px);}
     .board{flex-direction:column;align-items:stretch;gap:10px;overflow-x:visible;padding-right:0;overflow-y:visible;}
     .area-col{
       width:auto !important;
