@@ -629,7 +629,8 @@
   }
   .selection-cancel-btn:hover{background:#EEF3FC;}
 
-  /* "Today only" toggle — shared by the Move and Swap in-progress banners */
+  /* Temp-scope toggle — shared by the Move and Swap in-progress banners.
+     Cycles Permanent -> Today only (blue) -> This rotation (violet). */
   .banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
   .banner-temp-toggle{
     flex-shrink:0;
@@ -646,6 +647,10 @@
     background:var(--c-accent);
     border-color:var(--c-accent);
     color:#fff;
+  }
+  .banner-temp-toggle.active.rotation{
+    background:#7A5C8E;
+    border-color:#7A5C8E;
   }
 
   /* Highlight valid drop areas when in move mode */
@@ -747,6 +752,14 @@
   .chip-covering-tag.chip-temp-move-tag{color:var(--c-accent,#2F5FA8);}
   .chip-temp-move-row .chip-return-btn{color:var(--c-accent,#2F5FA8);}
   .chip-temp-move-row .chip-return-btn:hover{background:rgba(47,95,168,.15);}
+  /* "For this rotation" variant — violet instead of blue */
+  .chip-covering-row.chip-temp-move-row.rotation-scope{
+    background:rgba(122,92,142,.08);
+    border-color:rgba(122,92,142,.2);
+  }
+  .rotation-scope .chip-temp-move-tag{color:#7A5C8E;}
+  .rotation-scope .chip-return-btn{color:#7A5C8E;}
+  .rotation-scope .chip-return-btn:hover{background:rgba(122,92,142,.15);}
 
   /* Chip border when covering — amber */
   .chip.covering{border-color:#F59E0B !important;border-width:1.5px;}
@@ -9736,7 +9749,7 @@ let viewMode = 'board'; // 'board' | 'overview'
 let drawerOpen = false; // mobile-only: whether the pool sidebar overlay is open
 let sidebarForceExpanded = false; // user manually pinned the sidebar open despite an empty pool
 let selectedStaffId = null; // tap-to-move: staff currently selected, awaiting a destination tap
-let tempOnlyMove = false; // "Just for today" toggle while a move/swap is in progress — reset once it completes or is cancelled
+let tempMoveScope = null; // null|'day'|'rotation' — cycled by the "Today only"/"This rotation" toggle while a move/swap is in progress; reset once it completes or is cancelled
 let navDrawerOpen = false;
 let boardSearch   = '';   // filter chips by name on board
 let searchExpanded = false; // topbar search bar visible
@@ -9791,7 +9804,7 @@ function render(){
         </div>
       </div>
       <div class="banner-actions">
-        <button class="banner-temp-toggle ${tempOnlyMove?'active':''}" id="btn-toggle-temp-move" title="Both swap back to their own spot automatically tomorrow">${tempOnlyMove?'✓ ':''}Today only</button>
+        ${renderTempScopeToggle('Both swap back to their own spot')}
         <button class="swap-cancel-btn" id="btn-cancel-swap">✕ Cancel</button>
       </div>
     </div>` : ''}
@@ -10184,10 +10197,25 @@ function renderSelectionBanner(){
       </div>
     </div>
     <div class="banner-actions">
-      <button class="banner-temp-toggle ${tempOnlyMove?'active':''}" id="btn-toggle-temp-move" title="Moves back to their own spot automatically tomorrow">${tempOnlyMove?'✓ ':''}Today only</button>
+      ${renderTempScopeToggle('Moves back to their own spot')}
       <button class="selection-cancel-btn" id="btn-cancel-move">✕ Cancel</button>
     </div>
   </div>`;
+}
+
+// Shared by the Move and Swap in-progress banners — a single button that
+// cycles Permanent → Today only → This rotation → Permanent, so marking a
+// change temporary doesn't need a second row of buttons on a narrow phone
+// screen. subjectPhrase fills in "___ automatically" for the tooltip
+// ("Moves back to their own spot", "Both swap back to their own spot").
+function renderTempScopeToggle(subjectPhrase){
+  if(tempMoveScope==='rotation'){
+    return `<button class="banner-temp-toggle active rotation" id="btn-toggle-temp-move" title="${subjectPhrase} automatically the next time you rotate">✓ This rotation</button>`;
+  }
+  if(tempMoveScope==='day'){
+    return `<button class="banner-temp-toggle active" id="btn-toggle-temp-move" title="${subjectPhrase} automatically tomorrow">✓ Today only</button>`;
+  }
+  return `<button class="banner-temp-toggle" id="btn-toggle-temp-move" title="Tap to make this temporary — just for today, or just for this rotation">Permanent</button>`;
 }
 
 function renderCalloutBanner(){
@@ -10430,9 +10458,9 @@ function renderChip(s){
       <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(state.coverage[s.id].returnToAreaId)?.name||'pool')}</span>
       ${readOnly ? '' : `<button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>`}
     </div>` : ''}
-    ${tempMove ? `<div class="chip-covering-row chip-temp-move-row">
-      <span class="chip-covering-tag chip-temp-move-tag">📅 Today only</span>
-      <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(tempMove.returnToAreaId)?.name||'pool')} tomorrow</span>
+    ${tempMove ? `<div class="chip-covering-row chip-temp-move-row ${tempMove.scope==='rotation'?'rotation-scope':''}">
+      <span class="chip-covering-tag chip-temp-move-tag">${tempMove.scope==='rotation'?'🔁 This rotation':'📅 Today only'}</span>
+      <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(tempMove.returnToAreaId)?.name||'pool')} ${tempMove.scope==='rotation'?'next rotation':'tomorrow'}</span>
       ${readOnly ? '' : `<button class="act-return-temp-move chip-return-btn" data-id="${s.id}" title="Return to their rotation spot now">↩</button>`}
     </div>` : ''}
     ${(!readOnly && chipMenuOpen===s.id) ? `<div class="chip-cia-popup">
@@ -14095,23 +14123,30 @@ async function openPendingEvals(){
   }
 }
 
+// Toast suffix for a temp-scoped move/swap — shared by attemptPlace() and doSwap().
+function tempScopeSuffix(scope){
+  if(scope==='rotation') return ' — for this rotation';
+  if(scope==='day') return ' — just for today';
+  return '';
+}
+
 // attempts to place staffId into areaId (or null for pool). If conflicts exist, opens modal instead of placing.
-// tempOnly marks this specific placement "just for today" — see doSwap()
-// and reconcileStaleTempMoves() for the matching swap path and the
-// next-day revert.
-function attemptPlace(staffId, areaId, force, tempOnly){
+// scope ('day'|'rotation'|falsy) marks this specific placement temporary —
+// see doSwap() and reconcileStaleTempMoves()/endAllTempMoves() for the
+// matching swap path and the two revert timings.
+function attemptPlace(staffId, areaId, force, scope){
   // Counter Acceptance cert check — hard block regardless of force
   if(areaId){
     const area = getAreaById(areaId);
     const staff = getStaffById(staffId);
     if(area && area.name==='Counter Acceptance' && staff && !staff.counterCert){
-      openModal({type:'cert-block', staffId, targetAreaId:areaId, missing:'Counter Acceptance certification', tempOnly});
+      openModal({type:'cert-block', staffId, targetAreaId:areaId, missing:'Counter Acceptance certification', scope});
       return;
     }
   }
   if(!force){
     if(isTeamLeadDisplaced(staffId, areaId)){
-      openModal({type:'team-lead-warning', staffId, targetAreaId:areaId, tempOnly});
+      openModal({type:'team-lead-warning', staffId, targetAreaId:areaId, scope});
       return;
     }
   }
@@ -14122,7 +14157,7 @@ function attemptPlace(staffId, areaId, force, tempOnly){
     const area = getAreaById(areaId);
     const currentlyThere = activeInArea(areaId, staffId).length; // excludes callouts — they don't occupy a slot
     if(area && currentlyThere >= area.capacity){
-      openModal({type:'capacity-full', staffId, targetAreaId:areaId, tempOnly});
+      openModal({type:'capacity-full', staffId, targetAreaId:areaId, scope});
       return;
     }
   }
@@ -14130,7 +14165,7 @@ function attemptPlace(staffId, areaId, force, tempOnly){
     const conflicts = areaId ? blockConflictsIn(staffId, areaId) : [];
     const repeat = areaId ? isRepeatArea(staffId, areaId) : false;
     if(conflicts.length>0 || repeat){
-      openModal({type:'placement-conflict', staffId, targetAreaId:areaId, tempOnly});
+      openModal({type:'placement-conflict', staffId, targetAreaId:areaId, scope});
       return;
     }
   }
@@ -14139,10 +14174,10 @@ function attemptPlace(staffId, areaId, force, tempOnly){
   const fromAreaId = state.assignments[staffId];
   const fromArea   = fromAreaId ? getAreaById(fromAreaId) : null;
   state.assignments[staffId] = areaId;
-  if(tempOnly){
-    state.tempMoves[staffId] = { returnToAreaId: fromAreaId||null, date: todayLabel() };
+  if(scope){
+    state.tempMoves[staffId] = { returnToAreaId: fromAreaId||null, date: todayLabel(), scope };
     syncBoardWrite(()=>window.RC.createTempMove({
-      staffId, returnToAreaId: fromAreaId||null, actingAccountId: authState.account.id,
+      staffId, returnToAreaId: fromAreaId||null, actingAccountId: authState.account.id, scope,
     }), 'temp move');
   }
   saveState();
@@ -14152,7 +14187,7 @@ function attemptPlace(staffId, areaId, force, tempOnly){
   }), 'move');
   if(staffMoved){
     const dest = areaMoved ? `moved to ${areaMoved.name}` : 'unassigned';
-    showToast(`${staffMoved.name.split(' ')[0]} ${dest}${tempOnly?' — just for today':''}`, 'teal');
+    showToast(`${staffMoved.name.split(' ')[0]} ${dest}${tempScopeSuffix(scope)}`, 'teal');
   }
   render();
 }
@@ -14577,13 +14612,13 @@ function attachHandlers(){
   // Desktop chip: Move
   document.querySelectorAll('[data-move]').forEach(btn=>btn.addEventListener('click', e=>{
     e.stopPropagation();
-    selectedStaffId=btn.dataset.move; swapMode=null; tempOnlyMove=false; render();
+    selectedStaffId=btn.dataset.move; swapMode=null; tempMoveScope=null; render();
   }));
   // Desktop chip: Swap
   document.querySelectorAll('[data-swap]').forEach(btn=>btn.addEventListener('click', e=>{
     e.stopPropagation();
     if(swapMode && swapMode.staffId===btn.dataset.swap){ swapMode=null; render(); return; }
-    swapMode={staffId: btn.dataset.swap}; selectedStaffId=null; tempOnlyMove=false; render();
+    swapMode={staffId: btn.dataset.swap}; selectedStaffId=null; tempMoveScope=null; render();
   }));
 
   // --- tap-to-move (mobile/tablet alternative to drag-and-drop) ---
@@ -14593,7 +14628,7 @@ function attachHandlers(){
     if(swapMode && swapMode.staffId===b.dataset.id){ swapMode=null; render(); return; }
     swapMode = {staffId: b.dataset.id};
     selectedStaffId = null;
-    tempOnlyMove = false;
+    tempMoveScope = null;
     render();
   }));
   document.querySelectorAll('.act-move,.cia-btn.act-move').forEach(b=>b.addEventListener('click', e=>{
@@ -14601,20 +14636,23 @@ function attachHandlers(){
     swapMode = null;
     chipMenuOpen = null;
     selectedStaffId = (selectedStaffId === b.dataset.id) ? null : b.dataset.id;
-    tempOnlyMove = false;
+    tempMoveScope = null;
     render();
   }));
-  on('btn-cancel-move', ()=>{ selectedStaffId = null; tempOnlyMove = false; render(); });
-  on('btn-toggle-temp-move', ()=>{ tempOnlyMove = !tempOnlyMove; render(); });
+  on('btn-cancel-move', ()=>{ selectedStaffId = null; tempMoveScope = null; render(); });
+  on('btn-toggle-temp-move', ()=>{
+    tempMoveScope = tempMoveScope===null ? 'day' : tempMoveScope==='day' ? 'rotation' : null;
+    render();
+  });
   document.querySelectorAll('[data-tap-place-area]').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
     if(!selectedStaffId) return;
     const targetAreaId = b.dataset.tapPlaceArea || null;
     const staffId = selectedStaffId;
-    const wasTemp = tempOnlyMove;
+    const capturedScope = tempMoveScope;
     selectedStaffId = null;
-    tempOnlyMove = false;
-    attemptPlace(staffId, targetAreaId, false, wasTemp);
+    tempMoveScope = null;
+    attemptPlace(staffId, targetAreaId, false, capturedScope);
   }));
   document.querySelectorAll('[data-tap-place-sup]').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation();
@@ -15561,16 +15599,16 @@ function attachHandlers(){
       if(!swapMode||swapMode.staffId===chip.dataset.staffId) return;
       if(e.target.closest('[data-chip-menu]')||e.target.closest('.chip-quick-out')||e.target.closest('.cia-btn')) return;
       e.stopPropagation();
-      const wasTemp = tempOnlyMove; tempOnlyMove = false;
-      doSwap(swapMode.staffId, chip.dataset.staffId, wasTemp);
+      const capturedScope = tempMoveScope; tempMoveScope = null;
+      doSwap(swapMode.staffId, chip.dataset.staffId, capturedScope);
     });
   });
 
   document.querySelectorAll('[data-do-swap]').forEach(btn=>btn.addEventListener('click',e=>{
     e.stopPropagation();
-    if(swapMode){ const wasTemp = tempOnlyMove; tempOnlyMove = false; doSwap(swapMode.staffId, btn.dataset.doSwap, wasTemp); }
+    if(swapMode){ const capturedScope = tempMoveScope; tempMoveScope = null; doSwap(swapMode.staffId, btn.dataset.doSwap, capturedScope); }
   }));
-  on('btn-cancel-swap', ()=>{ swapMode=null; tempOnlyMove=false; render(); });
+  on('btn-cancel-swap', ()=>{ swapMode=null; tempMoveScope=null; render(); });
   on('btn-open-callout-dash', ()=>openModal({type:'callout-dash'}));
   on('btn-add-area', ()=>openModal({type:'area-editor'}));
   on('btn-add-area-2', ()=>openModal({type:'area-editor'}));
@@ -15731,13 +15769,13 @@ function attachHandlers(){
   if(activeModal.type==='team-lead-warning'){
     const returnTo = activeModal.returnTo;
     on('modal-move-anyway', ()=>{
-      attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.tempOnly);
+      attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
       if(returnTo) openModal(returnTo); else closeModal();
     });
     on('modal-return-home', ()=>{
       if(returnTo){ openModal(returnTo); return; }
       const s = getStaffById(activeModal.staffId);
-      attemptPlace(activeModal.staffId, s.homeAreaId, true, activeModal.tempOnly);
+      attemptPlace(activeModal.staffId, s.homeAreaId, true, activeModal.scope);
       closeModal();
     });
   }
@@ -15763,7 +15801,7 @@ function attachHandlers(){
   // --- placement conflict modal ---
   if(activeModal.type==='placement-conflict'){
     on('modal-place-anyway', ()=>{
-      attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.tempOnly);
+      attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
       closeModal();
     });
     document.querySelectorAll('[data-pick-area]').forEach(el=>el.addEventListener('click', ()=>{
@@ -17830,23 +17868,23 @@ function isUnderStaffed(areaId){
 }
 
 // ── Quick swap: swap two staff members between their current areas ──
-// tempOnly marks the swap "just for today" — both people get their own
-// revert record (their own pre-swap spot), since undoing only one side
-// would leave the other stuck. See reconcileStaleTempMoves() for the
-// next-day revert.
-function doSwap(idA, idB, tempOnly){
+// scope ('day'|'rotation'|falsy) marks the swap temporary — both people
+// get their own revert record (their own pre-swap spot), since undoing
+// only one side would leave the other stuck. See reconcileStaleTempMoves()
+// (scope 'day') and endAllTempMoves() (scope 'rotation') for the two revert timings.
+function doSwap(idA, idB, scope){
   const areaA = state.assignments[idA];
   const areaB = state.assignments[idB];
   const nameA = getStaffById(idA)?.name||'?';
   const nameB = getStaffById(idB)?.name||'?';
   state.assignments[idA] = areaB;
   state.assignments[idB] = areaA;
-  if(tempOnly){
+  if(scope){
     const today = todayLabel();
-    state.tempMoves[idA] = { returnToAreaId: areaA||null, date: today };
-    state.tempMoves[idB] = { returnToAreaId: areaB||null, date: today };
-    syncBoardWrite(()=>window.RC.createTempMove({staffId: idA, returnToAreaId: areaA||null, actingAccountId: authState.account.id}), 'temp move');
-    syncBoardWrite(()=>window.RC.createTempMove({staffId: idB, returnToAreaId: areaB||null, actingAccountId: authState.account.id}), 'temp move');
+    state.tempMoves[idA] = { returnToAreaId: areaA||null, date: today, scope };
+    state.tempMoves[idB] = { returnToAreaId: areaB||null, date: today, scope };
+    syncBoardWrite(()=>window.RC.createTempMove({staffId: idA, returnToAreaId: areaA||null, actingAccountId: authState.account.id, scope}), 'temp move');
+    syncBoardWrite(()=>window.RC.createTempMove({staffId: idB, returnToAreaId: areaB||null, actingAccountId: authState.account.id, scope}), 'temp move');
   }
   logDailyEvent('swap', idA, areaA, areaB, `Swapped with ${getStaffById(idB)?.name||'?'}`);
   logDailyEvent('swap', idB, areaB, areaA, `Swapped with ${getStaffById(idA)?.name||'?'}`);
@@ -17854,7 +17892,7 @@ function doSwap(idA, idB, tempOnly){
   saveState();
   syncBoardWrite(()=>window.RC.swapStaff({idA, idB, areaA, areaB, actingAccountId:authState.account.id, nameA, nameB}), 'swap');
   render();
-  showToast(`Swapped ${nameA} ↔ ${nameB}${tempOnly?' — just for today':''}`, 'teal');
+  showToast(`Swapped ${nameA} ↔ ${nameB}${tempScopeSuffix(scope)}`, 'teal');
 }
 
 // ── Call-out history helpers ──
@@ -18354,7 +18392,7 @@ function mapSupabaseBoard(board){
 
   const tempMoves = {};
   (board.tempMoves||[]).forEach(row=>{
-    tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date };
+    tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
   return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
@@ -18380,13 +18418,16 @@ function reconcileStaleCoverage(){
 }
 
 // Same "auto-return next day" mechanic as coverage above, for a move or
-// swap someone marked "just for today" — snaps them back to wherever they
-// were standing right before that temporary move, the moment the date
-// rolls over past what temp_moves recorded.
+// swap someone marked "just for today" (scope 'day') — snaps them back to
+// wherever they were standing right before that temporary move, the
+// moment the date rolls over past what temp_moves recorded. A move marked
+// "for this rotation" (scope 'rotation') is left alone here — it only
+// reverts at the next Rotate Now, via endAllTempMoves() below.
 function reconcileStaleTempMoves(){
   const today = todayLabel();
   Object.keys(state.tempMoves||{}).forEach(sid=>{
     const tm = state.tempMoves[sid];
+    if(tm.scope==='rotation') return;
     if(!tm.date || tm.date===today) return;
     state.assignments[sid] = tm.returnToAreaId || null;
     delete state.tempMoves[sid];
