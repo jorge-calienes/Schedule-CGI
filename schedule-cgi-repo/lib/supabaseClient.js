@@ -760,17 +760,20 @@ export async function returnFromCoverage({ staffId, returnToAreaId, actingAccoun
   });
 }
 
-// A move or swap marked "just for today" — bookkeeping only. The actual
-// board-position write and its audit_log entry already happen via the
-// moveStaff()/swapStaff() call that runs alongside this one (attemptPlace()/
-// doSwap() in index.html fire both); this just remembers where to snap the
-// person back to once the day is over (see reconcileStaleTempMoves() there).
-export async function createTempMove({ staffId, returnToAreaId, actingAccountId }) {
+// A move or swap marked "just for today" or "for this rotation" —
+// bookkeeping only. The actual board-position write and its audit_log
+// entry already happen via the moveStaff()/swapStaff() call that runs
+// alongside this one (attemptPlace()/doSwap() in index.html fire both);
+// this just remembers where to snap the person back to and when: scope
+// 'day' reverts on the next day's load (reconcileStaleTempMoves()), scope
+// 'rotation' only at the next Rotate Now (endAllTempMoves()).
+export async function createTempMove({ staffId, returnToAreaId, actingAccountId, scope }) {
   const { error } = await supabase.from('temp_moves').upsert({
     staff_id: staffId,
     return_to_area_id: returnToAreaId,
     started_date: new Date().toISOString().slice(0, 10),
     created_by: actingAccountId,
+    scope: scope || 'day',
   });
   if (error) throw error;
 }
