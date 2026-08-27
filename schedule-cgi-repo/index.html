@@ -6053,6 +6053,26 @@
     cursor:pointer;max-width:150px;
   }
   .roster-filter-select:focus{outline:none;border-color:var(--c-accent);}
+  /* Override the Material-chip look for the AGS/Leads toggles so they match
+     the pill shape, border, height and font of the <select> filters sitting
+     right next to them in the same toolbar — otherwise two different design
+     systems collide in one row (blocky chip vs. rounded pill). */
+  .roster-filters .filter-chip{
+    font-family:inherit;font-size:12px;font-weight:500;
+    border:1px solid var(--c-border);border-radius:var(--r-pill);
+    padding:4px 12px;min-height:0;background:var(--c-surface);color:var(--c-text);
+    gap:4px;
+  }
+  .roster-filters .filter-chip:hover{background:var(--c-surface-2);}
+  .roster-filters .filter-chip.active{
+    background:var(--c-accent);border-color:var(--c-accent);color:#fff;font-weight:600;
+  }
+  .roster-filters .filter-chip-clear{
+    font-family:inherit;font-size:12px;font-weight:500;
+    border:1px solid transparent;border-radius:var(--r-pill);
+    padding:4px 12px;background:none;color:var(--c-text-2);text-decoration:none;
+  }
+  .roster-filters .filter-chip-clear:hover{color:#B3261E;background:var(--c-surface-2);}
 
   /* ---------- breaks view (filter by area + break/lunch time) ---------- */
   .breaks-wrap{flex:1;overflow-y:auto;padding:var(--md-space-4) var(--md-space-6) var(--md-space-10);background:var(--md-sys-color-surface);}
