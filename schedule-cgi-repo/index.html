@@ -6691,6 +6691,8 @@
   .cal-legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--c-text-2);}
   .cal-legend-dot{width:8px;height:8px;border-radius:50%;background:#E65100;flex-shrink:0;}
   .cal-legend-dot.green{background:#2E7D32;}
+  .cal-collapse-toggle{display:block;width:100%;background:none;border:none;padding:var(--md-space-2) 0;margin-top:2px;font-family:var(--sans);font-size:var(--md-sys-typescale-label-large-size);font-weight:600;color:var(--md-sys-color-primary);cursor:pointer;text-align:center;}
+  .cal-collapse-toggle:hover{text-decoration:underline;}
 
   .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);overflow:hidden;}
   .cal-dow{background:var(--md-sys-color-surface-container-low);padding:var(--md-space-2) 0;text-align:center;font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);border-bottom:1px solid var(--md-sys-color-outline-variant);}
@@ -9768,6 +9770,7 @@ let swapMode      = null; // {staffId} first person selected for quick-swap
 let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
+let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
 let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
 
 function render(){
@@ -9973,29 +9976,41 @@ function renderTimeOffView(){
     });
 
     const DAYS = ['S','M','T','W','T','F','S'];
-    let cells = '';
-    for(let i=0;i<dowStart;i++) cells+='<div class="cal-cell empty"></div>';
+    const cellsArr = [];
+    for(let i=0;i<dowStart;i++) cellsArr.push('<div class="cal-cell empty"></div>');
     for(let d=1;d<=days;d++){
       const ds  = yr+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
       const ents= dayMap[ds]||[];
       const isTod = ds===today;
       const isPast= ds<today;
       const isWE  = ((dowStart+d-1)%7===0)||((dowStart+d-1)%7===6);
-      cells += `<div class="cal-cell${isTod?' today':''}${isPast?' past':''}${isWE?' weekend':''}" data-cal-date="${ds}">
+      cellsArr.push(`<div class="cal-cell${isTod?' today':''}${isPast?' past':''}${isWE?' weekend':''}" data-cal-date="${ds}">
         <div class="cal-day-num">${d}</div>
         <div class="cal-entries">
           ${(()=>{ const mx=window.innerWidth<500?2:4; const sh=ents.slice(0,mx); const ex=ents.length-mx;
             return sh.map(r=>`<div class="cal-pill" style="border-left:3px solid ${r.area?.color||'#aaa'};background:${r.area?.color||'#aaa'}18;" title="${escapeHtml(r.staff.name)}"><span class="cal-pill-dot" style="background:${r.area?.color||'#aaa'}"></span><span class="cal-pill-name">${escapeHtml(r.staff.name.split(' ')[0])}</span>${r.covStaff?'<span class="cal-pill-check">✓</span>':'<span class="cal-pill-warn">!</span>'}</div>`).join('')+(ex>0?`<div class="cal-more">+${ex}</div>`:''); })()}
         </div>
-      </div>`;
+      </div>`);
     }
     // fill trailing cells to complete the last row
     const totalCells = dowStart + days;
     const rem = (7 - (totalCells % 7)) % 7;
-    for(let i=0;i<rem;i++) cells+='<div class="cal-cell empty trailing"></div>';
+    for(let i=0;i<rem;i++) cellsArr.push('<div class="cal-cell empty trailing"></div>');
+
+    // ── collapsed view: just the 2 calendar weeks (14 cells) around today,
+    //    clamped so it never runs past the end of the grid ──
+    const totalRows = cellsArr.length/7;
+    let rowStart = 0;
+    if(monthStr === today.slice(0,7)){
+      const todayIdx = dowStart + Number(today.slice(8,10)) - 1;
+      rowStart = Math.floor(todayIdx/7);
+    }
+    rowStart = Math.min(rowStart, Math.max(totalRows-2, 0));
+    const collapsedCells = cellsArr.slice(rowStart*7, rowStart*7+14);
 
     return `
     <div class="cal-grid-wrap">
+      ${timeOffCalExpanded ? `
       <div class="cal-header">
         <button class="cal-nav-btn" id="btn-cal-prev">‹</button>
         <span class="cal-month-label">${monthLabel}</span>
@@ -10007,11 +10022,12 @@ function renderTimeOffView(){
       <div class="cal-legend">
         <span class="cal-legend-item"><span class="cal-legend-dot"></span>! = no coverage</span>
         <span class="cal-legend-item"><span class="cal-legend-dot green"></span>✓ = coverage set</span>
-      </div>
+      </div>` : ''}
       <div class="cal-grid">
         ${DAYS.map(d=>`<div class="cal-dow">${d}</div>`).join('')}
-        ${cells}
+        ${(timeOffCalExpanded ? cellsArr : collapsedCells).join('')}
       </div>
+      <button class="cal-collapse-toggle" id="btn-toggle-cal-expand">${timeOffCalExpanded ? '▴ Show 2 weeks' : '▾ Show full month'}</button>
     </div>`;
   };
 
@@ -15645,6 +15661,7 @@ function attachHandlers(){
     on('btn-cal-prev', ()=>{ timeOffMonth=document.getElementById('cal-prev-month')?.value||null; render(); });
     on('btn-cal-next', ()=>{ timeOffMonth=document.getElementById('cal-next-month')?.value||null; render(); });
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
+    on('btn-toggle-cal-expand', ()=>{ timeOffCalExpanded=!timeOffCalExpanded; render(); });
 
     // best-fit suggestion card clicks
     document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
