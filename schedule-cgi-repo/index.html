@@ -14580,6 +14580,7 @@ function attachHandlers(){
     chipMenuOpen = null;
     const id = b.dataset.id;
     const _person = getStaffById(id);
+    const today = todayLabel();
     if(state.callouts[id]){
       delete state.callouts[id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
@@ -14588,9 +14589,27 @@ function attachHandlers(){
         syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:id}), 'coverage waive');
       }
       maybeReturnCoverageFor(state.assignments[id]);
+      // undo today's durable callout record too, so the attendance report /
+      // Outlook export don't keep counting a callout that's since been undone
+      const existingEvent = (state.attendanceEvents||[]).find(ev=>ev.staffId===id && ev.eventType==='callout' && ev.eventDate===today);
+      if(existingEvent){
+        state.attendanceEvents = state.attendanceEvents.filter(ev=>ev!==existingEvent);
+        syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existingEvent.id}), 'attendance event');
+      }
     } else {
       state.callouts[id] = true;
       syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      // also log a durable attendance_events row — this is what the
+      // Attendance Report's callout column and "Export today to Outlook"
+      // actually read from; state.callouts alone is only today's live
+      // board flag and isn't visible to either of those.
+      const localId = uid('ae');
+      state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId:id, eventType:'callout', eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+      syncBoardWrite(async ()=>{
+        const row = await window.RC.markAttendanceEvent({staffId:id, eventType:'callout', eventDate:today, actingAccountId:authState.account.id});
+        const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
+        if(ev && row) ev.id = row.id; // reconcile so a later undo targets the real row
+      }, 'attendance event');
     }
     saveState(); render();
   }));
