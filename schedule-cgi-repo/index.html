@@ -6046,6 +6046,42 @@
     background:var(--c-surface-2);
     flex-shrink:0;
   }
+  /* All 6 roster facets (AGS/Leads toggles + 4 selects) used to sit in this
+     row as separate pills — cohesive once styled consistently, but still
+     six controls competing for space and wrapping to 2 rows on mobile.
+     Collapsed into a single "Filters" button that opens one dropdown panel
+     instead, so the toolbar height never changes with 0 or 6 filters active. */
+  .roster-filters-dropdown{position:relative;}
+  .roster-filters-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    font-family:inherit;font-size:12px;font-weight:500;
+    border:1px solid var(--c-border);border-radius:var(--r-pill);
+    padding:4px 12px;background:var(--c-surface);color:var(--c-text);
+    cursor:pointer;
+  }
+  .roster-filters-btn:hover{background:var(--c-surface-2);}
+  .roster-filters-btn.open{border-color:var(--c-accent);color:var(--c-accent);}
+  .roster-filters-badge{
+    background:var(--c-accent);color:#fff;border-radius:var(--r-pill);
+    font-size:10px;font-weight:700;min-width:16px;height:16px;line-height:16px;
+    text-align:center;padding:0 4px;
+  }
+  .roster-filters-caret{font-size:9px;opacity:.6;}
+  .roster-filters-panel{
+    position:absolute;top:calc(100% + 6px);left:0;z-index:20;
+    display:flex;flex-direction:column;gap:10px;
+    min-width:230px;padding:12px;
+    background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+    box-shadow:0 8px 24px rgba(0,0,0,.16);
+  }
+  .rf-panel-row{display:flex;gap:6px;}
+  .rf-field{display:flex;flex-direction:column;gap:4px;}
+  .rf-field-label{font-size:11px;font-weight:600;color:var(--c-text-2);}
+  .rf-panel-footer{
+    display:flex;align-items:center;justify-content:flex-end;
+    padding-top:8px;border-top:1px solid var(--c-border);
+  }
+  .rf-empty-hint{font-size:11px;color:var(--c-text-3);}
   .roster-filter-select{
     font-family:inherit;font-size:12px;
     border:1px solid var(--c-border);border-radius:var(--r-pill);
@@ -6053,6 +6089,27 @@
     cursor:pointer;max-width:150px;
   }
   .roster-filter-select:focus{outline:none;border-color:var(--c-accent);}
+  .roster-filters-panel .roster-filter-select{max-width:none;width:100%;}
+  /* Override the Material-chip look for the AGS/Leads toggles so they match
+     the pill shape, border, height and font of the <select> filters inside
+     the same panel — otherwise two different design systems collide (blocky
+     chip vs. rounded pill). */
+  .roster-filters-panel .filter-chip{
+    font-family:inherit;font-size:12px;font-weight:500;
+    border:1px solid var(--c-border);border-radius:var(--r-pill);
+    padding:4px 12px;min-height:0;background:var(--c-surface);color:var(--c-text);
+    gap:4px;flex:1;justify-content:center;
+  }
+  .roster-filters-panel .filter-chip:hover{background:var(--c-surface-2);}
+  .roster-filters-panel .filter-chip.active{
+    background:var(--c-accent);border-color:var(--c-accent);color:#fff;font-weight:600;
+  }
+  .roster-filters-panel .filter-chip-clear{
+    font-family:inherit;font-size:12px;font-weight:500;
+    border:1px solid transparent;border-radius:var(--r-pill);
+    padding:4px 12px;background:none;color:var(--c-text-2);text-decoration:none;
+  }
+  .roster-filters-panel .filter-chip-clear:hover{color:#B3261E;background:var(--c-surface-2);}
 
   /* ---------- breaks view (filter by area + break/lunch time) ---------- */
   .breaks-wrap{flex:1;overflow-y:auto;padding:var(--md-space-4) var(--md-space-6) var(--md-space-10);background:var(--md-sys-color-surface);}
@@ -10651,9 +10708,13 @@ let rosterSort = {col:'name', dir:1};
 // Faceted roster filters, layered on top of the free-text search above.
 // '' / false means "no filter" for that facet.
 let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'' };
+let rosterFiltersOpen = false; // whether the "Filters" dropdown panel is expanded
 
 function rosterFacetsActive(){
   return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow;
+}
+function rosterActiveFacetCount(){
+  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow].filter(Boolean).length;
 }
 
 function rosterRows(){
@@ -10717,25 +10778,51 @@ function renderRoster(){
       </div>
     </div>
     <div class="roster-filters">
-      <button class="filter-chip ${rosterFacets.ags?'active':''}" id="roster-filter-ags">🏷 AGS</button>
-      <button class="filter-chip ${rosterFacets.lead?'active':''}" id="roster-filter-lead">★ Leads</button>
-      <select class="roster-filter-select" id="roster-filter-department">
-        <option value="">All departments</option>
-        ${[...new Set(state.staff.map(s=>s.department).filter(Boolean))].sort().map(d=>`<option value="${escapeHtml(d)}" ${rosterFacets.department===d?'selected':''}>${escapeHtml(d)}</option>`).join('')}
-      </select>
-      <select class="roster-filter-select" id="roster-filter-shift">
-        <option value="">All shifts</option>
-        ${state.shifts.map(sh=>`<option value="${escapeHtml(sh.label)}" ${rosterFacets.shift===sh.label?'selected':''}>${escapeHtml(sh.label)}</option>`).join('')}
-      </select>
-      <select class="roster-filter-select" id="roster-filter-lunch">
-        <option value="">All lunch times</option>
-        ${sortTimesAscending(state.lunchTimes).map(l=>`<option value="${escapeHtml(l.label)}" ${rosterFacets.lunch===l.label?'selected':''}>${escapeHtml(l.label)}</option>`).join('')}
-      </select>
-      <select class="roster-filter-select" id="roster-filter-flow">
-        <option value="">All flows</option>
-        ${state.rotationFlows.map(f=>`<option value="${f.id}" ${rosterFacets.flow===f.id?'selected':''}>${escapeHtml(f.name)}</option>`).join('')}
-      </select>
-      ${rosterFacetsActive()?'<button class="filter-chip-clear" id="roster-filter-clear-all">Clear filters ✕</button>':''}
+      <div class="roster-filters-dropdown">
+        <button class="roster-filters-btn ${rosterFiltersOpen?'open':''}" id="roster-filters-toggle">
+          <span>⚙ Filters</span>
+          ${rosterActiveFacetCount()>0?`<span class="roster-filters-badge">${rosterActiveFacetCount()}</span>`:''}
+          <span class="roster-filters-caret">${rosterFiltersOpen?'▴':'▾'}</span>
+        </button>
+        ${rosterFiltersOpen?`
+        <div class="roster-filters-panel" id="roster-filters-panel">
+          <div class="rf-panel-row">
+            <button class="filter-chip ${rosterFacets.ags?'active':''}" id="roster-filter-ags">🏷 AGS</button>
+            <button class="filter-chip ${rosterFacets.lead?'active':''}" id="roster-filter-lead">★ Leads</button>
+          </div>
+          <label class="rf-field">
+            <span class="rf-field-label">Department</span>
+            <select class="roster-filter-select" id="roster-filter-department">
+              <option value="">All departments</option>
+              ${[...new Set(state.staff.map(s=>s.department).filter(Boolean))].sort().map(d=>`<option value="${escapeHtml(d)}" ${rosterFacets.department===d?'selected':''}>${escapeHtml(d)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Shift</span>
+            <select class="roster-filter-select" id="roster-filter-shift">
+              <option value="">All shifts</option>
+              ${state.shifts.map(sh=>`<option value="${escapeHtml(sh.label)}" ${rosterFacets.shift===sh.label?'selected':''}>${escapeHtml(sh.label)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Lunch time</span>
+            <select class="roster-filter-select" id="roster-filter-lunch">
+              <option value="">All lunch times</option>
+              ${sortTimesAscending(state.lunchTimes).map(l=>`<option value="${escapeHtml(l.label)}" ${rosterFacets.lunch===l.label?'selected':''}>${escapeHtml(l.label)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Rotation flow</span>
+            <select class="roster-filter-select" id="roster-filter-flow">
+              <option value="">All flows</option>
+              ${state.rotationFlows.map(f=>`<option value="${f.id}" ${rosterFacets.flow===f.id?'selected':''}>${escapeHtml(f.name)}</option>`).join('')}
+            </select>
+          </label>
+          <div class="rf-panel-footer">
+            ${rosterFacetsActive()?`<button class="filter-chip-clear" id="roster-filter-clear-all">Clear filters ✕</button>`:'<span class="rf-empty-hint">No filters applied</span>'}
+          </div>
+        </div>`:''}
+      </div>
     </div>
     <!-- Mobile card list (shown < 700px) -->
     <div class="roster-cards">
@@ -14560,6 +14647,7 @@ function attachHandlers(){
     chipMenuOpen = null;
     const id = b.dataset.id;
     const _person = getStaffById(id);
+    const today = todayLabel();
     if(state.callouts[id]){
       delete state.callouts[id];
       syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
@@ -14568,9 +14656,27 @@ function attachHandlers(){
         syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:id}), 'coverage waive');
       }
       maybeReturnCoverageFor(state.assignments[id]);
+      // undo today's durable callout record too, so the attendance report /
+      // Outlook export don't keep counting a callout that's since been undone
+      const existingEvent = (state.attendanceEvents||[]).find(ev=>ev.staffId===id && ev.eventType==='callout' && ev.eventDate===today);
+      if(existingEvent){
+        state.attendanceEvents = state.attendanceEvents.filter(ev=>ev!==existingEvent);
+        syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existingEvent.id}), 'attendance event');
+      }
     } else {
       state.callouts[id] = true;
       syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      // also log a durable attendance_events row — this is what the
+      // Attendance Report's callout column and "Export today to Outlook"
+      // actually read from; state.callouts alone is only today's live
+      // board flag and isn't visible to either of those.
+      const localId = uid('ae');
+      state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId:id, eventType:'callout', eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+      syncBoardWrite(async ()=>{
+        const row = await window.RC.markAttendanceEvent({staffId:id, eventType:'callout', eventDate:today, actingAccountId:authState.account.id});
+        const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
+        if(ev && row) ev.id = row.id; // reconcile so a later undo targets the real row
+      }, 'attendance event');
     }
     saveState(); render();
   }));
@@ -14710,6 +14816,7 @@ function attachHandlers(){
       });
     }
     on('roster-add-staff', ()=>openModal({type:'staff-manager'}));
+    on('roster-filters-toggle', ()=>{ rosterFiltersOpen = !rosterFiltersOpen; render(); });
     on('roster-filter-ags', ()=>{ rosterFacets.ags = !rosterFacets.ags; render(); });
     on('roster-filter-lead', ()=>{ rosterFacets.lead = !rosterFacets.lead; render(); });
     on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'' }; render(); });
@@ -14717,6 +14824,16 @@ function attachHandlers(){
       const sel = document.getElementById(`roster-filter-${facet}`);
       if(sel) sel.addEventListener('change', ()=>{ rosterFacets[facet] = sel.value; render(); });
     });
+    // close the filters panel on outside click — same pattern as the chip menu
+    if(!window.__rosterFiltersOutside){
+      window.__rosterFiltersOutside = true;
+      document.addEventListener('mousedown', e=>{
+        if(rosterFiltersOpen && !e.target.closest('.roster-filters-dropdown')){
+          rosterFiltersOpen = false;
+          render();
+        }
+      });
+    }
     document.querySelectorAll('[data-sort-col]').forEach(th=>th.addEventListener('click', ()=>{
       const col = th.dataset.sortCol;
       if(rosterSort.col===col) rosterSort.dir *= -1;
