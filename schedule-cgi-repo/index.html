@@ -7916,6 +7916,29 @@
   :root[data-theme="dark"] .topbar{background:rgba(28,28,30,.92)!important;}
   :root[data-theme="dark"] .tab-bar{background:rgba(28,28,30,.92);border-bottom-color:rgba(255,255,255,.1);}
   :root[data-theme="dark"] .tab-btn:hover{background:rgba(255,255,255,.06);}
+  /* Board chips: .flagged/.out/.lead hardcode a near-white tinted
+     background (independent of the chip's own --c-surface base), which
+     the chip name text — colored via --c-text, correctly light in dark
+     mode — then renders against almost invisibly. Re-tinted dark so the
+     same light --c-text stays high-contrast (~13:1, comfortably AAA)
+     instead of white-on-white. */
+  :root[data-theme="dark"] .chip.flagged{background:#3A1F1F;}
+  :root[data-theme="dark"] .chip.out{background:var(--c-surface-3);}
+  :root[data-theme="dark"] .chip.lead{background:#1B2A44;}
+  /* Roster table: the alternating-row stripe and hover states are the
+     same bug at table-row scale — half of every roster page in dark
+     mode was a near-white stripe under light text. */
+  :root[data-theme="dark"] .roster-table tbody tr:hover td{background:var(--c-surface-2);}
+  :root[data-theme="dark"] .roster-table tbody tr.roster-row-alt td{background:var(--c-surface-2);}
+  :root[data-theme="dark"] .roster-table tbody tr.roster-row-alt:hover td{background:var(--c-surface-3);}
+  /* Muted metadata text (area-experience tags, shift hours, the temp-move
+     scope label) hardcodes a mid-gray tuned for light backgrounds — on a
+     dark surface it lands under 4:1 contrast, failing even AA. Point it at
+     the same --c-text-2 the rest of the app already uses for secondary
+     text, which is tuned to ~8:1 against the dark surface tokens. */
+  :root[data-theme="dark"] .chip-tags,
+  :root[data-theme="dark"] .chip-hours,
+  :root[data-theme="dark"] .temp-scope-label{color:var(--c-text-2);}
 </style>
 </head>
 <body>
