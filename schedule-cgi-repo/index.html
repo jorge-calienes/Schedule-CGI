@@ -5444,6 +5444,26 @@
     align-items:center;
     justify-content:center;
   }
+  .nav-item-badge{
+    margin-left:auto;background:var(--c-red,#FF3B30);color:#fff;
+    font-size:11px;font-weight:700;border-radius:999px;
+    min-width:18px;height:18px;line-height:18px;text-align:center;padding:0 5px;flex-shrink:0;
+  }
+  #btn-open-nav{position:relative;}
+  .topbar-nav-badge{
+    position:absolute;top:-2px;right:-2px;
+    background:var(--c-red,#FF3B30);color:#fff;
+    font-size:10px;font-weight:700;border-radius:999px;
+    min-width:16px;height:16px;line-height:16px;text-align:center;padding:0 3px;
+    border:1.5px solid var(--c-surface,#fff);
+  }
+  .kbd-shortcut-list{display:flex;flex-direction:column;gap:12px;}
+  .kbd-shortcut-row{display:flex;align-items:center;gap:14px;}
+  .kbd-key{
+    font-family:var(--mono);font-size:13px;font-weight:700;
+    background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:6px;
+    padding:3px 9px;min-width:28px;text-align:center;box-shadow:0 1px 0 var(--c-border);
+  }
   .nav-divider{
     height:1px;
     background:var(--md-sys-color-outline-variant);
@@ -6104,12 +6124,22 @@
   .roster-filters-panel .filter-chip.active{
     background:var(--c-accent);border-color:var(--c-accent);color:#fff;font-weight:600;
   }
+  .roster-filters-panel .filter-chip.rf-needs-attention.active{
+    background:var(--c-orange,#FF9500);border-color:var(--c-orange,#FF9500);
+  }
   .roster-filters-panel .filter-chip-clear{
     font-family:inherit;font-size:12px;font-weight:500;
     border:1px solid transparent;border-radius:var(--r-pill);
     padding:4px 12px;background:none;color:var(--c-text-2);text-decoration:none;
   }
   .roster-filters-panel .filter-chip-clear:hover{color:#B3261E;background:var(--c-surface-2);}
+  .roster-bulk-bar{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:8px 12px;background:var(--c-accent);color:#fff;
+  }
+  .roster-bulk-bar .roster-bulk-count{font-weight:700;font-size:13px;margin-right:4px;}
+  .roster-bulk-bar select,.roster-bulk-bar input{font-family:inherit;font-size:12px;border-radius:var(--r-sm);border:1px solid transparent;padding:5px 8px;}
+  .roster-bulk-bar .btn-light{background:rgba(255,255,255,.9);}
 
   /* ---------- breaks view (filter by area + break/lunch time) ---------- */
   .breaks-wrap{flex:1;overflow-y:auto;padding:var(--md-space-4) var(--md-space-6) var(--md-space-10);background:var(--md-sys-color-surface);}
@@ -7838,6 +7868,54 @@
   .ar-detail-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;flex-wrap:wrap;}
   .ar-detail-label{color:var(--c-text-2,#6E6E73);font-weight:600;flex-shrink:0;}
   .ar-detail-dates{color:var(--c-text,#1D1D1F);text-align:right;}
+
+  /* ══════════ DARK THEME ══════════
+     The app is built on two token systems (Material's --md-sys-color-*
+     and an Apple-HIG --c-* layer), both duplicated verbatim several times
+     earlier in this file. Rather than chase every duplicate, this single
+     block redefines the COLOR tokens from both systems under
+     :root[data-theme="dark"] — that selector's specificity (0,2,0,0) beats
+     every plain `:root{...}` occurrence (0,1,0,0) regardless of source
+     order, so it always wins. Components built from these tokens (the
+     large majority of the app) re-theme automatically; a handful of
+     spots that hardcode a light-only color directly (e.g. the green
+     "covered" coverage-row background) are out of scope for this pass. */
+  :root[data-theme="dark"]{
+    --c-bg:#000000; --c-surface:#1C1C1E; --c-surface-2:#2C2C2E; --c-surface-3:#3A3A3C;
+    --c-border:rgba(255,255,255,.16); --c-separator:rgba(255,255,255,.12);
+    --c-text:#F2F2F7; --c-text-2:#AEAEB2; --c-text-3:#8E8E93;
+    --c-accent:#6D9CF1; --c-red:#FF453A; --c-green:#32D74B; --c-orange:#FF9F0A;
+
+    --md-sys-color-primary:#9FC2FF; --md-sys-color-on-primary:#00295E;
+    --md-sys-color-primary-container:#1B4479; --md-sys-color-on-primary-container:#D9E5FF;
+    --md-sys-color-secondary:#C5C6CD; --md-sys-color-on-secondary:#2D3036;
+    --md-sys-color-secondary-container:#43464D; --md-sys-color-on-secondary-container:#E1E2E8;
+    --md-sys-color-tertiary:#FFC46A; --md-sys-color-on-tertiary:#412D00;
+    --md-sys-color-tertiary-container:#5C4200; --md-sys-color-on-tertiary-container:#FFDEA1;
+    --md-sys-color-error:#FFB4AB; --md-sys-color-on-error:#690005;
+    --md-sys-color-error-container:#93000A; --md-sys-color-on-error-container:#FFDAD6;
+    --md-sys-color-background:#131314; --md-sys-color-on-background:#E3E3E3;
+    --md-sys-color-surface:#131314; --md-sys-color-on-surface:#E3E3E3;
+    --md-sys-color-surface-variant:#45474A; --md-sys-color-on-surface-variant:#C7C7CA;
+    --md-sys-color-surface-dim:#131314; --md-sys-color-surface-bright:#39393A;
+    --md-sys-color-surface-container-lowest:#0E0E0E;
+    --md-sys-color-surface-container-low:#1B1B1B;
+    --md-sys-color-surface-container:#1F1F1F;
+    --md-sys-color-surface-container-high:#2A2A2A;
+    --md-sys-color-surface-container-highest:#353535;
+    --md-sys-color-outline:#909094; --md-sys-color-outline-variant:#45474A;
+    --md-sys-color-inverse-surface:#E3E3E3; --md-sys-color-inverse-on-surface:#303030;
+    --md-sys-color-inverse-primary:#2F5FA8;
+  }
+  :root[data-theme="dark"] body{background:var(--c-bg);color:var(--c-text);}
+  :root[data-theme="dark"] img{filter:brightness(.92);}
+  /* The top app bar and tab bar hardcode a translucent-white "frosted
+     glass" background (one copy even carries !important) instead of
+     using the surface token — on every screen, so worth a direct fix
+     rather than leaving it as a disclosed gap. */
+  :root[data-theme="dark"] .topbar{background:rgba(28,28,30,.92)!important;}
+  :root[data-theme="dark"] .tab-bar{background:rgba(28,28,30,.92);border-bottom-color:rgba(255,255,255,.1);}
+  :root[data-theme="dark"] .tab-btn:hover{background:rgba(255,255,255,.06);}
 </style>
 </head>
 <body>
@@ -9830,6 +9908,41 @@ let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
 let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
 
+// ── Theme ────────────────────────────────────────────────────────────────
+let themeMode = 'light'; // 'light' | 'dark' — persisted in localStorage, applied to <html data-theme>
+try{ themeMode = localStorage.getItem('rc-theme')==='dark' ? 'dark' : 'light'; }catch(e){}
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', themeMode);
+}
+applyTheme();
+
+// ── Evaluation nav badges — "how many need my attention right now",
+//    fetched lazily (on boot + whenever the nav drawer opens, and refreshed
+//    after any submit/approve/reject) rather than polled continuously. ──
+let evalBadgeCounts = { mine: 0, pending: 0 }; // {mine: team lead's own actionable queue, pending: supervisor's review queue}
+function navBadgeCount(){
+  if(isTeamLeadRole()) return evalBadgeCounts.mine;
+  if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending;
+  return 0;
+}
+async function refreshEvalBadgeCounts(){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  try{
+    if(isTeamLeadRole()){
+      const items = await window.RC.myEvaluationQueue();
+      evalBadgeCounts.mine = (items||[]).filter(i=>!i.existing_evaluation_id || i.existing_evaluation_status==='needs_revision').length;
+    } else if(authState.account.role==='admin' || authState.account.role==='supervisor'){
+      const items = await window.RC.fetchPendingEvaluations();
+      evalBadgeCounts.pending = (items||[]).length;
+    }
+    render();
+  }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
+}
+
+// ── Roster: "needs attention" facet + bulk row selection ──
+let rosterSelected = new Set(); // staff ids checked in the roster table for bulk actions
+let rosterBulkField = 'department'; // which field the bulk-edit bar is currently set to change
+
 function render(){
   const root = document.getElementById('root');
   if(authState.status!=='signed-in'){
@@ -9924,8 +10037,14 @@ function renderTopbar(){
       <button class="topbar-icon-btn ${boardSearch?'active':''}" id="btn-toggle-search" aria-label="Search">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
+      <button class="topbar-icon-btn" id="btn-toggle-theme" aria-label="${themeMode==='dark'?'Switch to light mode':'Switch to dark mode'}" title="${themeMode==='dark'?'Switch to light mode':'Switch to dark mode'}">
+        ${themeMode==='dark'
+          ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/></svg>`
+          : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>`}
+      </button>
       <button class="topbar-icon-btn" id="btn-open-nav" aria-label="Menu">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        ${navBadgeCount()>0?`<span class="topbar-nav-badge">${navBadgeCount()}</span>`:''}
       </button>
     </div>
   </div>
@@ -10215,7 +10334,7 @@ function renderNavDrawer(){
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       ${leadAreaNames.length ? `<div class="nav-account">Designated area${leadAreaNames.length>1?'s':''}: <b>${escapeHtml(leadAreaNames.join(', '))}</b></div>` : ''}
       <div class="nav-drawer-section">Schedule</div>
-      <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations</button>
+      <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations${evalBadgeCounts.mine>0?`<span class="nav-item-badge">${evalBadgeCounts.mine}</span>`:''}</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
@@ -10248,12 +10367,13 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
+      <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
@@ -10707,14 +10827,37 @@ let rosterFilter = '';
 let rosterSort = {col:'name', dir:1};
 // Faceted roster filters, layered on top of the free-text search above.
 // '' / false means "no filter" for that facet.
-let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'' };
+let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', needsAttention:false };
 let rosterFiltersOpen = false; // whether the "Filters" dropdown panel is expanded
 
+// "Needs attention" = missing a shift or break/lunch time, or hasn't had an
+// evaluation logged since the current rotation started. The first two are
+// plain fields already in state; the third needs evaluation data, which
+// isn't part of the normal board load — fetched lazily the first time this
+// facet is turned on, and cached until the roster view unmounts.
+let rosterEvaluatedSinceRotation = null; // null = not loaded yet; else a Set of staff_ids
+async function ensureRosterEvalCacheLoaded(){
+  if(rosterEvaluatedSinceRotation!==null || !window.RC) return;
+  rosterEvaluatedSinceRotation = new Set(); // avoid re-fetching while this request is in flight
+  try{
+    const rows = await window.RC.fetchTeamPerformanceOverview();
+    const since = state.rotationStartDate||state.currentPeriod||'';
+    rosterEvaluatedSinceRotation = new Set((rows||[]).filter(r=>!since || (r.created_at||'').slice(0,10)>=since).map(r=>r.staff_id));
+  }catch(e){ rosterEvaluatedSinceRotation = new Set(); }
+  render();
+}
+function staffNeedsAttention(s){
+  if(s.active===false) return false; // an archived person doesn't need a shift or a fresh evaluation
+  if(!s.shiftHours || !s.breakTimes) return true;
+  if(rosterEvaluatedSinceRotation && !rosterEvaluatedSinceRotation.has(s.id)) return true;
+  return false;
+}
+
 function rosterFacetsActive(){
-  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow;
+  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow || rosterFacets.needsAttention;
 }
 function rosterActiveFacetCount(){
-  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow].filter(Boolean).length;
+  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow, rosterFacets.needsAttention].filter(Boolean).length;
 }
 
 function rosterRows(){
@@ -10735,6 +10878,7 @@ function rosterRows(){
   if(rosterFacets.department) rows = rows.filter(s=>(s.department||'')===rosterFacets.department);
   if(rosterFacets.shift) rows = rows.filter(s=>(s.shiftHours||'')===rosterFacets.shift);
   if(rosterFacets.flow) rows = rows.filter(s=>(s.flowId||'')===rosterFacets.flow);
+  if(rosterFacets.needsAttention) rows = rows.filter(staffNeedsAttention);
   if(rosterFacets.lunch){
     const targetMins = parseClockToken(rosterFacets.lunch);
     rows = rows.filter(s=>{
@@ -10790,6 +10934,7 @@ function renderRoster(){
             <button class="filter-chip ${rosterFacets.ags?'active':''}" id="roster-filter-ags">🏷 AGS</button>
             <button class="filter-chip ${rosterFacets.lead?'active':''}" id="roster-filter-lead">★ Leads</button>
           </div>
+          <button class="filter-chip rf-needs-attention ${rosterFacets.needsAttention?'active':''}" id="roster-filter-needs-attention" title="Missing a shift or break/lunch time, or hasn't been evaluated this rotation" style="width:100%;justify-content:center;">⚠ Needs attention</button>
           <label class="rf-field">
             <span class="rf-field-label">Department</span>
             <select class="roster-filter-select" id="roster-filter-department">
@@ -10853,10 +10998,37 @@ function renderRoster(){
         </div>`;
       }).join('')}
     </div>
+    <!-- Bulk-edit bar — appears once one or more rows are checked in the desktop table -->
+    ${rosterSelected.size>0?`
+    <div class="roster-bulk-bar">
+      <span class="roster-bulk-count">${rosterSelected.size} selected</span>
+      <select class="roster-select" id="roster-bulk-field">
+        <option value="department" ${rosterBulkField==='department'?'selected':''}>Department</option>
+        <option value="shiftHours" ${rosterBulkField==='shiftHours'?'selected':''}>Shift</option>
+        <option value="supervisorId" ${rosterBulkField==='supervisorId'?'selected':''}>Supervisor</option>
+      </select>
+      ${rosterBulkField==='department' ? `
+        <input type="text" class="roster-search" id="roster-bulk-value" placeholder="Department name…" list="roster-bulk-dept-list" style="width:180px;"/>
+        <datalist id="roster-bulk-dept-list">${[...new Set(state.staff.map(s=>s.department).filter(Boolean))].sort().map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+      ` : rosterBulkField==='shiftHours' ? `
+        <select class="roster-select" id="roster-bulk-value">
+          <option value="">—</option>
+          ${state.shifts.map(sh=>`<option value="${escapeHtml(sh.label)}">${escapeHtml(sh.label)}</option>`).join('')}
+        </select>
+      ` : `
+        <select class="roster-select" id="roster-bulk-value">
+          <option value="">—</option>
+          ${state.supervisors.map(sv=>`<option value="${sv.id}">${escapeHtml(sv.name)}</option>`).join('')}
+        </select>
+      `}
+      <button class="btn btn-primary btn-sm" id="roster-bulk-apply">Apply to ${rosterSelected.size}</button>
+      <button class="btn btn-light btn-sm" id="roster-bulk-clear">Clear selection</button>
+    </div>` : ''}
     <!-- Desktop table (shown ≥ 700px) -->
     <div class="roster-table-scroll">
       <table class="roster-table">
         <colgroup>
+          <col style="width:28px">
           <col style="width:150px">
           <col style="width:56px">
           <col style="width:96px">
@@ -10874,6 +11046,7 @@ function renderRoster(){
         </colgroup>
         <thead>
           <tr class="roster-group-row">
+            <th class="roster-group-th"></th>
             <th colspan="4" class="roster-group-th">Basics</th>
             <th colspan="2" class="roster-group-th">Schedule</th>
             <th colspan="3" class="roster-group-th">Certifications &amp; tags</th>
@@ -10882,6 +11055,9 @@ function renderRoster(){
             <th class="roster-group-th"></th>
           </tr>
           <tr>
+            <th style="text-align:center;">
+              <input type="checkbox" id="roster-select-all" title="Select all filtered rows" ${rows.length>0 && rows.every(s=>rosterSelected.has(s.id))?'checked':''}/>
+            </th>
             <th data-sort-col="name" class="${rosterSort.col==='name'?'sorted':''}">Name${rosterSort.col==='name'?(rosterSort.dir===1?' ▲':' ▼'):''}</th>
             <th data-sort-col="tdisNumber" class="${rosterSort.col==='tdisNumber'?'sorted':''}" title="TDIS Number">TDIS${rosterSort.col==='tdisNumber'?(rosterSort.dir===1?' ▲':' ▼'):''}</th>
             <th data-sort-col="department" class="${rosterSort.col==='department'?'sorted':''}">Dept${rosterSort.col==='department'?(rosterSort.dir===1?' ▲':' ▼'):''}</th>
@@ -10914,11 +11090,16 @@ function renderRosterRow(s, i){
   const sup    = getSupervisorById(s.supervisorId);
   const langs  = (s.languageCerts||[]).map(id=>{const l=state.languages.find(x=>x.id===id);return l?l.name:'';}).filter(Boolean);
   const initials = s.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const flagged = staffNeedsAttention(s);
   return `
-  <tr class="${isOut?'out':''} ${i%2===1?'roster-row-alt':''}" data-staff-row="${s.id}">    <td>
+  <tr class="${isOut?'out':''} ${i%2===1?'roster-row-alt':''}" data-staff-row="${s.id}">
+    <td style="text-align:center;">
+      <input type="checkbox" class="roster-row-select" data-select-staff="${s.id}" ${rosterSelected.has(s.id)?'checked':''}/>
+    </td>
+    <td>
       <div class="cell-name-block">
         <div class="roster-avatar" style="background:${area?.color||'var(--c-accent)'};">${initials}</div>
-        <span class="roster-name-text" title="${escapeHtml(s.name)}">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${isOut?' <span class="chip-out-tag">Out</span>':''}${s.needsAccommodations?' ♿':''}</span>
+        <span class="roster-name-text" title="${escapeHtml(s.name)}">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${isOut?' <span class="chip-out-tag">Out</span>':''}${s.needsAccommodations?' ♿':''}${flagged?' <span title="Missing a shift/break time, or no evaluation this rotation">⚠</span>':''}</span>
       </div>
     </td>
     <td class="cell-dim" style="text-align:center;">${s.tdisNumber?`<span class="tdis-badge">${escapeHtml(s.tdisNumber)}</span>`:'<em>—</em>'}</td>
@@ -11214,7 +11395,32 @@ function renderModal(){
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
+  else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
+}
+
+function renderKeyboardShortcutsModal(){
+  const rows = [
+    ['/', 'Focus the search box'],
+    ['Esc', 'Close a modal, or cancel a move/swap in progress'],
+    ['?', 'Show this list'],
+  ];
+  return `
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-head">
+      <div><h2>⌨ Keyboard shortcuts</h2></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="kbd-shortcut-list">
+        ${rows.map(([key,desc])=>`
+          <div class="kbd-shortcut-row">
+            <kbd class="kbd-key">${escapeHtml(key)}</kbd>
+            <span>${escapeHtml(desc)}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
 }
 
 // --- staff experience stats (read-only: per-area history breakdown) ---
@@ -12286,12 +12492,23 @@ function evalPrefillAttrs(i){
     `data-eval-rel="${i.existing_reliability||0}" data-eval-rec="${escapeHtml(i.existing_recommendation||'stay')}" `+
     `data-eval-note="${escapeHtml(i.existing_note||'')}" data-eval-review-note="${escapeHtml(i.existing_evaluation_review_note||'')}"`;
 }
+// A not-yet-submitted evaluation counts as overdue once the current
+// rotation is past its midpoint — waiting until the very last day to
+// evaluate someone defeats the point of a mid-rotation check-in.
+function isEvalOverdue(){
+  const start = state.rotationStartDate||state.currentPeriod;
+  if(!start) return false;
+  const midpoint = addBusinessWeeksToDateStr(start, (Number(state.rotationWeeks)||2)/2);
+  return todayLabel() >= midpoint;
+}
+
 function renderEvalQueueModal(m){
   const items = m.items||[];
   const needsFeedback = items.filter(i=>!i.existing_evaluation_id);
   const needsRevision = items.filter(i=>i.existing_evaluation_status==='needs_revision');
   const submitted = items.filter(i=>i.existing_evaluation_id && i.existing_evaluation_status!=='needs_revision');
   const actionCount = needsFeedback.length + needsRevision.length;
+  const overdue = isEvalOverdue();
   return `
   <div class="modal">
     <div class="modal-head">
@@ -12315,12 +12532,12 @@ function renderEvalQueueModal(m){
             </div>`).join('')}
         </div>` : ''}
       ${!m.loading && needsFeedback.length>0?`
-        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback</div>
+        <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Needs feedback${overdue?` <span style="color:var(--c-red,#FF3B30);">— overdue</span>`:''}</div>
         <div class="option-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;">
           ${needsFeedback.map(i=>`
             <div class="option-card" data-open-eval-form="${i.staff_id}" data-eval-area="${i.area_id||''}" data-eval-period="${i.current_period_id||''}">
               <div class="oc-left">
-                <span class="oc-name">${escapeHtml(i.name)}</span>
+                <span class="oc-name">${overdue?'⚠ ':''}${escapeHtml(i.name)}</span>
                 <span class="oc-sub">${escapeHtml(i.area_name||'')}${i.period_label?' · '+escapeHtml(i.period_label):''}</span>
               </div>
             </div>`).join('')}
@@ -13141,6 +13358,10 @@ function renderPendingEvalsModal(m){
       ${m.loading?`<div class="small-muted">Loading pending evaluations…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending evaluations: ${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every team-lead evaluation has been reviewed.</div>`:''}
+      ${!m.loading && !m.error && items.length>1?`
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+          <button class="btn btn-primary btn-sm" id="btn-approve-all-evals">✓ Approve all ${items.length}</button>
+        </div>`:''}
       ${items.length>0?`
       <div class="eval-history-list">
         ${items.map(row=>{
@@ -14453,6 +14674,37 @@ function renderReportPreviewModal(m){
 }
 
 function attachHandlers(){
+  // ── Global keyboard shortcuts (desktop quality-of-life for supervisors
+  //    doing a lot of moves/swaps) — registered once, guarded so typing in
+  //    any input/textarea/select or holding a modifier never gets hijacked. ──
+  if(!window.__globalKeyboardShortcuts){
+    window.__globalKeyboardShortcuts = true;
+    document.addEventListener('keydown', e=>{
+      if(e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (e.target.tagName||'').toLowerCase();
+      const typing = tag==='input' || tag==='textarea' || tag==='select' || e.target.isContentEditable;
+      if(e.key==='Escape'){
+        if(activeModal){ e.preventDefault(); closeModal(); return; }
+        if(swapMode){ e.preventDefault(); swapMode=null; tempMoveScope=null; render(); return; }
+        if(selectedStaffId){ e.preventDefault(); selectedStaffId=null; tempMoveScope=null; render(); return; }
+        if(chipMenuOpen){ e.preventDefault(); chipMenuOpen=null; render(); return; }
+        if(rosterFiltersOpen){ e.preventDefault(); rosterFiltersOpen=false; render(); return; }
+        if(navDrawerOpen){ e.preventDefault(); navDrawerOpen=false; render(); return; }
+        return;
+      }
+      if(typing || activeModal) return;
+      if(e.key==='/'){
+        e.preventDefault();
+        searchExpanded = true;
+        render();
+        setTimeout(()=>document.getElementById('board-search-input')?.focus(), 50);
+      } else if(e.key==='?'){
+        e.preventDefault();
+        openModal({type:'keyboard-shortcuts'});
+      }
+    });
+  }
+
   // close mobile overflow menu on outside click (registered once).
 
   // ── Scroll-fade cue: show a bottom fade + hint when an area column has more chips below the fold ──
@@ -14819,7 +15071,12 @@ function attachHandlers(){
     on('roster-filters-toggle', ()=>{ rosterFiltersOpen = !rosterFiltersOpen; render(); });
     on('roster-filter-ags', ()=>{ rosterFacets.ags = !rosterFacets.ags; render(); });
     on('roster-filter-lead', ()=>{ rosterFacets.lead = !rosterFacets.lead; render(); });
-    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'' }; render(); });
+    on('roster-filter-needs-attention', ()=>{
+      rosterFacets.needsAttention = !rosterFacets.needsAttention;
+      if(rosterFacets.needsAttention) ensureRosterEvalCacheLoaded();
+      render();
+    });
+    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', needsAttention:false }; render(); });
     ['department','shift','lunch','flow'].forEach(facet=>{
       const sel = document.getElementById(`roster-filter-${facet}`);
       if(sel) sel.addEventListener('change', ()=>{ rosterFacets[facet] = sel.value; render(); });
@@ -14834,6 +15091,40 @@ function attachHandlers(){
         }
       });
     }
+    // --- bulk selection + bulk edit ---
+    document.querySelectorAll('[data-select-staff]').forEach(cb=>cb.addEventListener('change', ()=>{
+      const id = cb.dataset.selectStaff;
+      if(cb.checked) rosterSelected.add(id); else rosterSelected.delete(id);
+      render();
+    }));
+    on('roster-select-all', ()=>{
+      const visibleIds = rosterRows().map(s=>s.id);
+      const allSelected = visibleIds.length>0 && visibleIds.every(id=>rosterSelected.has(id));
+      if(allSelected) visibleIds.forEach(id=>rosterSelected.delete(id));
+      else visibleIds.forEach(id=>rosterSelected.add(id));
+      render();
+    });
+    on('roster-bulk-clear', ()=>{ rosterSelected.clear(); render(); });
+    const bulkFieldSel = document.getElementById('roster-bulk-field');
+    if(bulkFieldSel) bulkFieldSel.addEventListener('change', ()=>{ rosterBulkField = bulkFieldSel.value; render(); });
+    on('roster-bulk-apply', ()=>{
+      const valueEl = document.getElementById('roster-bulk-value');
+      const value = valueEl ? valueEl.value.trim() : '';
+      const ids = Array.from(rosterSelected);
+      let changed = 0;
+      ids.forEach(id=>{
+        const s = getStaffById(id);
+        if(!s) return;
+        s[rosterBulkField] = value || (rosterBulkField==='department' ? '' : (rosterBulkField==='shiftHours' ? '' : null));
+        syncRosterStaffEdit(s, 'bulk roster edit');
+        changed++;
+      });
+      const fieldLabel = rosterBulkField==='department' ? 'department' : rosterBulkField==='shiftHours' ? 'shift' : 'supervisor';
+      showToast(`Updated ${fieldLabel} for ${changed} staff member${changed===1?'':'s'} ✓`, 'teal');
+      rosterSelected.clear();
+      saveState();
+      render();
+    });
     document.querySelectorAll('[data-sort-col]').forEach(th=>th.addEventListener('click', ()=>{
       const col = th.dataset.sortCol;
       if(rosterSort.col===col) rosterSort.dir *= -1;
@@ -15030,6 +15321,7 @@ function attachHandlers(){
     const clearBtn = document.getElementById('btn-search-clear');
     if(clearBtn) clearBtn.style.display = 'none';
   });
+  on('nav-keyboard-shortcuts', ()=>{ navDrawerOpen=false; openModal({type:'keyboard-shortcuts'}); render(); });
   // ── email today's changes ──
   on('nav-email-changes', ()=>{
     navDrawerOpen=false;
@@ -15812,7 +16104,13 @@ function attachHandlers(){
   }
 
   // --- nav drawer ---
-  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); });
+  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); });
+  on('btn-toggle-theme', ()=>{
+    themeMode = themeMode==='dark' ? 'light' : 'dark';
+    try{ localStorage.setItem('rc-theme', themeMode); }catch(e){}
+    applyTheme();
+    render();
+  });
   on('nav-scrim',     ()=>{ navDrawerOpen=false; render(); });
   const closeNav = () => { navDrawerOpen=false; };
   on('nav-roster', ()=>{ viewMode='roster'; closeNav(); render(); });
@@ -17357,6 +17655,7 @@ function attachHandlers(){
       if(notesVal) state.rotationNotes[state.currentPeriod] = notesVal;
       endAllCoverage(); // return all coverage staff before snapshotting
       endAllTempMoves(); // same for anyone moved/swapped "just for today"
+      rosterEvaluatedSinceRotation = null; // "evaluated this rotation" resets with a new one
       state.pendingFeedback = [];
       state.currentPeriod = newLabel;
       state.rotationStartDate = startDate;
@@ -17496,6 +17795,7 @@ function attachHandlers(){
       }));
       if(sync.ok){
         showToast(isManager ? 'Evaluation saved to database ✓' : 'Evaluation sent to your supervisor for review ✓', 'teal');
+        refreshEvalBadgeCounts();
         if(m._returnModal && m._returnModal.type==='eval-queue') openEvalQueue();
         else if(m._returnModal) openModal(m._returnModal);
         else closeModal();
@@ -17715,6 +18015,7 @@ function attachHandlers(){
       el.disabled = true;
       const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId:id, staffId, status:'approved', reviewNote:'', reviewerId:authState.account.id}));
       showToast(sync.ok ? 'Evaluation approved ✓' : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshEvalBadgeCounts();
       if(sync.ok) openPendingEvals(); else el.disabled = false;
     }));
     document.querySelectorAll('[data-reject-eval]').forEach(el=>el.addEventListener('click', ()=>{
@@ -17729,7 +18030,24 @@ function attachHandlers(){
       btn.disabled = true;
       const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId, staffId, status:'needs_revision', reviewNote:note, reviewerId:authState.account.id}));
       showToast(sync.ok ? 'Sent back for revision' : `Could not send back — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshEvalBadgeCounts();
       if(sync.ok) openPendingEvals(); else btn.disabled = false;
+    });
+    on('btn-approve-all-evals', async ()=>{
+      const btn = document.getElementById('btn-approve-all-evals');
+      btn.disabled = true;
+      const targets = (m.items||[]).slice();
+      let okCount = 0, failCount = 0;
+      for(const row of targets){
+        const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId:row.id, staffId:row.staff_id, status:'approved', reviewNote:'', reviewerId:authState.account.id}));
+        if(sync.ok) okCount++; else failCount++;
+      }
+      showToast(
+        failCount===0 ? `Approved ${okCount} evaluation${okCount===1?'':'s'} ✓` : `Approved ${okCount}, ${failCount} failed — try those individually`,
+        failCount===0 ? 'teal' : 'rust'
+      );
+      refreshEvalBadgeCounts();
+      openPendingEvals();
     });
   }
 
@@ -18649,6 +18967,8 @@ async function bootApp(){
   }catch(e){
     console.warn('Could not load rotation history from Supabase — showing local data instead.', e && e.message);
   }
+
+  refreshEvalBadgeCounts(); // advisory nav badge — doesn't block boot
 }
 
 // ============ LIVE SYNC (Supabase Realtime) ============
