@@ -11419,6 +11419,7 @@ function renderModal(){
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
+  else if(m.type==='quick-pick') inner = renderQuickPickModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -11428,6 +11429,19 @@ function renderKeyboardShortcutsModal(){
     ['Esc', 'Close a modal, or cancel a move/swap in progress'],
     ['?', 'Show this list'],
   ];
+  if(!isTeamLeadRole()){
+    rows.push(
+      ['O', 'Call out — mark someone out'],
+      ['S', 'Swap — pick who to swap'],
+      ['L', 'Late arrival — pick who'],
+      ['E', 'Left early — pick who'],
+      ['T', 'Schedule time off'],
+      ['A', 'Add staff'],
+      ['D', 'Edit staff — pick who'],
+      ['R', 'Go to Roster'],
+      ['P', 'Print / export report'],
+    );
+  }
   return `
   <div class="modal" style="max-width:360px;">
     <div class="modal-head">
@@ -12501,6 +12515,45 @@ function renderMarkCalloutModal(m){
             </div>
           </div>`).join('')}
       </div>
+    </div>
+  </div>`;
+}
+
+// --- Quick-pick staff picker — shared "who?" step for keyboard shortcuts
+//     that need a target person but (unlike Call out / Add staff / Schedule
+//     leave) have no existing global entry point: Swap, Late arrival, Left
+//     early, Edit staff each normally start from a specific chip's menu.
+//     Picking a name here hands off to the exact same code path the chip
+//     menu action already uses (swapMode, toggleAttendanceEvent, the
+//     staff-manager edit modal) — this is only the "who" step. ---
+const QUICK_PICK_META = {
+  swap:  { title: 'Swap — pick the first person', sub: "You'll tap who they're swapping with next." },
+  late:  { title: 'Late arrival — pick who', sub: 'Flags them as arriving late today.' },
+  early: { title: 'Left early — pick who', sub: 'Flags them as leaving early today.' },
+  edit:  { title: 'Edit staff — pick who', sub: 'Opens their profile for editing.' },
+};
+function renderQuickPickModal(m){
+  const meta = QUICK_PICK_META[m.action] || QUICK_PICK_META.edit;
+  // Edit works on anyone; swap/late/early only make sense for someone
+  // actually on the board today (not already called out for the day).
+  const candidates = state.staff.filter(s=>s.active!==false && (m.action==='edit' || !state.callouts[s.id]));
+  return `
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2>${escapeHtml(meta.title)}</h2><p>${escapeHtml(meta.sub)}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${candidates.length===0?`<div class="small-muted">Nobody available for this right now.</div>`:`
+      <div class="option-list" style="max-height:360px;overflow-y:auto;">
+        ${candidates.map(s=>`
+          <div class="option-card" data-quick-pick="${s.id}">
+            <div class="oc-left">
+              <span class="oc-name">${escapeHtml(s.name)}</span>
+              <span class="oc-sub">${state.assignments[s.id]?escapeHtml(getAreaById(state.assignments[s.id])?.name||''):'Unassigned'}</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
     </div>
   </div>`;
 }
@@ -14724,6 +14777,21 @@ function attachHandlers(){
       } else if(e.key==='?'){
         e.preventDefault();
         openModal({type:'keyboard-shortcuts'});
+      } else if(!isTeamLeadRole()){
+        // These all need a target person but (unlike search/help) have no
+        // meaning without one — Call out/Add staff/Schedule leave/Roster/
+        // Report already have a global entry point to jump straight to;
+        // Swap/Late/Early/Edit go through the quick-pick "who?" modal first.
+        const key = e.key.toLowerCase();
+        if(key==='o'){ e.preventDefault(); openModal({type:'mark-callout'}); }
+        else if(key==='s'){ e.preventDefault(); openModal({type:'quick-pick', action:'swap'}); }
+        else if(key==='l'){ e.preventDefault(); openModal({type:'quick-pick', action:'late'}); }
+        else if(key==='e'){ e.preventDefault(); openModal({type:'quick-pick', action:'early'}); }
+        else if(key==='d'){ e.preventDefault(); openModal({type:'quick-pick', action:'edit'}); }
+        else if(key==='t'){ e.preventDefault(); openModal({type:'time-off-manager', pickStaff:true}); }
+        else if(key==='a'){ e.preventDefault(); openModal({type:'staff-manager'}); }
+        else if(key==='r'){ e.preventDefault(); navDrawerOpen=false; viewMode='roster'; render(); }
+        else if(key==='p'){ e.preventDefault(); openModal({type:'report-preview', sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true}}); }
       }
     });
   }
@@ -16778,6 +16846,30 @@ function attachHandlers(){
       closeModal();
       showToast(_person.name + ' marked out', 'rust');
       setTimeout(()=>openModal({type:'callout-dash'}), 50);
+    }));
+  }
+
+  // --- quick-pick staff picker (keyboard-shortcut entry points for
+  //     swap/late/early/edit — see QUICK_PICK_META) ---
+  if(activeModal.type==='quick-pick'){
+    const action = activeModal.action;
+    document.querySelectorAll('[data-quick-pick]').forEach(el=>el.addEventListener('click', ()=>{
+      const id = el.dataset.quickPick;
+      const person = getStaffById(id);
+      if(action==='swap'){
+        closeModal();
+        swapMode = { staffId: id };
+        render();
+      } else if(action==='late'){
+        closeModal();
+        toggleAttendanceEvent(id, 'late_arrival');
+      } else if(action==='early'){
+        closeModal();
+        toggleAttendanceEvent(id, 'left_early');
+      } else if(action==='edit'){
+        closeModal();
+        setTimeout(()=>openModal({type:'staff-manager', editId:id}), 50);
+      }
     }));
   }
 
