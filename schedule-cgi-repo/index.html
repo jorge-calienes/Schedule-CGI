@@ -926,6 +926,18 @@
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
 
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
+
   /* Preview pane */
   .rp-preview-pane{
     flex:1;min-width:0;display:flex;flex-direction:column;
@@ -2420,6 +2432,18 @@
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
 
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
+
   /* Preview pane */
   .rp-preview-pane{
     flex:1;min-width:0;display:flex;flex-direction:column;
@@ -2773,6 +2797,69 @@
     height:min(720px, 90vh);
   }
   .report-modal .modal-body{padding:0;overflow:hidden;display:flex;flex-direction:column;}
+
+  /* Rotation history: wider two-pane modal — period picker + visual snapshot */
+  .hist-modal{
+    max-width:min(900px, calc(100vw - 32px)) !important;
+    max-height:min(680px, 90vh) !important;
+    height:min(680px, 90vh);
+  }
+  .hist-modal .hist-body{padding:0;overflow:hidden;display:flex;flex-direction:column;}
+  .hist-layout{display:flex;height:100%;min-height:0;}
+  .hist-sidebar{
+    width:200px;flex-shrink:0;overflow-y:auto;
+    border-right:1px solid var(--c-border);
+  }
+  .hist-period-row{
+    padding:10px 14px;cursor:pointer;
+    border-bottom:1px solid var(--c-border);
+    border-left:3px solid transparent;
+    transition:background .12s;
+  }
+  .hist-period-row:hover{background:var(--c-surface-2);}
+  .hist-period-row.active{background:rgba(47,95,168,.08);border-left-color:var(--c-accent);}
+  .hist-period-label{font-weight:800;font-family:var(--mono);font-size:12.5px;color:var(--c-text);}
+  .hist-period-meta{font-size:11px;color:var(--c-text-2);margin-top:2px;}
+  .hist-main{flex:1;min-width:0;overflow-y:auto;padding:16px 18px;}
+  .hist-diff-section{
+    margin-bottom:16px;padding:10px 12px;
+    background:var(--c-surface-2);border-radius:var(--r-md);
+  }
+  .hist-diff-section.hist-diff-empty{opacity:.7;}
+  .hist-diff-head{font-weight:700;font-size:12.5px;color:var(--c-text);}
+  .hist-diff-list{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
+  .hist-diff-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:11.5px;padding:4px 9px;border-radius:var(--r-pill);
+    background:var(--c-surface);border:1px solid var(--c-border);color:var(--c-text-2);
+  }
+  .hist-diff-chip b{color:var(--c-text);font-weight:700;}
+  .hist-diff-new{color:var(--c-green);font-weight:700;}
+  .hist-dept-block{margin-bottom:14px;}
+  .hist-dept-label{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--c-text-2);margin-bottom:8px;
+  }
+  .hist-area-block{margin-bottom:10px;}
+  .hist-area-head{
+    display:flex;align-items:center;gap:6px;
+    font-weight:700;font-size:12.5px;color:var(--c-text);margin-bottom:6px;
+  }
+  .hist-chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .hist-person-chip{
+    padding:4px 10px;border-radius:var(--r-pill);
+    background:var(--c-surface-2);border:1px solid var(--c-border);
+    font-size:12px;font-weight:600;color:var(--c-text);cursor:pointer;
+    transition:opacity .12s,border-color .12s,background .12s;
+  }
+  .hist-person-chip:hover{border-color:var(--c-accent);}
+  .hist-person-chip.moved{border-color:var(--c-accent);background:rgba(47,95,168,.07);}
+  .hist-person-chip.dim{opacity:.25;}
+  .hist-person-chip.match{border-color:var(--c-accent);background:rgba(47,95,168,.15);}
+  @media(max-width:600px){
+    .hist-layout{flex-direction:column;}
+    .hist-sidebar{width:100%;max-height:140px;border-right:none;border-bottom:1px solid var(--c-border);}
+  }
   .modal-foot{
     padding:12px 16px;
     border-top:1px solid var(--c-border);
@@ -3710,6 +3797,18 @@
   .rp-format-check input[type=checkbox]{
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
+
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
 
   /* Preview pane */
   .rp-preview-pane{
@@ -4834,6 +4933,18 @@
   .rp-format-check input[type=checkbox]{
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
+
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
 
   /* Preview pane */
   .rp-preview-pane{
@@ -11419,6 +11530,7 @@ function renderModal(){
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
+  else if(m.type==='quick-pick') inner = renderQuickPickModal(m);
   return `<div class="modal-backdrop" id="modal-backdrop">${inner}</div>`;
 }
 
@@ -11428,6 +11540,19 @@ function renderKeyboardShortcutsModal(){
     ['Esc', 'Close a modal, or cancel a move/swap in progress'],
     ['?', 'Show this list'],
   ];
+  if(!isTeamLeadRole()){
+    rows.push(
+      ['O', 'Call out — mark someone out'],
+      ['S', 'Swap — pick who to swap'],
+      ['L', 'Late arrival — pick who'],
+      ['E', 'Left early — pick who'],
+      ['T', 'Schedule time off'],
+      ['A', 'Add staff'],
+      ['D', 'Edit staff — pick who'],
+      ['R', 'Go to Roster'],
+      ['P', 'Print / export report'],
+    );
+  }
   return `
   <div class="modal" style="max-width:360px;">
     <div class="modal-head">
@@ -11696,24 +11821,38 @@ function renderStaffManagerModal(m){
 
   const tagsSwitchOn = m.swTags !== undefined ? m.swTags : !!(editing && editing.tags);
   const lateStartSwitchOn = m.swLateStart !== undefined ? m.swLateStart : !!(editing && editing.lateStart);
+  // Profile field values: prefer whatever was snapshotted onto the modal
+  // when the user switched tabs (m.xxx) over the saved staff record, same
+  // fallback the Rotation tab and the save handler already use. Without
+  // this, switching to Rotation/Stats and back to Profile on a brand-new
+  // (unsaved) staff member re-rendered every field from `editing` — which
+  // is null until the record is actually saved — wiping out the name and
+  // everything else that had just been typed.
+  const nameVal       = m.name       !== undefined ? m.name       : (editing ? editing.name       : '');
+  const tdisVal        = m.tdisNumber !== undefined ? m.tdisNumber : (editing ? editing.tdisNumber||'' : '');
+  const shiftVal       = m.shiftHours !== undefined ? m.shiftHours : (editing ? editing.shiftHours  : '');
+  const lunchRaw        = m.lunchVal  !== undefined ? '/'+m.lunchVal : (editing ? editing.breakTimes : null);
+  const hireDateVal    = m.hireDate  !== undefined ? m.hireDate  : (editing ? editing.hireDate||''  : '');
+  const lateStartVal   = m.lateStart !== undefined ? m.lateStart : (editing ? editing.lateStart||'' : '');
+  const tagsVal        = m.tags      !== undefined ? m.tags      : (editing ? editing.tags||''      : '');
   const profileTab = `
     <div class="sm-grid-2">
-      <div class="field"><label>Name</label><input type="text" id="staff-name-input" placeholder="Full name" value="${editing?escapeHtml(editing.name):''}"/></div>
+      <div class="field"><label>Name</label><input type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}"/></div>
       <div class="field">
         <label>TDIS # <span class="field-hint">(3-char ID)</span></label>
-        <input type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${editing?escapeHtml(editing.tdisNumber||''):''}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/>
+        <input type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/>
         <div class="field-error" id="staff-tdis-error"></div>
       </div>
     </div>
     <div class="sm-grid-2">
       <div class="field"><label>Shift</label>
         <select id="staff-hours-input"><option value="">— Select —</option>
-          ${state.shifts.map(sh=>'<option value="'+escapeHtml(sh.label)+'" '+((editing&&editing.shiftHours&&(editing.shiftHours===sh.label||editing.shiftHours.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':'')+'>'+escapeHtml(sh.label)+'</option>').join('')}
+          ${state.shifts.map(sh=>'<option value="'+escapeHtml(sh.label)+'" '+((shiftVal&&(shiftVal===sh.label||shiftVal.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':'')+'>'+escapeHtml(sh.label)+'</option>').join('')}
         </select>
       </div>
       <div class="field"><label>Lunch</label>
         <select id="staff-lunch-input"><option value="">— Select —</option>
-          ${renderLunchOptions(editing ? editing.breakTimes : null)}
+          ${renderLunchOptions(lunchRaw)}
         </select>
       </div>
     </div>
@@ -11724,19 +11863,19 @@ function renderStaffManagerModal(m){
     </div>
     <div class="field">
       <label>Hire date <span class="field-hint">(for seniority)</span></label>
-      <input type="date" id="staff-hiredate-input" value="${editing&&editing.hireDate?escapeHtml(editing.hireDate):''}" style="max-width:180px;"/>
+      <input type="date" id="staff-hiredate-input" value="${escapeHtml(hireDateVal)}" style="max-width:180px;"/>
     </div>
     <div class="sw-group" style="margin-bottom:0;">
       ${sw('sw-late-start', lateStartSwitchOn, '⏰ Late start / partial day', 'Starts later than usual today')}
     </div>
     <div class="sw-reveal ${lateStartSwitchOn?'open':''}" id="late-start-reveal-wrap"><div class="field" style="margin-top:12px;">
-      <input type="time" id="staff-latestart-input" value="${editing&&editing.lateStart?escapeHtml(editing.lateStart):''}" style="max-width:140px;"/>
+      <input type="time" id="staff-latestart-input" value="${escapeHtml(lateStartVal)}" style="max-width:140px;"/>
     </div></div>
     <div class="sw-group" style="margin-bottom:0;">
       ${sw('sw-tags', tagsSwitchOn, 'Role / tags', 'Optional label shown on chip')}
       ${sw('sw-subcontractor', m.swSubcontractor !== undefined ? m.swSubcontractor : !!(editing&&editing.isSubcontractor), '🏷 AGS (Sub-contractor)', 'Marks this person as agency / sub-contracted staff')}
     </div>
-    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:12px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${editing?escapeHtml(editing.tags||''):''}"/></div></div>`;
+    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:12px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${escapeHtml(tagsVal)}"/></div></div>`;
 
   const rotationTab = `
     <div class="field"><label>Rotation flow</label>
@@ -11991,24 +12130,105 @@ function renderBlocksManagerModal(m){
 }
 
 // --- 4. History ---
+// Visual, browsable rotation history: a period picker on the left, and on
+// the right a board-like snapshot of that period grouped by department/area
+// (instead of the old flat wall-of-text list), plus a "moves since the
+// previous period" diff so changes are obvious at a glance, and a search box
+// to find a specific person within the selected period.
 function renderHistoryModal(m){
-  const rows = state.history.slice().reverse();
+  const chrono = state.history; // oldest → newest
+  if(!chrono.length){
+    return `
+    <div class="modal">
+      <div class="modal-head">
+        <div><h2>Rotation history</h2><p>Past periods, most recent first.</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="small-muted">No completed rotations yet. Use "Rotate now" to snapshot the current period.</div>
+      </div>
+    </div>`;
+  }
+
+  const selectedIdx = (m.selectedIdx!=null && chrono[m.selectedIdx]) ? m.selectedIdx : chrono.length-1;
+  const h    = chrono[selectedIdx];
+  const prev = selectedIdx>0 ? chrono[selectedIdx-1] : null;
+
+  // Moves since the previous period: anyone whose area changed (or who is
+  // newly assigned) between prev.assignments and h.assignments.
+  const moves = [];
+  if(prev){
+    Object.keys(h.assignments).forEach(sid=>{
+      const curA = h.assignments[sid], prevA = prev.assignments[sid];
+      if(curA !== prevA) moves.push({staffId:sid, from:prevA||null, to:curA, isNew: prevA===undefined});
+    });
+  }
+  const movedIds = new Set(moves.map(mv=>mv.staffId));
+
+  const q = (m.search||'').trim().toLowerCase();
+  const groups = areasByDepartment();
+  const rowsDesc = chrono.map((hh,idx)=>({...hh, idx})).slice().reverse();
+
   return `
-  <div class="modal">
+  <div class="modal hist-modal">
     <div class="modal-head">
-      <div><h2>Rotation history</h2><p>Past periods, most recent first.</p></div>
+      <div><h2>Rotation history</h2><p>${chrono.length} completed period${chrono.length===1?'':'s'} · pick a period to see who was where</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
-    <div class="modal-body">
-      ${rows.length===0?'<div class="small-muted">No completed rotations yet. Use "Rotate now" to snapshot the current period.</div>':rows.map(h=>`
-        <div style="margin-bottom:16px;">
-          <div style="font-weight:800;font-family:var(--mono);font-size:12.5px;margin-bottom:6px;">${escapeHtml(h.period)}</div>
-          ${state.areas.map(area=>{
-            const inArea = Object.keys(h.assignments).filter(sid=>h.assignments[sid]===area.id);
-            if(inArea.length===0) return '';
-            return `<div class="small-muted" style="margin-bottom:3px;"><b style="color:${area.color}">${escapeHtml(area.name)}:</b> ${inArea.map(sid=>escapeHtml(getStaffById(sid)?.name||'former staff')).join(', ')}</div>`;
+    <div class="modal-body hist-body">
+      <div class="hist-layout">
+        <div class="hist-sidebar">
+          ${rowsDesc.map(r=>`
+            <div class="hist-period-row ${r.idx===selectedIdx?'active':''}" data-hist-period="${r.idx}">
+              <div class="hist-period-label">${escapeHtml(r.period)}</div>
+              <div class="hist-period-meta">${Object.keys(r.assignments).length} placed${r.idx===chrono.length-1?' · latest':''}</div>
+            </div>`).join('')}
+        </div>
+        <div class="hist-main">
+          <div class="roster-search-wrap" style="margin-bottom:14px;">
+            <span class="roster-search-icon">🔍</span>
+            <input type="text" id="hist-search" class="roster-search" placeholder="Find a person in this period…" value="${escapeHtml(m.search||'')}"/>
+            ${m.search?'<button class="roster-search-clear" id="hist-search-clear">✕</button>':''}
+          </div>
+
+          ${prev ? `
+          <div class="hist-diff-section ${moves.length?'':'hist-diff-empty'}">
+            <div class="hist-diff-head">${moves.length?`🔀 ${moves.length} move${moves.length===1?'':'s'} since ${escapeHtml(prev.period)}`:`No moves since ${escapeHtml(prev.period)}`}</div>
+            ${moves.length?`<div class="hist-diff-list">
+              ${moves.map(mv=>{
+                const s = getStaffById(mv.staffId);
+                const fromArea = mv.from ? getAreaById(mv.from) : null;
+                const toArea   = mv.to   ? getAreaById(mv.to)   : null;
+                return `<span class="hist-diff-chip"><b>${escapeHtml(s?.name||'former staff')}</b> ${mv.isNew?'<span class="hist-diff-new">new</span> → '+(toArea?escapeHtml(toArea.name):'—'):`${fromArea?escapeHtml(fromArea.name):'—'} → ${toArea?escapeHtml(toArea.name):'—'}`}</span>`;
+              }).join('')}
+            </div>`:''}
+          </div>` : `<div class="hist-diff-section hist-diff-empty"><div class="hist-diff-head">🏁 First recorded period</div></div>`}
+
+          ${groups.map(g=>{
+            const areasWithPeople = g.areas.map(area=>{
+              const inArea = Object.keys(h.assignments).filter(sid=>h.assignments[sid]===area.id);
+              return {area, inArea};
+            }).filter(x=>x.inArea.length>0);
+            if(!areasWithPeople.length) return '';
+            return `<div class="hist-dept-block">
+              <div class="hist-dept-label">${escapeHtml(g.department)}</div>
+              ${areasWithPeople.map(({area,inArea})=>`
+                <div class="hist-area-block">
+                  <div class="hist-area-head"><span class="area-dot" style="background:${area.color}"></span>${escapeHtml(area.name)}</div>
+                  <div class="hist-chip-row">
+                    ${inArea.map(sid=>{
+                      const s = getStaffById(sid);
+                      const name = s?.name||'former staff';
+                      const isMatch = q && name.toLowerCase().includes(q);
+                      const cls = [q?(isMatch?'match':'dim'):'', movedIds.has(sid)?'moved':''].filter(Boolean).join(' ');
+                      return `<span class="hist-person-chip ${cls}" data-hist-person="${sid}">${escapeHtml(name)}</span>`;
+                    }).join('')}
+                  </div>
+                </div>`).join('')}
+            </div>`;
           }).join('')}
-        </div>`).join('')}
+        </div>
+      </div>
     </div>
   </div>`;
 }
@@ -12501,6 +12721,45 @@ function renderMarkCalloutModal(m){
             </div>
           </div>`).join('')}
       </div>
+    </div>
+  </div>`;
+}
+
+// --- Quick-pick staff picker — shared "who?" step for keyboard shortcuts
+//     that need a target person but (unlike Call out / Add staff / Schedule
+//     leave) have no existing global entry point: Swap, Late arrival, Left
+//     early, Edit staff each normally start from a specific chip's menu.
+//     Picking a name here hands off to the exact same code path the chip
+//     menu action already uses (swapMode, toggleAttendanceEvent, the
+//     staff-manager edit modal) — this is only the "who" step. ---
+const QUICK_PICK_META = {
+  swap:  { title: 'Swap — pick the first person', sub: "You'll tap who they're swapping with next." },
+  late:  { title: 'Late arrival — pick who', sub: 'Flags them as arriving late today.' },
+  early: { title: 'Left early — pick who', sub: 'Flags them as leaving early today.' },
+  edit:  { title: 'Edit staff — pick who', sub: 'Opens their profile for editing.' },
+};
+function renderQuickPickModal(m){
+  const meta = QUICK_PICK_META[m.action] || QUICK_PICK_META.edit;
+  // Edit works on anyone; swap/late/early only make sense for someone
+  // actually on the board today (not already called out for the day).
+  const candidates = state.staff.filter(s=>s.active!==false && (m.action==='edit' || !state.callouts[s.id]));
+  return `
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2>${escapeHtml(meta.title)}</h2><p>${escapeHtml(meta.sub)}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${candidates.length===0?`<div class="small-muted">Nobody available for this right now.</div>`:`
+      <div class="option-list" style="max-height:360px;overflow-y:auto;">
+        ${candidates.map(s=>`
+          <div class="option-card" data-quick-pick="${s.id}">
+            <div class="oc-left">
+              <span class="oc-name">${escapeHtml(s.name)}</span>
+              <span class="oc-sub">${state.assignments[s.id]?escapeHtml(getAreaById(state.assignments[s.id])?.name||''):'Unassigned'}</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
     </div>
   </div>`;
 }
@@ -14438,6 +14697,37 @@ async function openAuditLog(){
   }
 }
 
+function defaultReportDateRange(){
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 29); // last 30 days, inclusive of today
+  const fmt = d => d.toISOString().slice(0,10);
+  return { startDate: fmt(start), endDate: fmt(end) };
+}
+
+// Opens the Report Builder and (re)loads the Daily Activity Log from the
+// server-persisted audit_log table for the picked date range — replaces the
+// old behavior of reading state.dailyLog, which is local-only and capped at
+// 500 entries, so it could never show more than whatever this browser had
+// accumulated since it was last cleared.
+async function openReportBuilder(extra={}){
+  const def = defaultReportDateRange();
+  const base = {
+    type:'report-preview',
+    sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
+    ...extra,
+    reportStartDate: extra.reportStartDate || def.startDate,
+    reportEndDate:   extra.reportEndDate   || def.endDate,
+  };
+  openModal({...base, activityLoading:true});
+  try{
+    const rows = await window.RC.fetchAuditLog({ startDate: base.reportStartDate, endDate: base.reportEndDate, limit: 1000 });
+    openModal({...base, activityLoading:false, activityLog: rows||[]});
+  }catch(e){
+    openModal({...base, activityLoading:false, activityLog: [], activityError: (e && e.message) || 'Could not load the activity log.'});
+  }
+}
+
 async function openTeamDashboard(){
   openModal({type:'team-dashboard', loading:true, raw:[], search:''});
   try{
@@ -14574,7 +14864,7 @@ function renderReportPreviewModal(m){
   let previewHTML = '';
   if(previewPage && secs[previewPage]){
     try{
-      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs);
+      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5};
       const rawPage = pageMap[previewPage]||'';
       previewHTML = rawPage;
@@ -14628,6 +14918,21 @@ function renderReportPreviewModal(m){
           </div>
           <button class="rp-preview-btn" data-preview="${p.id}" title="Preview this section">👁</button>
         </label>`).join('')}
+
+      <div class="rp-sidebar-divider"></div>
+
+      <div class="rp-sidebar-head" style="margin-top:0">Date range</div>
+      <div class="rp-date-range-row">
+        <label class="rp-date-field">
+          <span>From</span>
+          <input type="date" id="rp-date-start" value="${m.reportStartDate||''}" max="${todayLabel()}">
+        </label>
+        <label class="rp-date-field">
+          <span>To</span>
+          <input type="date" id="rp-date-end" value="${m.reportEndDate||''}" max="${todayLabel()}">
+        </label>
+      </div>
+      <div class="rp-date-hint">${m.activityLoading ? 'Loading activity…' : m.activityError ? m.activityError : `Applies to the Daily activity log · ${(m.activityLog||[]).length} event${(m.activityLog||[]).length===1?'':'s'} in range`}</div>
 
       <div class="rp-sidebar-divider"></div>
 
@@ -14724,6 +15029,21 @@ function attachHandlers(){
       } else if(e.key==='?'){
         e.preventDefault();
         openModal({type:'keyboard-shortcuts'});
+      } else if(!isTeamLeadRole()){
+        // These all need a target person but (unlike search/help) have no
+        // meaning without one — Call out/Add staff/Schedule leave/Roster/
+        // Report already have a global entry point to jump straight to;
+        // Swap/Late/Early/Edit go through the quick-pick "who?" modal first.
+        const key = e.key.toLowerCase();
+        if(key==='o'){ e.preventDefault(); openModal({type:'mark-callout'}); }
+        else if(key==='s'){ e.preventDefault(); openModal({type:'quick-pick', action:'swap'}); }
+        else if(key==='l'){ e.preventDefault(); openModal({type:'quick-pick', action:'late'}); }
+        else if(key==='e'){ e.preventDefault(); openModal({type:'quick-pick', action:'early'}); }
+        else if(key==='d'){ e.preventDefault(); openModal({type:'quick-pick', action:'edit'}); }
+        else if(key==='t'){ e.preventDefault(); openModal({type:'time-off-manager', pickStaff:true}); }
+        else if(key==='a'){ e.preventDefault(); openModal({type:'staff-manager'}); }
+        else if(key==='r'){ e.preventDefault(); navDrawerOpen=false; viewMode='roster'; render(); }
+        else if(key==='p'){ e.preventDefault(); openReportBuilder(); }
       }
     });
   }
@@ -15354,8 +15674,7 @@ function attachHandlers(){
   // ── print board ──
   on('nav-print-board', ()=>{
     navDrawerOpen=false;
-    openModal({type:'report-preview', sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true}});
-    render();
+    openReportBuilder();
   });
   // ── export today's callouts/late/left-early to an Outlook-importable .ics ──
   on('nav-export-outlook', ()=>{
@@ -15672,75 +15991,102 @@ function attachHandlers(){
 
     // ─────────────────────────────────────────────────────────────────────
     // PAGE 5 — Daily Activity Log (reassignments per day)
-    // ─────────────────────────────────────────────────────────────────────
-    const allLog = (state.dailyLog||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
-    
+    // Sourced from opts.activityLog — rows fetched from the server-persisted
+    // audit_log table for the picked date range (see openReportBuilder) —
+    // rather than the local-only, 500-entry-capped state.dailyLog. That local
+    // log only ever held whatever had accumulated in one browser, which is
+    // why the report used to look stuck at whatever date it was last cleared.
+    // Falls back to state.dailyLog when no activityLog was supplied (e.g. a
+    // caller that hasn't been updated to pass one yet).
+    const usingAuditLog = Array.isArray(opts.activityLog);
+    const auditTypeMeta = {
+      move:           {label:'↗ Move',            color:'#2a85ff'},
+      swap:           {label:'⇄ Swap',             color:'#8e59ff'},
+      callout:        {label:'⚡ Callout',          color:'#ff6a55'},
+      clear_callout:  {label:'↩ Return',           color:'#83bf6e'},
+      edit_staff:     {label:'✎ Edit staff',       color:'#6b7280'},
+      add_staff:      {label:'➕ Add staff',        color:'#83bf6e'},
+      archive_staff:  {label:'🗑 Archive staff',    color:'#ff6a55'},
+      edit_area:      {label:'✎ Edit area',        color:'#6b7280'},
+      add_area:       {label:'➕ Add area',         color:'#83bf6e'},
+      rotate_period:  {label:'🔄 Rotate',           color:'#f59e0b'},
+      evaluation:     {label:'⭐ Evaluation',       color:'#8e59ff'},
+      account_request:{label:'🔑 Access request',  color:'#f59e0b'},
+      account_grant:  {label:'🔑 Access granted',  color:'#83bf6e'},
+      account_revoke: {label:'🔑 Access revoked',  color:'#ff6a55'},
+      time_off:       {label:'📅 Time off',        color:'#6b7280'},
+    };
+    const legacyTypeMeta = {
+      move:      {label:'↗ Move',     color:'#2a85ff'},
+      swap:      {label:'⇄ Swap',     color:'#8e59ff'},
+      callout:   {label:'⚡ Callout',  color:'#ff6a55'},
+      return:    {label:'↩ Return',   color:'#83bf6e'},
+      coverage:  {label:'🛡 Coverage', color:'#f59e0b'},
+      'time-off':{label:'📅 Time Off',color:'#6b7280'},
+    };
+
+    // Normalize both sources into one shape: {ts, label, color, who, detail}
+    const normalizedLog = usingAuditLog
+      ? opts.activityLog.map(e=>{
+          const meta = auditTypeMeta[e.action] || {label:e.action||'—', color:'#555'};
+          return { ts: e.created_at, label: meta.label, color: meta.color, who: e.accounts?.name || '—', detail: e.description || '' };
+        })
+      : (state.dailyLog||[]).map(e=>{
+          const meta = legacyTypeMeta[e.type] || {label:e.type, color:'#555'};
+          const staff = getStaffById(e.staffId)?.name || e.staffId || '—';
+          const from  = e.fromArea ? (getAreaById(e.fromArea)?.name||e.fromArea) : null;
+          const to    = e.toArea   ? (getAreaById(e.toArea)?.name||e.toArea)     : null;
+          let detail = from && to ? `${from} → ${to}` : (to ? `→ ${to}` : '');
+          if(e.note) detail = detail ? `${detail} — ${e.note}` : e.note;
+          return { ts: e.ts, label: meta.label, color: meta.color, who: staff, detail };
+        });
+    normalizedLog.sort((a,b)=>String(b.ts).localeCompare(String(a.ts)));
+
     // Group by date
     const logByDate = {};
-    allLog.forEach(e=>{
-      const d = e.date||e.ts.slice(0,10);
+    normalizedLog.forEach(e=>{
+      const d = (e.ts||'').slice(0,10);
+      if(!d) return;
       if(!logByDate[d]) logByDate[d]=[];
       logByDate[d].push(e);
     });
     const logDates = Object.keys(logByDate).sort().reverse();
 
-    const typeLabels = {
-      move:     '↗ Move',
-      swap:     '⇄ Swap',
-      callout:  '⚡ Callout',
-      return:   '↩ Return',
-      coverage: '🛡 Coverage',
-      'time-off':'📅 Time Off',
-    };
-    const typeColors = {
-      move:    '#2a85ff',
-      swap:    '#8e59ff',
-      callout: '#ff6a55',
-      return:  '#83bf6e',
-      coverage:'#f59e0b',
-      'time-off':'#6b7280',
-    };
+    const rangeLabel = (opts.reportStartDate && opts.reportEndDate)
+      ? `${friendlyD(opts.reportStartDate)} – ${friendlyD(opts.reportEndDate)}`
+      : '';
 
     let page5 = `<div class="page page-break">
       <h1>Daily Activity Log</h1>
-      <div class="subtitle">All reassignments, callouts &amp; coverage events — most recent first</div>`;
+      <div class="subtitle">All reassignments, callouts &amp; other logged actions — most recent first${rangeLabel?` &nbsp;·&nbsp; ${rangeLabel}`:''}</div>`;
 
     if(!logDates.length){
-      page5 += `<div style="color:#aaa;font-style:italic;padding:20pt 0;">No activity recorded yet. Events are logged automatically when you move, swap, call out, or assign coverage on the board.</div>`;
+      page5 += `<div style="color:#aaa;font-style:italic;padding:20pt 0;">No activity recorded${rangeLabel?' for this date range':' yet'}. Events are logged automatically when you move, swap, call out, or assign coverage on the board.</div>`;
     } else {
       logDates.forEach(date=>{
         const events = logByDate[date];
-        const moves    = events.filter(e=>e.type==='move').length;
-        const swaps    = events.filter(e=>e.type==='swap').length;
-        const callouts = events.filter(e=>e.type==='callout').length;
-        const covs     = events.filter(e=>e.type==='coverage').length;
         const friendly = (()=>{
           try{const[y,m,d]=date.split('-').map(Number);const dt=new Date(y,m-1,d);return dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}catch(e){return date;}
         })();
+        const counts = {};
+        events.forEach(e=>{ counts[e.label]=(counts[e.label]||0)+1; });
+        const summary = Object.entries(counts).map(([label,n])=>`${n} ${label.replace(/^\S+\s/,'')}${n>1?'s':''}`).join(' · ');
         page5 += `
         <div class="day-block">
           <div class="day-header">
             <span class="day-date">${friendly}</span>
-            <span class="day-summary">${moves?moves+' move'+(moves>1?'s':''):''} ${swaps?swaps+' swap'+(swaps>1?'s':''):''} ${callouts?callouts+' callout'+(callouts>1?'s':''):''} ${covs?covs+' coverage':''}
-            </span>
+            <span class="day-summary">${summary}</span>
           </div>
           <table class="log-table">
-            <thead><tr><th style="width:55pt">Time</th><th style="width:70pt">Type</th><th style="width:150pt">Staff</th><th style="width:110pt">From</th><th style="width:110pt">To</th><th>Note</th></tr></thead>
+            <thead><tr><th style="width:55pt">Time</th><th style="width:110pt">Type</th><th style="width:120pt">${usingAuditLog?'By':'Staff'}</th><th>Details</th></tr></thead>
             <tbody>`;
         events.forEach(e=>{
           const time = e.ts ? new Date(e.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
-          const staff = getStaffById(e.staffId)?.name || e.staffId || '—';
-          const from  = e.fromArea ? (getAreaById(e.fromArea)?.name||e.fromArea) : '—';
-          const to    = e.toArea   ? (getAreaById(e.toArea)?.name||e.toArea)     : '—';
-          const color = typeColors[e.type]||'#555';
-          const label = typeLabels[e.type]||e.type;
           page5 += `<tr>
             <td style="font-size:9pt;color:#777">${time}</td>
-            <td><span style="font-size:9pt;font-weight:700;color:${color};background:${color}18;padding:1pt 5pt;border-radius:3pt">${label}</span></td>
-            <td style="font-weight:600">${escapeHtml(staff)}</td>
-            <td style="color:#777;font-size:10pt">${escapeHtml(from)}</td>
-            <td style="font-size:10pt">${escapeHtml(to)}</td>
-            <td style="font-size:9pt;color:#888">${escapeHtml(e.note||'')}</td>
+            <td><span style="font-size:9pt;font-weight:700;color:${e.color};background:${e.color}18;padding:1pt 5pt;border-radius:3pt">${e.label}</span></td>
+            <td style="font-weight:600;font-size:9.5pt">${escapeHtml(e.who)}</td>
+            <td style="font-size:10pt;color:#555">${escapeHtml(e.detail)}</td>
           </tr>`;
         });
         page5 += `</tbody></table></div>`;
@@ -16781,6 +17127,30 @@ function attachHandlers(){
     }));
   }
 
+  // --- quick-pick staff picker (keyboard-shortcut entry points for
+  //     swap/late/early/edit — see QUICK_PICK_META) ---
+  if(activeModal.type==='quick-pick'){
+    const action = activeModal.action;
+    document.querySelectorAll('[data-quick-pick]').forEach(el=>el.addEventListener('click', ()=>{
+      const id = el.dataset.quickPick;
+      const person = getStaffById(id);
+      if(action==='swap'){
+        closeModal();
+        swapMode = { staffId: id };
+        render();
+      } else if(action==='late'){
+        closeModal();
+        toggleAttendanceEvent(id, 'late_arrival');
+      } else if(action==='early'){
+        closeModal();
+        toggleAttendanceEvent(id, 'left_early');
+      } else if(action==='edit'){
+        closeModal();
+        setTimeout(()=>openModal({type:'staff-manager', editId:id}), 50);
+      }
+    }));
+  }
+
   // --- department reorder modal ---
   if(activeModal.type==='dept-reorder'){
     on('modal-close-dept', closeModal);
@@ -17279,7 +17649,7 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-live-iframe');
         if(!iframe) return;
         try{
-          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom});
+          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -17300,7 +17670,7 @@ function attachHandlers(){
         setTimeout(()=>{
           const iframe=document.getElementById('rp-live-iframe');
           if(!iframe) return;
-          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac});
+          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate});
           const doc=iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -17371,19 +17741,34 @@ function attachHandlers(){
         });
 
         // ── Sheet 3: Daily Activity Log ────────────────────────────────────
-        const sh3 = [['Date','Time','Type','Staff Name','Department','From Area','To Area','Note','Period']];
-        (state.dailyLog||[]).slice().reverse().forEach(e=>{
-          const s  = getStaffById(e.staffId);
-          const ts = e.ts ? new Date(e.ts) : null;
-          const timeStr = ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
-          sh3.push([
-            e.date||'', timeStr, e.type||'',
-            s?.name||e.staffId||'', s?.department||'',
-            getAreaById(e.fromArea)?.name||e.fromArea||'',
-            getAreaById(e.toArea)?.name||e.toArea||'',
-            e.note||'', e.period||''
-          ]);
-        });
+        // Prefers the server-backed audit_log rows (m.activityLog, fetched
+        // for the picked date range) over the local-only state.dailyLog.
+        let sh3;
+        if(Array.isArray(m.activityLog)){
+          sh3 = [['Date','Time','Type','By','Description']];
+          m.activityLog.slice().reverse().forEach(e=>{
+            const ts = e.created_at ? new Date(e.created_at) : null;
+            sh3.push([
+              e.created_at ? e.created_at.slice(0,10) : '',
+              ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '',
+              e.action||'', e.accounts?.name||'', e.description||''
+            ]);
+          });
+        } else {
+          sh3 = [['Date','Time','Type','Staff Name','Department','From Area','To Area','Note','Period']];
+          (state.dailyLog||[]).slice().reverse().forEach(e=>{
+            const s  = getStaffById(e.staffId);
+            const ts = e.ts ? new Date(e.ts) : null;
+            const timeStr = ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
+            sh3.push([
+              e.date||'', timeStr, e.type||'',
+              s?.name||e.staffId||'', s?.department||'',
+              getAreaById(e.fromArea)?.name||e.fromArea||'',
+              getAreaById(e.toArea)?.name||e.toArea||'',
+              e.note||'', e.period||''
+            ]);
+          });
+        }
 
         // ── Sheet 4: Arrival Times ─────────────────────────────────────────
         const sh4 = [['Name','Department','Date','Scheduled','Actual','Diff (min)','Status']];
@@ -17487,7 +17872,7 @@ function attachHandlers(){
     // Section checkbox toggles
     document.querySelectorAll('.rp-check').forEach(cb=>cb.addEventListener('change',()=>{
       const newSecs = {...secs, [cb.dataset.sec]: cb.checked};
-      openModal({type:'report-preview', sections:newSecs, previewPage:m.previewPage, orient:m.orient, showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      openModal({...activeModal, sections:newSecs});
       render();
     }));
 
@@ -17498,7 +17883,7 @@ function attachHandlers(){
         const sec = row.querySelector('.rp-check')?.dataset.sec;
         if(!sec) return;
         const newSecs = {...secs, [sec]: !secs[sec]};
-        openModal({type:'report-preview', sections:newSecs, previewPage:m.previewPage, orient:m.orient});
+        openModal({...activeModal, sections:newSecs});
         render();
       });
     });
@@ -17508,14 +17893,14 @@ function attachHandlers(){
       e.stopPropagation();
       const pg = btn.dataset.preview;
       if(!secs[pg]){ showToast('Enable this section first', 'rust'); return; }
-      openModal({type:'report-preview', sections:secs, previewPage: m.previewPage===pg?null:pg, orient:m.orient});
+      openModal({...activeModal, sections:secs, previewPage: m.previewPage===pg?null:pg});
       render();
       // After render, write to iframe
       setTimeout(()=>{
         const iframe = document.getElementById('rp-preview-iframe');
         if(!iframe) return;
         try{
-          const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+          const {page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
@@ -17526,30 +17911,35 @@ function attachHandlers(){
     }));
 
     // Close preview
-    on('rp-close-preview',()=>{ openModal({type:'report-preview',sections:secs,orient:m.orient}); render(); });
+    on('rp-close-preview',()=>{ openModal({...activeModal, previewPage:null}); render(); });
 
     // Format options — orientation
     document.querySelectorAll('input[name="rp-orient"]').forEach(r=>r.addEventListener('change',()=>{
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:r.value,
-        showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      openModal({...activeModal, orient:r.value});
       render();
     }));
+
+    // Date range — From/To. Re-fetches the audit_log-backed activity log
+    // for the new range so the Daily Activity Log page (and Excel export)
+    // reflect it.
+    const dateStartEl = document.getElementById('rp-date-start');
+    const dateEndEl   = document.getElementById('rp-date-end');
+    function applyDateRange(){
+      const startVal = dateStartEl?.value || m.reportStartDate;
+      const endVal   = dateEndEl?.value   || m.reportEndDate;
+      if(startVal > endVal){ showToast('Start date must be before end date', 'rust'); render(); return; }
+      openReportBuilder({...activeModal, reportStartDate:startVal, reportEndDate:endVal});
+    }
+    dateStartEl?.addEventListener('change', applyDateRange);
+    dateEndEl?.addEventListener('change', applyDateRange);
 
     // Format checkboxes — showTimes / showBreaks / showSeniority
     const showTimesEl   = document.getElementById('rp-show-times');
     const showBreaksEl  = document.getElementById('rp-show-breaks');
     const showSenEl     = document.getElementById('rp-show-seniority');
-    function saveFormatPrefs_unused(){
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:m.orient,
-        showTimes:   showTimesEl?.checked   !== false,
-        showBreaks:  showBreaksEl?.checked  !== false,
-        showSeniority: showSenEl?.checked   !== false,
-      });
-      render();
-    }
     const showAccomEl = document.getElementById('rp-show-accom');
     function saveFormatPrefsAll(){
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:m.orient,
+      openModal({...activeModal,
         showTimes:   showTimesEl?.checked   !== false,
         showBreaks:  showBreaksEl?.checked  !== false,
         showSeniority: showSenEl?.checked   !== false,
@@ -17564,7 +17954,7 @@ function attachHandlers(){
 
     // Download
     on('rp-btn-download',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
@@ -17578,7 +17968,7 @@ function attachHandlers(){
 
     // Print
     on('rp-btn-print',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
@@ -17941,6 +18331,30 @@ function attachHandlers(){
         showToast(`Could not revoke access: ${(err&&err.message)||'try again'}`, 'rust');
         el.disabled = false; el.textContent = 'Revoke';
       }
+    }));
+  }
+
+  // --- rotation history ---
+  if(activeModal.type==='history'){
+    const m = activeModal;
+    document.querySelectorAll('[data-hist-period]').forEach(row=>row.addEventListener('click', ()=>{
+      openModal({...m, selectedIdx: parseInt(row.dataset.histPeriod, 10)});
+    }));
+    const searchInput = document.getElementById('hist-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('hist-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    on('hist-search-clear', ()=>{ openModal({...m, search:''}); });
+    document.querySelectorAll('[data-hist-person]').forEach(chip=>chip.addEventListener('click', ()=>{
+      openModal({type:'staff-manager', editId: chip.dataset.histPerson, staffTab:'stats'});
     }));
   }
 
