@@ -11821,24 +11821,38 @@ function renderStaffManagerModal(m){
 
   const tagsSwitchOn = m.swTags !== undefined ? m.swTags : !!(editing && editing.tags);
   const lateStartSwitchOn = m.swLateStart !== undefined ? m.swLateStart : !!(editing && editing.lateStart);
+  // Profile field values: prefer whatever was snapshotted onto the modal
+  // when the user switched tabs (m.xxx) over the saved staff record, same
+  // fallback the Rotation tab and the save handler already use. Without
+  // this, switching to Rotation/Stats and back to Profile on a brand-new
+  // (unsaved) staff member re-rendered every field from `editing` — which
+  // is null until the record is actually saved — wiping out the name and
+  // everything else that had just been typed.
+  const nameVal       = m.name       !== undefined ? m.name       : (editing ? editing.name       : '');
+  const tdisVal        = m.tdisNumber !== undefined ? m.tdisNumber : (editing ? editing.tdisNumber||'' : '');
+  const shiftVal       = m.shiftHours !== undefined ? m.shiftHours : (editing ? editing.shiftHours  : '');
+  const lunchRaw        = m.lunchVal  !== undefined ? '/'+m.lunchVal : (editing ? editing.breakTimes : null);
+  const hireDateVal    = m.hireDate  !== undefined ? m.hireDate  : (editing ? editing.hireDate||''  : '');
+  const lateStartVal   = m.lateStart !== undefined ? m.lateStart : (editing ? editing.lateStart||'' : '');
+  const tagsVal        = m.tags      !== undefined ? m.tags      : (editing ? editing.tags||''      : '');
   const profileTab = `
     <div class="sm-grid-2">
-      <div class="field"><label>Name</label><input type="text" id="staff-name-input" placeholder="Full name" value="${editing?escapeHtml(editing.name):''}"/></div>
+      <div class="field"><label>Name</label><input type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}"/></div>
       <div class="field">
         <label>TDIS # <span class="field-hint">(3-char ID)</span></label>
-        <input type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${editing?escapeHtml(editing.tdisNumber||''):''}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/>
+        <input type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/>
         <div class="field-error" id="staff-tdis-error"></div>
       </div>
     </div>
     <div class="sm-grid-2">
       <div class="field"><label>Shift</label>
         <select id="staff-hours-input"><option value="">— Select —</option>
-          ${state.shifts.map(sh=>'<option value="'+escapeHtml(sh.label)+'" '+((editing&&editing.shiftHours&&(editing.shiftHours===sh.label||editing.shiftHours.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':'')+'>'+escapeHtml(sh.label)+'</option>').join('')}
+          ${state.shifts.map(sh=>'<option value="'+escapeHtml(sh.label)+'" '+((shiftVal&&(shiftVal===sh.label||shiftVal.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':'')+'>'+escapeHtml(sh.label)+'</option>').join('')}
         </select>
       </div>
       <div class="field"><label>Lunch</label>
         <select id="staff-lunch-input"><option value="">— Select —</option>
-          ${renderLunchOptions(editing ? editing.breakTimes : null)}
+          ${renderLunchOptions(lunchRaw)}
         </select>
       </div>
     </div>
@@ -11849,19 +11863,19 @@ function renderStaffManagerModal(m){
     </div>
     <div class="field">
       <label>Hire date <span class="field-hint">(for seniority)</span></label>
-      <input type="date" id="staff-hiredate-input" value="${editing&&editing.hireDate?escapeHtml(editing.hireDate):''}" style="max-width:180px;"/>
+      <input type="date" id="staff-hiredate-input" value="${escapeHtml(hireDateVal)}" style="max-width:180px;"/>
     </div>
     <div class="sw-group" style="margin-bottom:0;">
       ${sw('sw-late-start', lateStartSwitchOn, '⏰ Late start / partial day', 'Starts later than usual today')}
     </div>
     <div class="sw-reveal ${lateStartSwitchOn?'open':''}" id="late-start-reveal-wrap"><div class="field" style="margin-top:12px;">
-      <input type="time" id="staff-latestart-input" value="${editing&&editing.lateStart?escapeHtml(editing.lateStart):''}" style="max-width:140px;"/>
+      <input type="time" id="staff-latestart-input" value="${escapeHtml(lateStartVal)}" style="max-width:140px;"/>
     </div></div>
     <div class="sw-group" style="margin-bottom:0;">
       ${sw('sw-tags', tagsSwitchOn, 'Role / tags', 'Optional label shown on chip')}
       ${sw('sw-subcontractor', m.swSubcontractor !== undefined ? m.swSubcontractor : !!(editing&&editing.isSubcontractor), '🏷 AGS (Sub-contractor)', 'Marks this person as agency / sub-contracted staff')}
     </div>
-    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:12px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${editing?escapeHtml(editing.tags||''):''}"/></div></div>`;
+    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:12px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${escapeHtml(tagsVal)}"/></div></div>`;
 
   const rotationTab = `
     <div class="field"><label>Rotation flow</label>
