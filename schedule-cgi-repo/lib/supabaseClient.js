@@ -975,12 +975,14 @@ export async function fetchTeamPerformanceOverview() {
   return data;
 }
 
-export async function fetchAuditLog({ limit = 50 } = {}) {
-  const { data, error } = await supabase
+export async function fetchAuditLog({ limit = 50, startDate, endDate } = {}) {
+  let query = supabase
     .from('audit_log')
     .select('*, accounts:actor_id(name)')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .order('created_at', { ascending: false });
+  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
+  const { data, error } = await query.limit(limit);
   if (error) throw error;
   return data;
 }

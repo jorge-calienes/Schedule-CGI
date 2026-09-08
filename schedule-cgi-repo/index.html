@@ -926,6 +926,18 @@
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
 
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
+
   /* Preview pane */
   .rp-preview-pane{
     flex:1;min-width:0;display:flex;flex-direction:column;
@@ -2420,6 +2432,18 @@
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
 
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
+
   /* Preview pane */
   .rp-preview-pane{
     flex:1;min-width:0;display:flex;flex-direction:column;
@@ -3711,6 +3735,18 @@
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
 
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
+
   /* Preview pane */
   .rp-preview-pane{
     flex:1;min-width:0;display:flex;flex-direction:column;
@@ -4834,6 +4870,18 @@
   .rp-format-check input[type=checkbox]{
     width:14px;height:14px;accent-color:var(--c-accent);cursor:pointer;
   }
+
+  /* Date range */
+  .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
+  .rp-date-field{
+    flex:1;display:flex;flex-direction:column;gap:3px;
+    font-size:10.5px;font-weight:600;color:var(--c-text-2);
+  }
+  .rp-date-field input[type=date]{
+    padding:5px 6px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);
+    font-size:12px;color:var(--c-text-1);background:var(--c-surface-1);
+  }
+  .rp-date-hint{font-size:11px;color:var(--c-text-3);margin-top:4px;}
 
   /* Preview pane */
   .rp-preview-pane{
@@ -14491,6 +14539,37 @@ async function openAuditLog(){
   }
 }
 
+function defaultReportDateRange(){
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 29); // last 30 days, inclusive of today
+  const fmt = d => d.toISOString().slice(0,10);
+  return { startDate: fmt(start), endDate: fmt(end) };
+}
+
+// Opens the Report Builder and (re)loads the Daily Activity Log from the
+// server-persisted audit_log table for the picked date range — replaces the
+// old behavior of reading state.dailyLog, which is local-only and capped at
+// 500 entries, so it could never show more than whatever this browser had
+// accumulated since it was last cleared.
+async function openReportBuilder(extra={}){
+  const def = defaultReportDateRange();
+  const base = {
+    type:'report-preview',
+    sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
+    ...extra,
+    reportStartDate: extra.reportStartDate || def.startDate,
+    reportEndDate:   extra.reportEndDate   || def.endDate,
+  };
+  openModal({...base, activityLoading:true});
+  try{
+    const rows = await window.RC.fetchAuditLog({ startDate: base.reportStartDate, endDate: base.reportEndDate, limit: 1000 });
+    openModal({...base, activityLoading:false, activityLog: rows||[]});
+  }catch(e){
+    openModal({...base, activityLoading:false, activityLog: [], activityError: (e && e.message) || 'Could not load the activity log.'});
+  }
+}
+
 async function openTeamDashboard(){
   openModal({type:'team-dashboard', loading:true, raw:[], search:''});
   try{
@@ -14627,7 +14706,7 @@ function renderReportPreviewModal(m){
   let previewHTML = '';
   if(previewPage && secs[previewPage]){
     try{
-      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs);
+      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5};
       const rawPage = pageMap[previewPage]||'';
       previewHTML = rawPage;
@@ -14681,6 +14760,21 @@ function renderReportPreviewModal(m){
           </div>
           <button class="rp-preview-btn" data-preview="${p.id}" title="Preview this section">👁</button>
         </label>`).join('')}
+
+      <div class="rp-sidebar-divider"></div>
+
+      <div class="rp-sidebar-head" style="margin-top:0">Date range</div>
+      <div class="rp-date-range-row">
+        <label class="rp-date-field">
+          <span>From</span>
+          <input type="date" id="rp-date-start" value="${m.reportStartDate||''}" max="${todayLabel()}">
+        </label>
+        <label class="rp-date-field">
+          <span>To</span>
+          <input type="date" id="rp-date-end" value="${m.reportEndDate||''}" max="${todayLabel()}">
+        </label>
+      </div>
+      <div class="rp-date-hint">${m.activityLoading ? 'Loading activity…' : m.activityError ? m.activityError : `Applies to the Daily activity log · ${(m.activityLog||[]).length} event${(m.activityLog||[]).length===1?'':'s'} in range`}</div>
 
       <div class="rp-sidebar-divider"></div>
 
@@ -14791,7 +14885,7 @@ function attachHandlers(){
         else if(key==='t'){ e.preventDefault(); openModal({type:'time-off-manager', pickStaff:true}); }
         else if(key==='a'){ e.preventDefault(); openModal({type:'staff-manager'}); }
         else if(key==='r'){ e.preventDefault(); navDrawerOpen=false; viewMode='roster'; render(); }
-        else if(key==='p'){ e.preventDefault(); openModal({type:'report-preview', sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true}}); }
+        else if(key==='p'){ e.preventDefault(); openReportBuilder(); }
       }
     });
   }
@@ -15422,8 +15516,7 @@ function attachHandlers(){
   // ── print board ──
   on('nav-print-board', ()=>{
     navDrawerOpen=false;
-    openModal({type:'report-preview', sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true}});
-    render();
+    openReportBuilder();
   });
   // ── export today's callouts/late/left-early to an Outlook-importable .ics ──
   on('nav-export-outlook', ()=>{
@@ -15740,75 +15833,102 @@ function attachHandlers(){
 
     // ─────────────────────────────────────────────────────────────────────
     // PAGE 5 — Daily Activity Log (reassignments per day)
-    // ─────────────────────────────────────────────────────────────────────
-    const allLog = (state.dailyLog||[]).slice().sort((a,b)=>b.ts.localeCompare(a.ts));
-    
+    // Sourced from opts.activityLog — rows fetched from the server-persisted
+    // audit_log table for the picked date range (see openReportBuilder) —
+    // rather than the local-only, 500-entry-capped state.dailyLog. That local
+    // log only ever held whatever had accumulated in one browser, which is
+    // why the report used to look stuck at whatever date it was last cleared.
+    // Falls back to state.dailyLog when no activityLog was supplied (e.g. a
+    // caller that hasn't been updated to pass one yet).
+    const usingAuditLog = Array.isArray(opts.activityLog);
+    const auditTypeMeta = {
+      move:           {label:'↗ Move',            color:'#2a85ff'},
+      swap:           {label:'⇄ Swap',             color:'#8e59ff'},
+      callout:        {label:'⚡ Callout',          color:'#ff6a55'},
+      clear_callout:  {label:'↩ Return',           color:'#83bf6e'},
+      edit_staff:     {label:'✎ Edit staff',       color:'#6b7280'},
+      add_staff:      {label:'➕ Add staff',        color:'#83bf6e'},
+      archive_staff:  {label:'🗑 Archive staff',    color:'#ff6a55'},
+      edit_area:      {label:'✎ Edit area',        color:'#6b7280'},
+      add_area:       {label:'➕ Add area',         color:'#83bf6e'},
+      rotate_period:  {label:'🔄 Rotate',           color:'#f59e0b'},
+      evaluation:     {label:'⭐ Evaluation',       color:'#8e59ff'},
+      account_request:{label:'🔑 Access request',  color:'#f59e0b'},
+      account_grant:  {label:'🔑 Access granted',  color:'#83bf6e'},
+      account_revoke: {label:'🔑 Access revoked',  color:'#ff6a55'},
+      time_off:       {label:'📅 Time off',        color:'#6b7280'},
+    };
+    const legacyTypeMeta = {
+      move:      {label:'↗ Move',     color:'#2a85ff'},
+      swap:      {label:'⇄ Swap',     color:'#8e59ff'},
+      callout:   {label:'⚡ Callout',  color:'#ff6a55'},
+      return:    {label:'↩ Return',   color:'#83bf6e'},
+      coverage:  {label:'🛡 Coverage', color:'#f59e0b'},
+      'time-off':{label:'📅 Time Off',color:'#6b7280'},
+    };
+
+    // Normalize both sources into one shape: {ts, label, color, who, detail}
+    const normalizedLog = usingAuditLog
+      ? opts.activityLog.map(e=>{
+          const meta = auditTypeMeta[e.action] || {label:e.action||'—', color:'#555'};
+          return { ts: e.created_at, label: meta.label, color: meta.color, who: e.accounts?.name || '—', detail: e.description || '' };
+        })
+      : (state.dailyLog||[]).map(e=>{
+          const meta = legacyTypeMeta[e.type] || {label:e.type, color:'#555'};
+          const staff = getStaffById(e.staffId)?.name || e.staffId || '—';
+          const from  = e.fromArea ? (getAreaById(e.fromArea)?.name||e.fromArea) : null;
+          const to    = e.toArea   ? (getAreaById(e.toArea)?.name||e.toArea)     : null;
+          let detail = from && to ? `${from} → ${to}` : (to ? `→ ${to}` : '');
+          if(e.note) detail = detail ? `${detail} — ${e.note}` : e.note;
+          return { ts: e.ts, label: meta.label, color: meta.color, who: staff, detail };
+        });
+    normalizedLog.sort((a,b)=>String(b.ts).localeCompare(String(a.ts)));
+
     // Group by date
     const logByDate = {};
-    allLog.forEach(e=>{
-      const d = e.date||e.ts.slice(0,10);
+    normalizedLog.forEach(e=>{
+      const d = (e.ts||'').slice(0,10);
+      if(!d) return;
       if(!logByDate[d]) logByDate[d]=[];
       logByDate[d].push(e);
     });
     const logDates = Object.keys(logByDate).sort().reverse();
 
-    const typeLabels = {
-      move:     '↗ Move',
-      swap:     '⇄ Swap',
-      callout:  '⚡ Callout',
-      return:   '↩ Return',
-      coverage: '🛡 Coverage',
-      'time-off':'📅 Time Off',
-    };
-    const typeColors = {
-      move:    '#2a85ff',
-      swap:    '#8e59ff',
-      callout: '#ff6a55',
-      return:  '#83bf6e',
-      coverage:'#f59e0b',
-      'time-off':'#6b7280',
-    };
+    const rangeLabel = (opts.reportStartDate && opts.reportEndDate)
+      ? `${friendlyD(opts.reportStartDate)} – ${friendlyD(opts.reportEndDate)}`
+      : '';
 
     let page5 = `<div class="page page-break">
       <h1>Daily Activity Log</h1>
-      <div class="subtitle">All reassignments, callouts &amp; coverage events — most recent first</div>`;
+      <div class="subtitle">All reassignments, callouts &amp; other logged actions — most recent first${rangeLabel?` &nbsp;·&nbsp; ${rangeLabel}`:''}</div>`;
 
     if(!logDates.length){
-      page5 += `<div style="color:#aaa;font-style:italic;padding:20pt 0;">No activity recorded yet. Events are logged automatically when you move, swap, call out, or assign coverage on the board.</div>`;
+      page5 += `<div style="color:#aaa;font-style:italic;padding:20pt 0;">No activity recorded${rangeLabel?' for this date range':' yet'}. Events are logged automatically when you move, swap, call out, or assign coverage on the board.</div>`;
     } else {
       logDates.forEach(date=>{
         const events = logByDate[date];
-        const moves    = events.filter(e=>e.type==='move').length;
-        const swaps    = events.filter(e=>e.type==='swap').length;
-        const callouts = events.filter(e=>e.type==='callout').length;
-        const covs     = events.filter(e=>e.type==='coverage').length;
         const friendly = (()=>{
           try{const[y,m,d]=date.split('-').map(Number);const dt=new Date(y,m-1,d);return dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}catch(e){return date;}
         })();
+        const counts = {};
+        events.forEach(e=>{ counts[e.label]=(counts[e.label]||0)+1; });
+        const summary = Object.entries(counts).map(([label,n])=>`${n} ${label.replace(/^\S+\s/,'')}${n>1?'s':''}`).join(' · ');
         page5 += `
         <div class="day-block">
           <div class="day-header">
             <span class="day-date">${friendly}</span>
-            <span class="day-summary">${moves?moves+' move'+(moves>1?'s':''):''} ${swaps?swaps+' swap'+(swaps>1?'s':''):''} ${callouts?callouts+' callout'+(callouts>1?'s':''):''} ${covs?covs+' coverage':''}
-            </span>
+            <span class="day-summary">${summary}</span>
           </div>
           <table class="log-table">
-            <thead><tr><th style="width:55pt">Time</th><th style="width:70pt">Type</th><th style="width:150pt">Staff</th><th style="width:110pt">From</th><th style="width:110pt">To</th><th>Note</th></tr></thead>
+            <thead><tr><th style="width:55pt">Time</th><th style="width:110pt">Type</th><th style="width:120pt">${usingAuditLog?'By':'Staff'}</th><th>Details</th></tr></thead>
             <tbody>`;
         events.forEach(e=>{
           const time = e.ts ? new Date(e.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
-          const staff = getStaffById(e.staffId)?.name || e.staffId || '—';
-          const from  = e.fromArea ? (getAreaById(e.fromArea)?.name||e.fromArea) : '—';
-          const to    = e.toArea   ? (getAreaById(e.toArea)?.name||e.toArea)     : '—';
-          const color = typeColors[e.type]||'#555';
-          const label = typeLabels[e.type]||e.type;
           page5 += `<tr>
             <td style="font-size:9pt;color:#777">${time}</td>
-            <td><span style="font-size:9pt;font-weight:700;color:${color};background:${color}18;padding:1pt 5pt;border-radius:3pt">${label}</span></td>
-            <td style="font-weight:600">${escapeHtml(staff)}</td>
-            <td style="color:#777;font-size:10pt">${escapeHtml(from)}</td>
-            <td style="font-size:10pt">${escapeHtml(to)}</td>
-            <td style="font-size:9pt;color:#888">${escapeHtml(e.note||'')}</td>
+            <td><span style="font-size:9pt;font-weight:700;color:${e.color};background:${e.color}18;padding:1pt 5pt;border-radius:3pt">${e.label}</span></td>
+            <td style="font-weight:600;font-size:9.5pt">${escapeHtml(e.who)}</td>
+            <td style="font-size:10pt;color:#555">${escapeHtml(e.detail)}</td>
           </tr>`;
         });
         page5 += `</tbody></table></div>`;
@@ -17371,7 +17491,7 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-live-iframe');
         if(!iframe) return;
         try{
-          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom});
+          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -17392,7 +17512,7 @@ function attachHandlers(){
         setTimeout(()=>{
           const iframe=document.getElementById('rp-live-iframe');
           if(!iframe) return;
-          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac});
+          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate});
           const doc=iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -17463,19 +17583,34 @@ function attachHandlers(){
         });
 
         // ── Sheet 3: Daily Activity Log ────────────────────────────────────
-        const sh3 = [['Date','Time','Type','Staff Name','Department','From Area','To Area','Note','Period']];
-        (state.dailyLog||[]).slice().reverse().forEach(e=>{
-          const s  = getStaffById(e.staffId);
-          const ts = e.ts ? new Date(e.ts) : null;
-          const timeStr = ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
-          sh3.push([
-            e.date||'', timeStr, e.type||'',
-            s?.name||e.staffId||'', s?.department||'',
-            getAreaById(e.fromArea)?.name||e.fromArea||'',
-            getAreaById(e.toArea)?.name||e.toArea||'',
-            e.note||'', e.period||''
-          ]);
-        });
+        // Prefers the server-backed audit_log rows (m.activityLog, fetched
+        // for the picked date range) over the local-only state.dailyLog.
+        let sh3;
+        if(Array.isArray(m.activityLog)){
+          sh3 = [['Date','Time','Type','By','Description']];
+          m.activityLog.slice().reverse().forEach(e=>{
+            const ts = e.created_at ? new Date(e.created_at) : null;
+            sh3.push([
+              e.created_at ? e.created_at.slice(0,10) : '',
+              ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '',
+              e.action||'', e.accounts?.name||'', e.description||''
+            ]);
+          });
+        } else {
+          sh3 = [['Date','Time','Type','Staff Name','Department','From Area','To Area','Note','Period']];
+          (state.dailyLog||[]).slice().reverse().forEach(e=>{
+            const s  = getStaffById(e.staffId);
+            const ts = e.ts ? new Date(e.ts) : null;
+            const timeStr = ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
+            sh3.push([
+              e.date||'', timeStr, e.type||'',
+              s?.name||e.staffId||'', s?.department||'',
+              getAreaById(e.fromArea)?.name||e.fromArea||'',
+              getAreaById(e.toArea)?.name||e.toArea||'',
+              e.note||'', e.period||''
+            ]);
+          });
+        }
 
         // ── Sheet 4: Arrival Times ─────────────────────────────────────────
         const sh4 = [['Name','Department','Date','Scheduled','Actual','Diff (min)','Status']];
@@ -17579,7 +17714,7 @@ function attachHandlers(){
     // Section checkbox toggles
     document.querySelectorAll('.rp-check').forEach(cb=>cb.addEventListener('change',()=>{
       const newSecs = {...secs, [cb.dataset.sec]: cb.checked};
-      openModal({type:'report-preview', sections:newSecs, previewPage:m.previewPage, orient:m.orient, showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      openModal({...activeModal, sections:newSecs});
       render();
     }));
 
@@ -17590,7 +17725,7 @@ function attachHandlers(){
         const sec = row.querySelector('.rp-check')?.dataset.sec;
         if(!sec) return;
         const newSecs = {...secs, [sec]: !secs[sec]};
-        openModal({type:'report-preview', sections:newSecs, previewPage:m.previewPage, orient:m.orient});
+        openModal({...activeModal, sections:newSecs});
         render();
       });
     });
@@ -17600,14 +17735,14 @@ function attachHandlers(){
       e.stopPropagation();
       const pg = btn.dataset.preview;
       if(!secs[pg]){ showToast('Enable this section first', 'rust'); return; }
-      openModal({type:'report-preview', sections:secs, previewPage: m.previewPage===pg?null:pg, orient:m.orient});
+      openModal({...activeModal, sections:secs, previewPage: m.previewPage===pg?null:pg});
       render();
       // After render, write to iframe
       setTimeout(()=>{
         const iframe = document.getElementById('rp-preview-iframe');
         if(!iframe) return;
         try{
-          const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+          const {page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
@@ -17618,30 +17753,35 @@ function attachHandlers(){
     }));
 
     // Close preview
-    on('rp-close-preview',()=>{ openModal({type:'report-preview',sections:secs,orient:m.orient}); render(); });
+    on('rp-close-preview',()=>{ openModal({...activeModal, previewPage:null}); render(); });
 
     // Format options — orientation
     document.querySelectorAll('input[name="rp-orient"]').forEach(r=>r.addEventListener('change',()=>{
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:r.value,
-        showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      openModal({...activeModal, orient:r.value});
       render();
     }));
+
+    // Date range — From/To. Re-fetches the audit_log-backed activity log
+    // for the new range so the Daily Activity Log page (and Excel export)
+    // reflect it.
+    const dateStartEl = document.getElementById('rp-date-start');
+    const dateEndEl   = document.getElementById('rp-date-end');
+    function applyDateRange(){
+      const startVal = dateStartEl?.value || m.reportStartDate;
+      const endVal   = dateEndEl?.value   || m.reportEndDate;
+      if(startVal > endVal){ showToast('Start date must be before end date', 'rust'); render(); return; }
+      openReportBuilder({...activeModal, reportStartDate:startVal, reportEndDate:endVal});
+    }
+    dateStartEl?.addEventListener('change', applyDateRange);
+    dateEndEl?.addEventListener('change', applyDateRange);
 
     // Format checkboxes — showTimes / showBreaks / showSeniority
     const showTimesEl   = document.getElementById('rp-show-times');
     const showBreaksEl  = document.getElementById('rp-show-breaks');
     const showSenEl     = document.getElementById('rp-show-seniority');
-    function saveFormatPrefs_unused(){
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:m.orient,
-        showTimes:   showTimesEl?.checked   !== false,
-        showBreaks:  showBreaksEl?.checked  !== false,
-        showSeniority: showSenEl?.checked   !== false,
-      });
-      render();
-    }
     const showAccomEl = document.getElementById('rp-show-accom');
     function saveFormatPrefsAll(){
-      openModal({type:'report-preview', sections:secs, previewPage:m.previewPage, orient:m.orient,
+      openModal({...activeModal,
         showTimes:   showTimesEl?.checked   !== false,
         showBreaks:  showBreaksEl?.checked  !== false,
         showSeniority: showSenEl?.checked   !== false,
@@ -17656,7 +17796,7 @@ function attachHandlers(){
 
     // Download
     on('rp-btn-download',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
@@ -17670,7 +17810,7 @@ function attachHandlers(){
 
     // Print
     on('rp-btn-print',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
