@@ -2797,6 +2797,69 @@
     height:min(720px, 90vh);
   }
   .report-modal .modal-body{padding:0;overflow:hidden;display:flex;flex-direction:column;}
+
+  /* Rotation history: wider two-pane modal — period picker + visual snapshot */
+  .hist-modal{
+    max-width:min(900px, calc(100vw - 32px)) !important;
+    max-height:min(680px, 90vh) !important;
+    height:min(680px, 90vh);
+  }
+  .hist-modal .hist-body{padding:0;overflow:hidden;display:flex;flex-direction:column;}
+  .hist-layout{display:flex;height:100%;min-height:0;}
+  .hist-sidebar{
+    width:200px;flex-shrink:0;overflow-y:auto;
+    border-right:1px solid var(--c-border);
+  }
+  .hist-period-row{
+    padding:10px 14px;cursor:pointer;
+    border-bottom:1px solid var(--c-border);
+    border-left:3px solid transparent;
+    transition:background .12s;
+  }
+  .hist-period-row:hover{background:var(--c-surface-2);}
+  .hist-period-row.active{background:rgba(47,95,168,.08);border-left-color:var(--c-accent);}
+  .hist-period-label{font-weight:800;font-family:var(--mono);font-size:12.5px;color:var(--c-text);}
+  .hist-period-meta{font-size:11px;color:var(--c-text-2);margin-top:2px;}
+  .hist-main{flex:1;min-width:0;overflow-y:auto;padding:16px 18px;}
+  .hist-diff-section{
+    margin-bottom:16px;padding:10px 12px;
+    background:var(--c-surface-2);border-radius:var(--r-md);
+  }
+  .hist-diff-section.hist-diff-empty{opacity:.7;}
+  .hist-diff-head{font-weight:700;font-size:12.5px;color:var(--c-text);}
+  .hist-diff-list{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
+  .hist-diff-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:11.5px;padding:4px 9px;border-radius:var(--r-pill);
+    background:var(--c-surface);border:1px solid var(--c-border);color:var(--c-text-2);
+  }
+  .hist-diff-chip b{color:var(--c-text);font-weight:700;}
+  .hist-diff-new{color:var(--c-green);font-weight:700;}
+  .hist-dept-block{margin-bottom:14px;}
+  .hist-dept-label{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--c-text-2);margin-bottom:8px;
+  }
+  .hist-area-block{margin-bottom:10px;}
+  .hist-area-head{
+    display:flex;align-items:center;gap:6px;
+    font-weight:700;font-size:12.5px;color:var(--c-text);margin-bottom:6px;
+  }
+  .hist-chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .hist-person-chip{
+    padding:4px 10px;border-radius:var(--r-pill);
+    background:var(--c-surface-2);border:1px solid var(--c-border);
+    font-size:12px;font-weight:600;color:var(--c-text);cursor:pointer;
+    transition:opacity .12s,border-color .12s,background .12s;
+  }
+  .hist-person-chip:hover{border-color:var(--c-accent);}
+  .hist-person-chip.moved{border-color:var(--c-accent);background:rgba(47,95,168,.07);}
+  .hist-person-chip.dim{opacity:.25;}
+  .hist-person-chip.match{border-color:var(--c-accent);background:rgba(47,95,168,.15);}
+  @media(max-width:600px){
+    .hist-layout{flex-direction:column;}
+    .hist-sidebar{width:100%;max-height:140px;border-right:none;border-bottom:1px solid var(--c-border);}
+  }
   .modal-foot{
     padding:12px 16px;
     border-top:1px solid var(--c-border);
@@ -12053,24 +12116,105 @@ function renderBlocksManagerModal(m){
 }
 
 // --- 4. History ---
+// Visual, browsable rotation history: a period picker on the left, and on
+// the right a board-like snapshot of that period grouped by department/area
+// (instead of the old flat wall-of-text list), plus a "moves since the
+// previous period" diff so changes are obvious at a glance, and a search box
+// to find a specific person within the selected period.
 function renderHistoryModal(m){
-  const rows = state.history.slice().reverse();
+  const chrono = state.history; // oldest → newest
+  if(!chrono.length){
+    return `
+    <div class="modal">
+      <div class="modal-head">
+        <div><h2>Rotation history</h2><p>Past periods, most recent first.</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="small-muted">No completed rotations yet. Use "Rotate now" to snapshot the current period.</div>
+      </div>
+    </div>`;
+  }
+
+  const selectedIdx = (m.selectedIdx!=null && chrono[m.selectedIdx]) ? m.selectedIdx : chrono.length-1;
+  const h    = chrono[selectedIdx];
+  const prev = selectedIdx>0 ? chrono[selectedIdx-1] : null;
+
+  // Moves since the previous period: anyone whose area changed (or who is
+  // newly assigned) between prev.assignments and h.assignments.
+  const moves = [];
+  if(prev){
+    Object.keys(h.assignments).forEach(sid=>{
+      const curA = h.assignments[sid], prevA = prev.assignments[sid];
+      if(curA !== prevA) moves.push({staffId:sid, from:prevA||null, to:curA, isNew: prevA===undefined});
+    });
+  }
+  const movedIds = new Set(moves.map(mv=>mv.staffId));
+
+  const q = (m.search||'').trim().toLowerCase();
+  const groups = areasByDepartment();
+  const rowsDesc = chrono.map((hh,idx)=>({...hh, idx})).slice().reverse();
+
   return `
-  <div class="modal">
+  <div class="modal hist-modal">
     <div class="modal-head">
-      <div><h2>Rotation history</h2><p>Past periods, most recent first.</p></div>
+      <div><h2>Rotation history</h2><p>${chrono.length} completed period${chrono.length===1?'':'s'} · pick a period to see who was where</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
-    <div class="modal-body">
-      ${rows.length===0?'<div class="small-muted">No completed rotations yet. Use "Rotate now" to snapshot the current period.</div>':rows.map(h=>`
-        <div style="margin-bottom:16px;">
-          <div style="font-weight:800;font-family:var(--mono);font-size:12.5px;margin-bottom:6px;">${escapeHtml(h.period)}</div>
-          ${state.areas.map(area=>{
-            const inArea = Object.keys(h.assignments).filter(sid=>h.assignments[sid]===area.id);
-            if(inArea.length===0) return '';
-            return `<div class="small-muted" style="margin-bottom:3px;"><b style="color:${area.color}">${escapeHtml(area.name)}:</b> ${inArea.map(sid=>escapeHtml(getStaffById(sid)?.name||'former staff')).join(', ')}</div>`;
+    <div class="modal-body hist-body">
+      <div class="hist-layout">
+        <div class="hist-sidebar">
+          ${rowsDesc.map(r=>`
+            <div class="hist-period-row ${r.idx===selectedIdx?'active':''}" data-hist-period="${r.idx}">
+              <div class="hist-period-label">${escapeHtml(r.period)}</div>
+              <div class="hist-period-meta">${Object.keys(r.assignments).length} placed${r.idx===chrono.length-1?' · latest':''}</div>
+            </div>`).join('')}
+        </div>
+        <div class="hist-main">
+          <div class="roster-search-wrap" style="margin-bottom:14px;">
+            <span class="roster-search-icon">🔍</span>
+            <input type="text" id="hist-search" class="roster-search" placeholder="Find a person in this period…" value="${escapeHtml(m.search||'')}"/>
+            ${m.search?'<button class="roster-search-clear" id="hist-search-clear">✕</button>':''}
+          </div>
+
+          ${prev ? `
+          <div class="hist-diff-section ${moves.length?'':'hist-diff-empty'}">
+            <div class="hist-diff-head">${moves.length?`🔀 ${moves.length} move${moves.length===1?'':'s'} since ${escapeHtml(prev.period)}`:`No moves since ${escapeHtml(prev.period)}`}</div>
+            ${moves.length?`<div class="hist-diff-list">
+              ${moves.map(mv=>{
+                const s = getStaffById(mv.staffId);
+                const fromArea = mv.from ? getAreaById(mv.from) : null;
+                const toArea   = mv.to   ? getAreaById(mv.to)   : null;
+                return `<span class="hist-diff-chip"><b>${escapeHtml(s?.name||'former staff')}</b> ${mv.isNew?'<span class="hist-diff-new">new</span> → '+(toArea?escapeHtml(toArea.name):'—'):`${fromArea?escapeHtml(fromArea.name):'—'} → ${toArea?escapeHtml(toArea.name):'—'}`}</span>`;
+              }).join('')}
+            </div>`:''}
+          </div>` : `<div class="hist-diff-section hist-diff-empty"><div class="hist-diff-head">🏁 First recorded period</div></div>`}
+
+          ${groups.map(g=>{
+            const areasWithPeople = g.areas.map(area=>{
+              const inArea = Object.keys(h.assignments).filter(sid=>h.assignments[sid]===area.id);
+              return {area, inArea};
+            }).filter(x=>x.inArea.length>0);
+            if(!areasWithPeople.length) return '';
+            return `<div class="hist-dept-block">
+              <div class="hist-dept-label">${escapeHtml(g.department)}</div>
+              ${areasWithPeople.map(({area,inArea})=>`
+                <div class="hist-area-block">
+                  <div class="hist-area-head"><span class="area-dot" style="background:${area.color}"></span>${escapeHtml(area.name)}</div>
+                  <div class="hist-chip-row">
+                    ${inArea.map(sid=>{
+                      const s = getStaffById(sid);
+                      const name = s?.name||'former staff';
+                      const isMatch = q && name.toLowerCase().includes(q);
+                      const cls = [q?(isMatch?'match':'dim'):'', movedIds.has(sid)?'moved':''].filter(Boolean).join(' ');
+                      return `<span class="hist-person-chip ${cls}" data-hist-person="${sid}">${escapeHtml(name)}</span>`;
+                    }).join('')}
+                  </div>
+                </div>`).join('')}
+            </div>`;
           }).join('')}
-        </div>`).join('')}
+        </div>
+      </div>
     </div>
   </div>`;
 }
@@ -18173,6 +18317,30 @@ function attachHandlers(){
         showToast(`Could not revoke access: ${(err&&err.message)||'try again'}`, 'rust');
         el.disabled = false; el.textContent = 'Revoke';
       }
+    }));
+  }
+
+  // --- rotation history ---
+  if(activeModal.type==='history'){
+    const m = activeModal;
+    document.querySelectorAll('[data-hist-period]').forEach(row=>row.addEventListener('click', ()=>{
+      openModal({...m, selectedIdx: parseInt(row.dataset.histPeriod, 10)});
+    }));
+    const searchInput = document.getElementById('hist-search');
+    if(searchInput){
+      searchInput.addEventListener('input', e=>{
+        m.search = e.target.value;
+        const focused = document.activeElement === searchInput;
+        render();
+        if(focused){
+          const el = document.getElementById('hist-search');
+          if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        }
+      });
+    }
+    on('hist-search-clear', ()=>{ openModal({...m, search:''}); });
+    document.querySelectorAll('[data-hist-person]').forEach(chip=>chip.addEventListener('click', ()=>{
+      openModal({type:'staff-manager', editId: chip.dataset.histPerson, staffTab:'stats'});
     }));
   }
 
