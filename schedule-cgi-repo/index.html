@@ -8879,6 +8879,7 @@ let state = {
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
   languages: [],   // [{id, name}] editable language certifications list
+  positions: [],   // [{id, name, sortOrder}] editable job position/title catalog (SA2, SA3, AAA, ...)
   calloutHistory: {},  // {staffId: [{date, period, reason}]}
   rotationNotes: {},   // {period: string}
   dailyLog: [],         // [{ts, type, staffId, fromArea, toArea, note, period}]
@@ -10507,6 +10508,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
+      <button class="nav-item" id="nav-manage-positions"><span class="nav-item-icon">🏷</span>Positions</button>
       <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -11517,6 +11519,7 @@ function renderModal(){
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
   else if(m.type==='time-management') inner = renderTimeManagementModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
+  else if(m.type==='positions-manager') inner = renderPositionsManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
   else if(m.type==='eval-form') inner = renderEvalFormModal(m);
@@ -11856,10 +11859,17 @@ function renderStaffManagerModal(m){
         </select>
       </div>
     </div>
-    <div class="field"><label>Supervisor</label>
-      <select id="staff-supervisor-input"><option value="">—</option>
-        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
-      </select>
+    <div class="sm-grid-2">
+      <div class="field"><label>Supervisor</label>
+        <select id="staff-supervisor-input"><option value="">—</option>
+          ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
+        </select>
+      </div>
+      <div class="field"><label>Position <span class="field-hint">(job title)</span></label>
+        <select id="staff-position-input"><option value="">—</option>
+          ${state.positions.map(p=>'<option value="'+p.id+'" '+((m.positionId!==undefined ? m.positionId===p.id : editing&&editing.positionId===p.id)?'selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')}
+        </select>
+      </div>
     </div>
     <div class="field">
       <label>Hire date <span class="field-hint">(for seniority)</span></label>
@@ -13988,6 +13998,36 @@ function renderLanguagesManagerModal(m){
   </div>`;
 }
 
+// --- Positions manager (admin) — job title/position codes (SA2, SA3, AAA...) ---
+function renderPositionsManagerModal(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {name:''} : (m.editId ? state.positions.find(p=>p.id===m.editId) : null);
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Positions</h2><p>Job title / position codes staff can be assigned in their profile — add as many as you need.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${editing?`
+      <div class="field"><label>Position name</label><input type="text" id="pos-name-input" value="${escapeHtml(editing.name)}" placeholder="e.g. SA4FL"/></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-primary" id="pos-save-btn" style="flex:1;">Save</button>
+        ${isNew?'':'<button class="btn btn-danger" id="pos-delete-btn">Delete</button>'}
+      </div>
+      <button class="btn btn-light" id="pos-cancel-btn" style="width:100%;">Cancel</button>
+      `:`
+      <button class="btn btn-primary" id="btn-new-pos" style="width:100%;margin-bottom:16px;">+ Add position</button>
+      ${state.positions.length===0?'<div class="small-muted">No positions yet.</div>':''}
+      ${state.positions.map(p=>`
+        <div class="option-card" data-edit-pos="${p.id}">
+          <div class="oc-left"><span class="oc-name">🏷 ${escapeHtml(p.name)}</span></div>
+        </div>`).join('')}
+      `}
+    </div>
+  </div>`;
+}
+
 // --- Scheduled Time Off Manager ---
 function renderTimeOffManagerModal(m){
   const editing = m.staffId ? getStaffById(m.staffId) : null;
@@ -15963,9 +16003,10 @@ function attachHandlers(){
       const senYrs = seniorityYears(s);
       const senLbl = seniorityLabel(s);
       const veteran = isVeteran(s); const senior = isSenior(s);
+      const posName = s.positionId ? state.positions.find(p=>p.id===s.positionId)?.name : '';
       page2 += `<tr class="${todayOut?'out-row':''}">
         <td>
-          <b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b>
+          <b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b>${posName?' <span style="font-size:8pt;font-weight:600;color:#555;background:#f0f0f0;padding:1pt 5pt;border-radius:3pt;">'+escapeHtml(posName)+'</span>':''}
           ${veteran?'<br><small style="color:#7d5a00">🏅 Veteran</small>':senior?'<br><small style="color:#555">⭐ Senior</small>':''}
           ${showAccom&&s.needsAccommodations?'<br><small style="color:#555">♿ Accommodations</small>':''}
           ${s.lateStart?'<br><small style="color:#D97706">⏰ Late: '+escapeHtml(s.lateStart)+'</small>':''}
@@ -16647,6 +16688,7 @@ function attachHandlers(){
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
+  on('nav-manage-positions',    ()=>{ closeNav(); openModal({type:'positions-manager'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
     if(window.RC && typeof window.RC.unsubscribeFromBoardChanges==='function'){
@@ -16984,6 +17026,7 @@ function attachHandlers(){
       const hireDate     = snap.hireDate    ?? activeModal.hireDate    ?? editing?.hireDate    ?? '';
       const lunchVal     = snap.lunchVal    ?? activeModal.lunchVal    ?? '';
       const supervisorId = snap.supervisorId!==undefined ? snap.supervisorId : (activeModal.supervisorId!==undefined ? activeModal.supervisorId : editing?.supervisorId ?? null);
+      const positionId   = snap.positionId  !==undefined ? snap.positionId   : (activeModal.positionId  !==undefined ? activeModal.positionId   : editing?.positionId   ?? null);
       const flowId       = snap.flowId      !== undefined ? snap.flowId      : (activeModal.flowId      !== undefined ? activeModal.flowId      : editing?.flowId      ?? null);
       // switches — prefer activeModal state (persisted on click), fall back to DOM, fall back to staff
       const isTeamLead         = activeModal.swTeamLead    ?? snap.swTeamLead    ?? !!(editing?.isTeamLead);
@@ -17029,13 +17072,13 @@ function attachHandlers(){
           const result = await window.RC.updateStaff({
             staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
-            supervisorId, flowId, flowEnrolled: !!flowId,
+            supervisorId, positionId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           await window.RC.setStaffLanguageCerts({staffId: s.id, languageIds: finalLangCerts});
           return result;
         });
-        Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
+        Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,positionId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
         if(flowId&&flowId!==prevFlow) showToast(`${s.name} enrolled in ${getFlowById(flowId)?.name||'flow'}`,'teal');
         saveState();
@@ -17048,7 +17091,7 @@ function attachHandlers(){
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
-            supervisorId, flowId, flowEnrolled: !!flowId,
+            supervisorId, positionId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           createdId = row.id;
@@ -17059,7 +17102,7 @@ function attachHandlers(){
         // local record and the database row are the same entity from the
         // start — falls back to a local-only id if the sync failed.
         const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
-          isTeamLead,homeAreaId:null,supervisorId,flowId,flowEnrolled:!!flowId,
+          isTeamLead,homeAreaId:null,supervisorId,positionId,flowId,flowEnrolled:!!flowId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
         saveState();
@@ -17098,7 +17141,7 @@ function attachHandlers(){
       const sync = await syncCrudWrite(()=>window.RC.createBlockedPair({staffAId:a, staffBId:b}));
       state.blocks.push({id: sync.ok ? sync.result.id : uid('block'), a, b});
       saveState(); render();
-      showToast(sync.ok ? 'Block added — saved to database ✓' : `Block added here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? 'Block added — saved to database ✓' : `Block added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       openModal({type:'blocks-manager'});
     });
     document.querySelectorAll('[data-remove-block]').forEach(el=>el.addEventListener('click', async ()=>{
@@ -17497,6 +17540,40 @@ function attachHandlers(){
     });
     document.querySelectorAll('[data-edit-lang]').forEach(el=>el.addEventListener('click',()=>{
       openModal({type:'languages-manager', editId:el.dataset.editLang});
+    }));
+  }
+
+  // --- positions manager ---
+  if(activeModal.type==='positions-manager'){
+    on('btn-new-pos', ()=>openModal({type:'positions-manager', editId:'__new__'}));
+    on('pos-cancel-btn', ()=>openModal({type:'positions-manager'}));
+    on('pos-save-btn', async ()=>{
+      const name = document.getElementById('pos-name-input').value.trim();
+      if(!name){ showToast('Enter a position name','rust'); return; }
+      if(activeModal.editId==='__new__'){
+        const sortOrder = state.positions.length;
+        const sync = await syncCrudWrite(()=>window.RC.createPosition({name, sortOrder}));
+        state.positions.push({id: sync.ok ? sync.result.id : uid('pos'), name, sortOrder});
+        showToast(sync.ok ? 'Position added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      } else {
+        const p = state.positions.find(x=>x.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updatePosition({positionId: p.id, name, sortOrder: p?.sortOrder||0}));
+        if(p) p.name = name;
+        showToast(sync.ok ? 'Position updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      }
+      saveState(); openModal({type:'positions-manager'});
+    });
+    on('pos-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deletePosition({positionId:id}));
+      state.positions = state.positions.filter(p=>p.id!==id);
+      state.staff.forEach(s=>{ if(s.positionId===id) s.positionId = null; });
+      saveState();
+      showToast(sync.ok ? 'Position removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'positions-manager'});
+    });
+    document.querySelectorAll('[data-edit-pos]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'positions-manager', editId:el.dataset.editPos});
     }));
   }
 
@@ -18881,6 +18958,7 @@ function snapshotStaffForm(){
       lateStart:     v('staff-latestart-input'),
     lunchVal:      v('staff-lunch-input'),
     supervisorId:  v('staff-supervisor-input'),
+    positionId:    v('staff-position-input'),
     flowId:        v('staff-flow-input'),
     swTags:        sw('sw-tags'),
     swTeamLead:    sw('sw-team-lead'),
@@ -19351,6 +19429,7 @@ function mapSupabaseBoard(board){
     isTeamLead: !!s.is_team_lead,
     homeAreaId: s.home_area_id || null,
     supervisorId: s.supervisor_id || null,
+    positionId: s.position_id || null,
     shiftHours: s.shift_hours_label || '',
     breakTimes: s.break_times_label || '',
     department: deptById[s.department_id] || '',
@@ -19398,6 +19477,7 @@ function mapSupabaseBoard(board){
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+  const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0 })).sort((a,b)=>a.sortOrder-b.sortOrder);
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
   const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
@@ -19449,7 +19529,7 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -19505,6 +19585,7 @@ function applyMappedBoard(mapped){
   state.coverageWaived = mapped.coverageWaived;
   state.attendanceEvents = mapped.attendanceEvents;
   state.languages = mapped.languages;
+  state.positions = mapped.positions;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
   state.callouts = mapped.callouts;
