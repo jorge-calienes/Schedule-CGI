@@ -150,6 +150,7 @@ export async function getCurrentAccount() {
     .from('accounts')
     .select('id, name, role, assigned_area_ids')
     .eq('user_id', session.user.id)
+    .eq('status', 'active')
     .single();
   if (error || !data) return null;
   return data;
@@ -303,7 +304,7 @@ export async function waiveCoverage({ staffId, actingAccountId }) {
   const { error } = await supabase.from('coverage_waivers').upsert({
     staff_id: staffId,
     waived_by: actingAccountId,
-  });
+  }, { onConflict: 'staff_id' });
   if (error) throw error;
 }
 

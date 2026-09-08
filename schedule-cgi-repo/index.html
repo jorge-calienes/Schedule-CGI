@@ -13398,7 +13398,13 @@ function attendancePeriodRange(periodType, anchorMonth){
 // number — the count alone doesn't say whether two callouts landed back
 // to back or a month apart.
 function computeAttendanceReport(periodType, anchorMonth){
-  const range = attendancePeriodRange(periodType, anchorMonth);
+  return computeAttendanceReportForRange(attendancePeriodRange(periodType, anchorMonth));
+}
+
+// Same computation as computeAttendanceReport(), but for an explicit
+// {start,end} range rather than a month/quarter/year anchor — used by the
+// Report Builder's date-range picker, which lets the caller pick any span.
+function computeAttendanceReportForRange(range){
   const inRange = d => d>=range.start && d<=range.end;
   const byStaff = {};
   const ensure = id => byStaff[id] || (byStaff[id] = {callout:[], late_arrival:[], left_early:[], leaveRanges:[]});
@@ -15711,14 +15717,15 @@ function attachHandlers(){
       const periods = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
       return periods > 0 ? (daily * periods).toFixed(1) : null;
     }
-    function calloutCount(s){
-      return (state.calloutHistory||{})[s.id]?.length || 0;
-    }
-    function scheduledLeaveCount(s){
-      const offs = (state.timeOff||{})[s.id]||[];
-      const upcoming = offs.filter(r=>r.endDate>=today);
-      return upcoming.length;
-    }
+    // Callouts / late arrivals / left-early / scheduled-leave days, all
+    // scoped to the report's picked date range (defaults to the last 30
+    // days — see openReportBuilder()) via the same durable, server-synced
+    // attendance_events + time_off data the standalone Attendance Report
+    // uses, rather than the old all-time/upcoming-only local counts.
+    const attendanceRangeStart = opts.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+    const attendanceRangeEnd   = opts.reportEndDate   || today;
+    const attendanceByStaff = {};
+    computeAttendanceReportForRange({start:attendanceRangeStart, end:attendanceRangeEnd}).rows.forEach(r=>{ attendanceByStaff[r.staffId] = r; });
     function rotationCount(s){
       return state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
     }
@@ -15827,7 +15834,7 @@ function attachHandlers(){
 
     let page2 = `<div class="page page-break">
       <h1>Staff Performance Report</h1>
-      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members</div>
+      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
       <table class="report-table">
         <thead><tr>
           <th style="min-width:140px">Name &amp; Role</th>
@@ -15837,8 +15844,10 @@ function attachHandlers(){
           ${showTimes?'<th style="width:72px">Shift</th>':''}
           <th style="width:52px;text-align:center" title="Total rotation periods worked">Rots.</th>
           <th style="width:58px;text-align:center" title="Estimated hours from shift × rotations">Est. Hrs</th>
-          <th style="width:48px;text-align:center" title="Total recorded call-outs">Callouts</th>
-          <th style="width:52px;text-align:center" title="Upcoming scheduled leaves">Leaves</th>
+          <th style="width:48px;text-align:center" title="Call-outs in the selected date range">Callouts</th>
+          <th style="width:44px;text-align:center" title="Late arrivals in the selected date range">Late</th>
+          <th style="width:44px;text-align:center" title="Left-early events in the selected date range">Left Early</th>
+          <th style="width:52px;text-align:center" title="Scheduled leave days in the selected date range">Leave Days</th>
           <th style="width:52px;text-align:center" title="Avg. unique positions per rotation (higher = more flexible)">Flex.</th>
           <th style="width:52px;text-align:center" title="Average proficiency rating across all areas (1–5)">Prof.</th>
           <th style="width:62px;text-align:center" title="Should supervisor move them to a new area?">Needs Move</th>
@@ -15850,8 +15859,11 @@ function attachHandlers(){
       const area     = getAreaById(areaId);
       const rots     = rotationCount(s);
       const hrs      = totalHoursWorked(s);
-      const cos      = calloutCount(s);
-      const leaves   = scheduledLeaveCount(s);
+      const ar       = attendanceByStaff[s.id];
+      const cos      = ar ? ar.callout.length : 0;
+      const lateCnt  = ar ? ar.lateArrival.length : 0;
+      const earlyCnt = ar ? ar.leftEarly.length : 0;
+      const leaves   = ar ? ar.leaveDays : 0;
       const move     = needsChange(s, areaId);
       const flex     = avgPositionsPerRotation(s);
       const prof     = areasProficiency(s);
@@ -15888,6 +15900,8 @@ function attachHandlers(){
         <td style="text-align:center">${rots||'—'}</td>
         <td style="text-align:center">${hrs?hrs+'h':'—'}</td>
         <td style="text-align:center;${cosStyle}">${cos||'—'}</td>
+        <td style="text-align:center">${lateCnt||'—'}</td>
+        <td style="text-align:center">${earlyCnt||'—'}</td>
         <td style="text-align:center">${leaves||'—'}</td>
         <td style="text-align:center;color:${flex&&parseFloat(flex)<0.5?'#e67e22':'#555'}">${flex||'—'}</td>
         <td style="text-align:center;color:${prof&&parseFloat(prof)>=4?'#27ae60':prof&&parseFloat(prof)<2.5?'#c0392b':'#555'}">${prof||'—'}</td>
@@ -16935,7 +16949,7 @@ function attachHandlers(){
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
       saveState();
-      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -17546,7 +17560,7 @@ function attachHandlers(){
       state.areas = state.areas.filter(a=>a.id!==id);
       Object.keys(state.assignments).forEach(sid=>{ if(state.assignments[sid]===id) state.assignments[sid]=null; });
       saveState();
-      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -17697,9 +17711,17 @@ function attachHandlers(){
           try{ return ((new Date()-new Date(s.hireDate))/(1000*60*60*24*365.25)).toFixed(1); }catch(e){ return ''; }
         };
 
+        // Same range-scoped attendance data (server-synced attendance_events
+        // + time_off) the Staff Performance Report page and the standalone
+        // Attendance Report use — see computeAttendanceReportForRange().
+        const xlsAttendanceStart = m.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+        const xlsAttendanceEnd   = m.reportEndDate   || today;
+        const xlsAttendanceByStaff = {};
+        computeAttendanceReportForRange({start:xlsAttendanceStart, end:xlsAttendanceEnd}).rows.forEach(r=>{ xlsAttendanceByStaff[r.staffId] = r; });
+
         // ── Sheet 1: Staff Report ─────────────────────────────────────────
         const sh1 = [
-          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Est. Hours','Callouts','Sched. Leaves','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
+          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Est. Hours','Callouts','Late Arrivals','Left Early','Leave Days','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
         ];
         state.staff.filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
           const area  = getAreaById(state.assignments[s.id]);
@@ -17708,13 +17730,16 @@ function attachHandlers(){
           const rots  = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
           const dly   = shiftHrs(s);
           const hrs   = dly!=null ? (dly*rots).toFixed(1) : '';
-          const cos   = (state.calloutHistory||{})[s.id]?.length||0;
-          const leaves= ((state.timeOff||{})[s.id]||[]).filter(r=>r.endDate>=today).length;
+          const xar   = xlsAttendanceByStaff[s.id];
+          const cos   = xar ? xar.callout.length : 0;
+          const late  = xar ? xar.lateArrival.length : 0;
+          const early = xar ? xar.leftEarly.length : 0;
+          const leaves= xar ? xar.leaveDays : 0;
           const move  = !!(area&&isRepeatArea(s.id,area.id));
           const reqs  = (s.positionRequests||[]).filter(r=>!r.status||r.status==='pending').length;
           sh1.push([
             s.name, s.department||'', area?.name||'', s.shiftHours||'',
-            senYrs(s), rots||0, hrs||'', cos||0, leaves||0,
+            senYrs(s), rots||0, hrs||'', cos||0, late||0, early||0, leaves||0,
             move?'Yes':'No', s.isTeamLead?'Yes':'No', ...(showAccom?[s.needsAccommodations?'Yes':'No']:[]),
             langs, sup?.name||'', reqs||0, s.hireDate||'', s.lateStart||''
           ]);
@@ -19436,6 +19461,7 @@ async function runRealtimeRefresh(){
     const board = await window.RC.loadBoard();
     applyMappedBoard(mapSupabaseBoard(board));
     reconcileStaleCoverage();
+    reconcileStaleTempMoves();
     saveState();
     render();
   }catch(e){
