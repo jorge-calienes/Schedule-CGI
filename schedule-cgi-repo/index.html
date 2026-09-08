@@ -14720,7 +14720,7 @@ async function openReportBuilder(extra={}){
   const def = defaultReportDateRange();
   const base = {
     type:'report-preview',
-    sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
+    sections:{dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
     ...extra,
     reportStartDate: extra.reportStartDate || def.startDate,
     reportEndDate:   extra.reportEndDate   || def.endDate,
@@ -14849,11 +14849,12 @@ function attemptPlace(staffId, areaId, force, scope){
 // ============ EVENT WIRING ============
 
 function renderReportPreviewModal(m){
-  const secs = m.sections || {board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
+  const secs = m.sections || {dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
   const viewMode2 = m.viewMode2 || 'config';
-  const previewPage = m.previewPage || null; // null = overview, 'board'|'staff'|'certs'|'timeoff'|'activity'
+  const previewPage = m.previewPage || null; // null = no page picked yet (shows the section summary grid), 'dashboard'|'board'|'staff'|'certs'|'timeoff'|'activity'|...
 
   const pages = [
+    {id:'dashboard', icon:'🎛', label:'Overview',           desc:'KPI tiles & charts — attendance and staffing at a glance'},
     {id:'board',    icon:'📋', label:'Board layout',        desc:'Current positions by dept & area'},
     {id:'staff',    icon:'👥', label:'Staff report',        desc:'Hours, callouts, seniority, flexibility'},
     {id:'certs',    icon:'🌐', label:'Certifications',      desc:'Languages, CA cert, callouts today'},
@@ -14870,8 +14871,8 @@ function renderReportPreviewModal(m){
   let previewHTML = '';
   if(previewPage && secs[previewPage]){
     try{
-      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
-      const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5};
+      const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+      const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
       const rawPage = pageMap[previewPage]||'';
       previewHTML = rawPage;
     } catch(e){ previewHTML = '<div style="color:red">Preview error: '+e.message+'</div>'; }
@@ -15735,6 +15736,81 @@ function attachHandlers(){
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // PAGE 0 — Overview (management dashboard: KPI tiles + charts). Reuses
+    // the same period-scoped attendance data as the Staff Report page and
+    // the live area-fill formula from Area Utilization, so all three agree.
+    // Bars are width-percentage HTML/CSS (not print-only fixed pixels) so
+    // they scale correctly on phone, tablet, and desktop alike.
+    // ─────────────────────────────────────────────────────────────────────
+    const attendanceTotals = Object.values(attendanceByStaff).reduce((sum,r)=>({
+      callout: sum.callout + r.callout.length,
+      late: sum.late + r.lateArrival.length,
+      early: sum.early + r.leftEarly.length,
+      leaveDays: sum.leaveDays + r.leaveDays,
+    }), {callout:0, late:0, early:0, leaveDays:0});
+
+    const ovAreaStats = state.areas.filter(a=>!a.fixed).map(a=>{
+      const placed = staffInArea(a.id).filter(s=>s.active!==false&&!state.callouts[s.id]).length;
+      const cap = a.capacity||1;
+      const pct = Math.max(0, Math.min(100, Math.round((placed/cap)*100)));
+      return {name:a.name, placed, cap, pct};
+    }).sort((a,b)=>a.pct-b.pct);
+    const understaffedToday = ovAreaStats.filter(a=>a.pct<80).length;
+
+    const ovKpi = (num, label, sub, alert) => `
+      <div class="ov-kpi-tile ${alert?'ov-kpi-alert':''}">
+        <div class="ov-kpi-num">${num}</div>
+        <div class="ov-kpi-label">${escapeHtml(label)}</div>
+        ${sub?`<div class="ov-kpi-sub">${escapeHtml(sub)}</div>`:''}
+      </div>`;
+
+    const ovBarRow = (label, value, max, color, valueLabel) => `
+      <div class="ov-bar-row">
+        <div class="ov-bar-label">${escapeHtml(label)}</div>
+        <div class="ov-bar-track"><div class="ov-bar-fill" style="width:${max>0?Math.max(value>0?2:0,Math.round(value/max*100)):0}%;background:${color}"></div></div>
+        <div class="ov-bar-value">${valueLabel!=null?valueLabel:value}</div>
+      </div>`;
+
+    const attendanceMax = Math.max(1, attendanceTotals.callout, attendanceTotals.late, attendanceTotals.early, attendanceTotals.leaveDays);
+    const attendanceChart = `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Attendance &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+        ${ovBarRow('⚡ Callouts', attendanceTotals.callout, attendanceMax, '#2a78d6')}
+        ${ovBarRow('⏰ Late arrivals', attendanceTotals.late, attendanceMax, '#eb6834')}
+        ${ovBarRow('🚪 Left early', attendanceTotals.early, attendanceMax, '#1baf7a')}
+        ${ovBarRow('📅 Leave days', attendanceTotals.leaveDays, attendanceMax, '#eda100')}
+      </div>`;
+
+    const utilizationChart = `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Area utilization &nbsp;·&nbsp; today, worst first</div>
+        ${ovAreaStats.length ? ovAreaStats.map(a=>ovBarRow(a.name, a.pct, 100, a.pct>=80?'#0ca30c':a.pct>=50?'#fab219':'#d03b3b', a.pct+'% ('+a.placed+'/'+a.cap+')')).join('') : '<div class="empty">No areas configured.</div>'}
+        ${ovAreaStats.length?'<div class="ov-chart-legend">🟢 80%+ staffed &nbsp; 🟡 50–79% &nbsp; 🔴 under 50%</div>':''}
+      </div>`;
+
+    let page0 = `<div class="page page-break">
+      <div class="report-header">
+        <div>
+          <h1>Overview</h1>
+          <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${today}</div>
+        </div>
+      </div>
+      <div class="ov-kpi-row">
+        ${ovKpi(state.staff.filter(s=>s.active!==false).length, 'Total Staff', null, false)}
+        ${ovKpi(calledOut.length, 'Out Today', 'today', calledOut.length>0)}
+        ${ovKpi(attendanceTotals.callout, 'Callouts', 'this period', false)}
+        ${ovKpi(attendanceTotals.late, 'Late Arrivals', 'this period', false)}
+        ${ovKpi(attendanceTotals.early, 'Left Early', 'this period', false)}
+        ${ovKpi(attendanceTotals.leaveDays, 'Leave Days', 'this period', false)}
+        ${ovKpi(understaffedToday, 'Areas Under 80%', 'today', understaffedToday>0)}
+      </div>
+      <div class="ov-chart-row">
+        ${attendanceChart}
+        ${utilizationChart}
+      </div>
+    </div>`;
+
+    // ─────────────────────────────────────────────────────────────────────
     // PAGE 1 — Board layout
     // ─────────────────────────────────────────────────────────────────────
     let page1 = `<div class="page page-break">
@@ -16395,10 +16471,65 @@ function attachHandlers(){
       .log-table th{background:#fafafa;text-align:left;padding:4pt 6pt;border-bottom:1pt solid #eee;font-size:8.5pt;font-weight:700;color:#555;}
       .log-table td{padding:3.5pt 6pt;border-bottom:0.5pt solid #f0f0f0;vertical-align:middle;}
       .log-table tr:last-child td{border-bottom:none;}
+
+      /* ── Overview page: KPI tiles + bar charts ── */
+      .ov-kpi-row{display:flex;flex-wrap:wrap;gap:8pt;margin-bottom:18pt;}
+      .ov-kpi-tile{flex:1 1 100pt;min-width:100pt;border:1pt solid #e2e2e2;border-radius:8pt;padding:10pt 8pt;text-align:center;background:#fafafa;}
+      .ov-kpi-tile.ov-kpi-alert{border-color:#f3c6c6;background:#fff6f6;}
+      .ov-kpi-num{font-size:22pt;font-weight:700;color:#111;font-variant-numeric:tabular-nums;}
+      .ov-kpi-tile.ov-kpi-alert .ov-kpi-num{color:#d03b3b;}
+      .ov-kpi-label{font-size:8.5pt;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.03em;margin-top:2pt;}
+      .ov-kpi-sub{font-size:7.5pt;color:#999;margin-top:1pt;}
+      .ov-chart-row{display:flex;gap:16pt;flex-wrap:wrap;}
+      .ov-chart{flex:1 1 240pt;min-width:220pt;border:1pt solid #eee;border-radius:8pt;padding:12pt;}
+      .ov-chart-title{font-size:10.5pt;font-weight:700;color:#111;margin-bottom:10pt;}
+      .ov-bar-row{display:flex;align-items:center;gap:8pt;margin-bottom:8pt;}
+      .ov-bar-row:last-child{margin-bottom:0;}
+      .ov-bar-label{flex:0 0 90pt;font-size:8.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ov-bar-track{flex:1;height:12pt;background:#f0f0ee;border-radius:6pt;overflow:hidden;}
+      .ov-bar-fill{height:100%;border-radius:6pt;min-width:2px;}
+      .ov-bar-value{flex:0 0 auto;font-size:8.5pt;font-weight:600;color:#333;font-variant-numeric:tabular-nums;min-width:44pt;text-align:right;}
+      .ov-chart-legend{font-size:7.5pt;color:#999;margin-top:8pt;}
+
+      /* ── Screen (phone/tablet/desktop) reflow — print rules above are
+         untouched; this only overrides how the same markup reads on a
+         screen instead of a printed/PDF page. ── */
+      @media screen{
+        body{font-size:14px;}
+        .page{min-height:auto;padding:20px;}
+        h1{font-size:20px;}
+        .subtitle{font-size:12px;}
+        .report-table, table{font-size:12px;}
+        .report-table th, table th{font-size:11px;}
+        .ov-kpi-num{font-size:24px;}
+        .ov-kpi-label{font-size:10px;}
+        .ov-bar-label{font-size:10px;flex-basis:110px;}
+        .ov-bar-value{font-size:10px;}
+        .ov-chart-title{font-size:13px;}
+        /* Wide tables scroll horizontally within themselves instead of
+           forcing the whole page to scroll sideways on a phone. */
+        .report-table, table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+        .report-table tbody, .report-table thead, .report-table tr,
+        table tbody, table thead, table tr{display:table;width:100%;table-layout:auto;}
+      }
+      @media screen and (max-width:700px){
+        body{font-size:15px;}
+        .page{padding:14px;}
+        h1{font-size:18px;}
+        .ov-kpi-tile{flex-basis:44%;}
+        .ov-chart{flex-basis:100%;}
+        .areas-row{gap:6px;}
+        .area-card{min-width:120px;}
+        .ov-bar-label{flex-basis:84px;font-size:9.5px;}
+      }
+      @media screen and (max-width:420px){
+        .ov-kpi-tile{flex-basis:100%;}
+      }
     `;
 
     // Build only selected sections
     const parts = [];
+    if(sections.dashboard)     parts.push(page0);
     if(sections.board)        parts.push(page1);
     if(sections.staff)        parts.push(page2);
     if(sections.certs)        parts.push(page3);
@@ -16407,7 +16538,7 @@ function attachHandlers(){
     if(sections.supervisors)  parts.push(page6);
     if(sections.utilization)  parts.push(page7);
     if(sections.notes)        parts.push(page8);
-    return {page1,page2,page3,page4,page5,page6,page7,page8, reportCSS, parts};
+    return {page0,page1,page2,page3,page4,page5,page6,page7,page8, reportCSS, parts};
   };
   // ── swap mode ──
   // Tap any chip while swap mode active → complete the swap immediately
@@ -17652,7 +17783,7 @@ function attachHandlers(){
   // --- rotate preview (flow-aware rotation) ---
   if(activeModal.type==='report-preview'){
     const m = activeModal;
-    const secs = m.sections || {board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
+    const secs = m.sections || {dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
   const viewMode2 = m.viewMode2 || 'config';
 
     // Tab switches: Configure ↔ Live
@@ -17666,7 +17797,7 @@ function attachHandlers(){
           const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
           doc.close();
         }catch(e){ console.error('live view error',e); }
       }, 60);
@@ -17687,7 +17818,7 @@ function attachHandlers(){
           const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate});
           const doc=iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
           doc.close();
         },60);
       });
@@ -17925,11 +18056,11 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-preview-iframe');
         if(!iframe) return;
         try{
-          const {page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
-          const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
+          const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+          const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><style>'+reportCSS+' body{padding:12pt;} .page-break{page-break-after:avoid;}</style></head><body>'+pageMap[pg]+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:12pt;} .page-break{page-break-after:avoid;}</style></head><body>'+pageMap[pg]+'</body></html>');
           doc.close();
         }catch(e){ console.error(e); }
       }, 50);
@@ -17982,7 +18113,7 @@ function attachHandlers(){
       const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
-      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
       const blob = new Blob([html],{type:'text/html'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -17996,7 +18127,7 @@ function attachHandlers(){
       const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
-      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
       const win = window.open('','_blank','width=900,height=700');
       if(win){ win.document.write(html); win.document.close(); win.onload=()=>{ win.focus(); win.print(); }; }
     });
