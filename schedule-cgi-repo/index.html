@@ -16353,9 +16353,43 @@ function attachHandlers(){
       return Math.round(under/total*100);
     };
 
+    // Attendance-impact-by-area chart: how much of the report's callouts,
+    // late arrivals, left-earlys and leave days landed on staff currently
+    // assigned to each area, stacked so the bar length reads as "how often
+    // it's happened" and the segments show which kind of issue it was.
+    // "min N" alongside each bar is the area's capacity — the minimum
+    // staff it needs — so impact and staffing need read side by side.
+    const areaImpactStats = state.areas.filter(a=>!a.fixed).map(a=>{
+      const members = staffInArea(a.id).filter(s=>s.active!==false);
+      let callout=0, late=0, early=0, leaveDays=0;
+      members.forEach(s=>{
+        const ar = attendanceByStaff[s.id];
+        if(!ar) return;
+        callout += ar.callout.length;
+        late += ar.lateArrival.length;
+        early += ar.leftEarly.length;
+        leaveDays += ar.leaveDays;
+      });
+      return {name:a.name, cap:a.capacity||1, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
+    }).sort((a,b)=>b.total-a.total);
+    const areaImpactMax = Math.max(1, ...areaImpactStats.map(a=>a.total));
+    const aiSeg = (value,max,color) => value>0 ? `<span class="ai-bar-seg" style="width:${Math.max(2,Math.round(value/max*100))}%;background:${color}"></span>` : '';
+    const areaImpactChart = `
+      <div class="ov-chart" style="margin-bottom:16pt;">
+        <div class="ov-chart-title">Attendance impact by area &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+        ${areaImpactStats.length ? areaImpactStats.map(a=>`
+          <div class="ai-bar-row">
+            <div class="ai-bar-label">${escapeHtml(a.name)}</div>
+            <div class="ai-bar-track">${aiSeg(a.callout,areaImpactMax,'#2a78d6')}${aiSeg(a.late,areaImpactMax,'#eb6834')}${aiSeg(a.early,areaImpactMax,'#1baf7a')}${aiSeg(a.leaveDays,areaImpactMax,'#eda100')}</div>
+            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'} &nbsp;·&nbsp; min ${a.cap}</div>
+          </div>`).join('') : '<div class="empty">No areas configured.</div>'}
+        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days &nbsp;·&nbsp; "min" = capacity, the fewest staff that area needs</div>':''}
+      </div>`;
+
     let page7 = `<div class="page page-break">
       <h1>Area Utilization</h1>
       <div class="subtitle">Period: ${period} — Today's staffing vs capacity, with history</div>
+      ${areaImpactChart}
       <table class="report-table">
         <thead><tr>
           <th>Area</th>
@@ -16586,6 +16620,12 @@ function attachHandlers(){
       .ov-bar-fill{height:100%;border-radius:6pt;min-width:2px;}
       .ov-bar-value{flex:0 0 auto;font-size:8.5pt;font-weight:600;color:#333;font-variant-numeric:tabular-nums;min-width:44pt;text-align:right;}
       .ov-chart-legend{font-size:7.5pt;color:#999;margin-top:8pt;}
+      .ai-bar-row{display:flex;align-items:center;gap:8pt;margin-bottom:7pt;}
+      .ai-bar-row:last-child{margin-bottom:0;}
+      .ai-bar-label{flex:0 0 120pt;font-size:8.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ai-bar-track{flex:1;height:12pt;background:#f0f0ee;border-radius:6pt;overflow:hidden;display:flex;gap:1pt;}
+      .ai-bar-seg{height:100%;border-radius:2pt;min-width:2px;}
+      .ai-bar-value{flex:0 0 auto;font-size:8pt;color:#555;font-variant-numeric:tabular-nums;min-width:96pt;text-align:right;}
       .ov-chart-highlight{font-size:8.5pt;color:#555;background:#f7f5ee;border-radius:5pt;padding:5pt 8pt;margin-bottom:8pt;}
       .ov-chart-highlight strong{color:#111;}
       .ov-donut-row{display:flex;align-items:center;gap:14pt;flex-wrap:wrap;}
@@ -16614,6 +16654,8 @@ function attachHandlers(){
         .ov-bar-label{font-size:10px;flex-basis:110px;}
         .ov-bar-value{font-size:10px;}
         .ov-chart-title{font-size:13px;}
+        .ai-bar-label{font-size:10px;flex-basis:130px;}
+        .ai-bar-value{font-size:10px;min-width:110px;}
         .ov-donut-legend-row{font-size:11px;}
         .ov-donut-legend-value{font-size:10.5px;}
         .ov-donut-center-num{font-size:18px;}
