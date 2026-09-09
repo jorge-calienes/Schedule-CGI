@@ -7374,12 +7374,17 @@
   .rec-opt-t{font-weight:700;font-size:13.5px;}
   .rec-opt-d{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
 
-  /* ── Evaluation trend chart (staff performance profile) ── */
-  .trend-chart{height:110px;display:flex;align-items:flex-end;gap:7px;padding:16px 4px 0;}
-  .trend-bar{flex:1;min-width:0;background:linear-gradient(to top,#2F5FA8,#6E97D6);border-radius:5px 5px 0 0;position:relative;}
+  /* ── Evaluation trend chart (staff performance profile) ── card-wrapped
+     and token-colored to match the eval-history-row cards it sits above,
+     instead of floating bars in a hardcoded blue that didn't adapt to
+     dark mode. Bars are width-capped and centered so 1-2 periods don't
+     stretch into one giant block (flex:1 used to do exactly that). */
+  .trend-chart-card{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);margin-bottom:var(--md-space-3);}
+  .trend-chart{height:110px;display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:16px 4px 0;border-bottom:1.5px solid var(--md-sys-color-outline-variant);}
+  .trend-bar{flex:0 1 44px;min-width:0;background:linear-gradient(to top,var(--md-sys-color-primary),var(--md-sys-color-primary-container));border-radius:5px 5px 0 0;position:relative;cursor:default;}
   .trend-bar-v{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);}
-  .trend-labels{display:flex;gap:7px;margin-top:6px;margin-bottom:var(--md-space-4);}
-  .trend-labels span{flex:1;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
+  .trend-labels{display:flex;justify-content:center;gap:10px;margin-top:6px;}
+  .trend-labels span{flex:0 1 44px;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
 
   /* ── Team dashboard ── */
   .team-dash-summary{display:flex;gap:var(--md-space-5);flex-wrap:wrap;margin-bottom:var(--md-space-4);padding-bottom:var(--md-space-4);border-bottom:1px solid var(--md-sys-color-outline-variant);}
@@ -9629,6 +9634,22 @@ function staffExperienceBreakdown(staffId){
   return { rows, totalCompletedRotations, currentAreaId, bestFit };
 }
 
+// Active staff who have experience (real rotation history or a marked
+// prior-experience flag) in every rotating area — fixed areas don't count,
+// since those are permanent positions rather than something to rotate
+// through. Surfaced to supervisors as a nudge to talk about what's next
+// for that person, not an automated workflow.
+function staffReadyForNewPath(){
+  const nonFixedAreaIds = new Set(state.areas.filter(a=>!a.fixed).map(a=>a.id));
+  if(!nonFixedAreaIds.size) return [];
+  return state.staff.filter(s=>{
+    if(s.active===false) return false;
+    const { rows } = staffExperienceBreakdown(s.id);
+    const workedNonFixed = rows.filter(r=>nonFixedAreaIds.has(r.areaId) && r.hasExperience).length;
+    return workedNonFixed === nonFixedAreaIds.size;
+  });
+}
+
 // rank candidate staff for filling an empty area slot (call-out reassignment)
 // excludes: staff already in that area, staff currently out, blocked-conflicting staff (soft - still shown but flagged)
 function rankCandidatesForArea(areaId, excludeStaffIds){
@@ -10496,6 +10517,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-staff"><span class="nav-item-icon">📥</span>Import staff (Excel)</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-prior-exp"><span class="nav-item-icon">📥</span>Import prior experience (Excel)</button>` : ''}
       <button class="nav-item" id="nav-manage-supervisors"><span class="nav-item-icon">🏅</span>Supervisors</button>
       <button class="nav-item" id="nav-org-diagram"><span class="nav-item-icon">🗂</span>Org diagram</button>
       <button class="nav-item" id="nav-manage-blocks"><span class="nav-item-icon">🚫</span>Blocked Pairs</button>
@@ -10515,6 +10537,11 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(()=>{
+        if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
+        const readyCount = staffReadyForNewPath().length;
+        return `<button class="nav-item" id="nav-ready-for-path"><span class="nav-item-icon">🏆</span>Ready for a new path${readyCount>0?`<span class="nav-item-badge">${readyCount}</span>`:''}</button>`;
+      })()}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
       <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
@@ -11542,6 +11569,8 @@ function renderModal(){
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
   else if(m.type==='eval-form') inner = renderEvalFormModal(m);
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
+  else if(m.type==='prior-exp-import') inner = renderPriorExpImportModal(m);
+  else if(m.type==='ready-for-path') inner = renderReadyForPathModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
@@ -11711,6 +11740,39 @@ function renderStaffStatsModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-stats">Close</button>
       ${isTeamLeadRole() ? '' : '<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>'}
+    </div>
+  </div>`;
+}
+
+// --- Ready for a new path: active staff with experience (real or marked
+// prior) in every rotating area — a nudge for supervisors to talk about
+// what's next, not an automated workflow. Tapping a row opens their full
+// Stats tab via the same data-show-stats hookup the roster/board chips use. ---
+function renderReadyForPathModal(m){
+  const staff = staffReadyForNewPath().sort((a,b)=>a.name.localeCompare(b.name));
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h2>🏆 Ready for a new path</h2>
+        <p>${staff.length} staff member${staff.length===1?'':'s'} ${staff.length===1?'has':'have'} experience in every rotation area.</p>
+      </div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${staff.length===0 ? `<div class="small-muted">No one has hit 100% area coverage yet.</div>` : `
+      <div class="option-list">
+        ${staff.map(s=>`
+          <div class="option-card" data-show-stats="${s.id}">
+            <div class="oc-left">
+              <span class="oc-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</span>
+              <span class="oc-sub">${escapeHtml(s.department||'')}</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-ready-path" style="margin-left:auto;">Close</button>
     </div>
   </div>`;
 }
@@ -13017,6 +13079,60 @@ function downloadStaffImportTemplate(){
   XLSX.writeFile(wb, 'staff-import-template.xlsx');
 }
 
+// A staff-rows × area-columns matrix, pre-filled with the current roster
+// and today's marked prior-experience — one row per active staff member,
+// one column per rotating (non-fixed) area, "X" where already marked.
+// Filling in more X's and re-uploading only ADDS marks; it never clears
+// one that's already there (clearing stays a one-at-a-time action on the
+// staff profile itself, since undoing prior experience in bulk is exactly
+// the kind of mistake a spreadsheet typo shouldn't be able to make).
+function downloadPriorExperienceTemplate(){
+  const areas = state.areas.filter(a=>!a.fixed).sort((a,b)=>a.name.localeCompare(b.name));
+  const headers = ['Name','TDIS #', ...areas.map(a=>a.name)];
+  const rows = state.staff.filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
+    return [s.name, s.tdisNumber||'', ...areas.map(a=>hasManualPriorExperience(s.id,a.id)?'X':'')];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = headers.map((h,i)=> i===0 ? {wch:22} : {wch:14});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Prior Experience');
+  XLSX.writeFile(wb, 'prior-experience-template.xlsx');
+}
+
+// Matches uploaded rows to existing staff (TDIS # first, exact name as
+// fallback) and uploaded columns to existing non-fixed areas by exact
+// name, then figures out which cells are new marks — i.e. skips anyone
+// already carrying that mark, so importing the same file twice is a no-op
+// the second time.
+function buildPriorExpImportPreview(rawRows, headers){
+  const norm = s => String(s||'').trim().toLowerCase();
+  const nameHeader = headers.find(h=>STAFF_IMPORT_ALIASES.name.includes(norm(h).replace(/[^a-z0-9]/g,''))) || headers[0];
+  const tdisHeader = headers.find(h=>STAFF_IMPORT_ALIASES.tdis.includes(norm(h).replace(/[^a-z0-9]/g,'')));
+  const areaHeaders = headers.filter(h=>h!==nameHeader && h!==tdisHeader);
+  const areaByHeader = {};
+  const unmatchedHeaders = [];
+  areaHeaders.forEach(h=>{
+    const area = state.areas.find(a=>!a.fixed && norm(a.name)===norm(h));
+    if(area) areaByHeader[h] = area; else unmatchedHeaders.push(h);
+  });
+
+  const rows = rawRows.map(row=>{
+    const name = String(row[nameHeader]??'').trim();
+    const tdisNumber = tdisHeader ? String(row[tdisHeader]??'').trim().toUpperCase() : '';
+    const staff = (tdisNumber && state.staff.find(s=>s.tdisNumber===tdisNumber))
+      || state.staff.find(s=>norm(s.name)===norm(name))
+      || null;
+    const newMarks = [];
+    Object.entries(areaByHeader).forEach(([header,area])=>{
+      const cell = norm(row[header]);
+      if(!cell || !STAFF_IMPORT_TRUTHY.includes(cell)) return;
+      if(staff && !hasManualPriorExperience(staff.id, area.id)) newMarks.push(area);
+    });
+    return { name, tdisNumber, staff, newMarks, error: staff ? '' : 'No matching staff (checked TDIS # and name)' };
+  });
+  return { rows, unmatchedHeaders };
+}
+
 // Mirrors exactly what's on screen in the Roster table/toolbar — whatever
 // search + filters the user currently has applied — so the export matches
 // what they're looking at rather than silently exporting everyone.
@@ -13149,6 +13265,96 @@ function renderStaffImportModal(m){
       </div>
       <div class="small-muted" style="line-height:1.6;">
         First row should be column headers. We'll try to auto-detect the Name, TDIS #, Department, Shift, Hire date, Team Lead, AGS/Subcontractor, Needs Accommodations, Counter Acceptance, and Tags columns — you can fix the mapping on the next screen if we get it wrong. Rows without a name are skipped. A row whose TDIS # matches someone already in the app <b>updates</b> their profile instead of creating a duplicate — so editing this same file and re-uploading it keeps the board in sync. Supervisor and language certifications aren't part of this import yet — those aren't saved to the database anywhere in the app currently, so we're not pretending they are here.
+      </div>
+      ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
+    </div>
+  </div>`;
+}
+
+// --- Bulk prior-experience import (Excel matrix: staff rows × area columns) ---
+function renderPriorExpImportModal(m){
+  if(m.step==='preview'){
+    const { rows, unmatchedHeaders } = buildPriorExpImportPreview(m.rawRows, m.headers);
+    const validRows = rows.filter(r=>!r.error);
+    const totalNewMarks = validRows.reduce((sum,r)=>sum+r.newMarks.length, 0);
+    const rowsWithMarks = validRows.filter(r=>r.newMarks.length>0);
+    const errorCount = rows.length - validRows.length;
+    return `
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-head">
+        <div><h2>Review import</h2><p>${escapeHtml(m.fileName)} · ${rows.length} row${rows.length===1?'':'s'} found</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        ${unmatchedHeaders.length?`<div class="alert-box rust" style="margin-bottom:12px;">Column${unmatchedHeaders.length===1?'':'s'} not matched to any area, ignored: ${unmatchedHeaders.map(escapeHtml).join(', ')}</div>`:''}
+        <div style="max-height:340px;overflow:auto;border:1px solid var(--c-border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="position:sticky;top:0;background:var(--md-sys-color-surface-container-low);">
+              <th style="text-align:left;padding:6px 8px;">Name</th>
+              <th style="text-align:left;padding:6px 8px;">TDIS</th>
+              <th style="text-align:left;padding:6px 8px;">New marks</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map(r=>`<tr style="border-top:1px solid var(--c-border);${r.error?'opacity:.6;':''}">
+                <td style="padding:6px 8px;">${escapeHtml(r.name||'—')}</td>
+                <td style="padding:6px 8px;font-family:var(--mono);">${escapeHtml(r.tdisNumber||'—')}</td>
+                <td style="padding:6px 8px;">${r.error?`<span style="color:var(--c-red);">⚠ ${escapeHtml(r.error)}</span>`:(r.newMarks.length?`<span style="color:var(--c-green);">+${r.newMarks.length}: ${r.newMarks.map(a=>escapeHtml(a.name)).join(', ')}</span>`:'<span class="small-muted">no change</span>')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="small-muted" style="margin-top:8px;">${totalNewMarks} new mark${totalNewMarks===1?'':'s'} across ${rowsWithMarks.length} staff member${rowsWithMarks.length===1?'':'s'}${errorCount?` · ${errorCount} row${errorCount===1?'':'s'} skipped (no matching staff)`:''}</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" id="import-pexp-back-btn">← Back</button>
+        <button class="btn btn-primary" id="import-pexp-confirm-btn" ${totalNewMarks===0?'disabled':''} style="margin-left:auto;">Add ${totalNewMarks} mark${totalNewMarks===1?'':'s'}</button>
+      </div>
+    </div>`;
+  }
+
+  if(m.step==='importing' || m.step==='done'){
+    const progress = m.progress || {done:0,total:0};
+    const pct = progress.total ? Math.round(progress.done/progress.total*100) : 0;
+    const results = m.results || {added:0, failed:[]};
+    return `
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-head">
+        <div><h2>${m.step==='importing'?'Importing…':'Import complete'}</h2><p>${m.step==='importing'?`${progress.done} of ${progress.total}`:''}</p></div>
+        ${m.step==='done'?'<button class="modal-close" id="modal-close-x">✕</button>':''}
+      </div>
+      <div class="modal-body">
+        ${m.step==='importing'?`
+          <div class="stats-overall-track"><div class="stats-overall-fill" style="width:${pct}%"></div></div>
+          <div class="small-muted" style="margin-top:8px;">Don't close this window…</div>
+        `:`
+          <div class="alert-box ${results.failed.length?'rust':'teal'}">${results.added} mark${results.added===1?'':'s'} added — saved to database ✓${results.failed.length?` · ${results.failed.length} failed`:''}</div>
+          ${results.failed.length?`
+            <div class="small-muted" style="font-weight:700;margin:12px 0 6px;">Failed</div>
+            <div class="option-list" style="max-height:200px;overflow-y:auto;">
+              ${results.failed.map(f=>`<div class="option-card"><div class="oc-left"><span class="oc-name">${escapeHtml(f.name)}</span><span class="oc-sub">${escapeHtml(f.error)}</span></div></div>`).join('')}
+            </div>
+          `:''}
+        `}
+      </div>
+      ${m.step==='done'?`<div class="modal-foot"><button class="btn btn-primary" id="import-pexp-done-btn" style="margin-left:auto;">Done</button></div>`:''}
+    </div>`;
+  }
+
+  // step === 'pick' (default)
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h2>Import prior experience from Excel</h2><p>Bulk-mark which areas staff already know from before this system tracked rotations.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <button class="btn btn-light" id="import-pexp-download-template" type="button" style="width:100%;margin-bottom:16px;">⬇ Download template, pre-filled with your roster (.xlsx)</button>
+      <div class="field">
+        <label>Filled-in spreadsheet (.xlsx, .xls, .csv)</label>
+        <input type="file" id="prior-exp-import-file" accept=".xlsx,.xls,.csv"/>
+      </div>
+      <div class="small-muted" style="line-height:1.6;">
+        One row per staff member, one column per rotating area — mark X (or Yes/1) in any area they've already worked. Matches staff by TDIS # first, then by exact name. This only <b>adds</b> new marks — it never clears one that's already checked, so it's safe to re-import the same file after adding a few more X's. Fixed-position areas aren't part of this (they don't rotate).
       </div>
       ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
     </div>
@@ -14502,10 +14708,10 @@ function renderEvalTrendChart(approvedRows){
   };
   return '<div class="stats-prof-section-label" style="margin-top:0;">Trend over time</div>'+
     '<div class="small-muted" style="margin-bottom:6px;">Combined score, last '+periods.length+' rotation period'+(periods.length===1?'':'s')+'</div>'+
-    '<div class="trend-chart">'+
-      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
+    '<div class="trend-chart-card"><div class="trend-chart">'+
+      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;" title="'+escapeHtml(shortLabel(p.label))+': '+p.combined.toFixed(1)+' / 5"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
     '</div>'+
-    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div>';
+    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div></div>';
 }
 
 // Groups raw evaluation rows (as returned by fetchTeamPerformanceOverview)
@@ -16403,8 +16609,6 @@ function attachHandlers(){
     // late arrivals, left-earlys and leave days landed on staff currently
     // assigned to each area, stacked so the bar length reads as "how often
     // it's happened" and the segments show which kind of issue it was.
-    // "min N" alongside each bar is the area's capacity — the minimum
-    // staff it needs — so impact and staffing need read side by side.
     const areaImpactStats = state.areas.filter(a=>!a.fixed).map(a=>{
       const members = staffInArea(a.id).filter(s=>s.active!==false);
       let callout=0, late=0, early=0, leaveDays=0;
@@ -16416,7 +16620,7 @@ function attachHandlers(){
         early += ar.leftEarly.length;
         leaveDays += ar.leaveDays;
       });
-      return {name:a.name, cap:a.capacity||1, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
+      return {name:a.name, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
     }).sort((a,b)=>b.total-a.total);
     const areaImpactMax = Math.max(1, ...areaImpactStats.map(a=>a.total));
     const aiSeg = (value,max,color) => value>0 ? `<span class="ai-bar-seg" style="width:${Math.max(2,Math.round(value/max*100))}%;background:${color}"></span>` : '';
@@ -16427,16 +16631,15 @@ function attachHandlers(){
           <div class="ai-bar-row">
             <div class="ai-bar-label">${escapeHtml(a.name)}</div>
             <div class="ai-bar-track">${aiSeg(a.callout,areaImpactMax,'#2a78d6')}${aiSeg(a.late,areaImpactMax,'#eb6834')}${aiSeg(a.early,areaImpactMax,'#1baf7a')}${aiSeg(a.leaveDays,areaImpactMax,'#eda100')}</div>
-            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'} &nbsp;·&nbsp; min ${a.cap}</div>
+            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'}</div>
           </div>`).join('') : '<div class="empty">No areas configured.</div>'}
-        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days &nbsp;·&nbsp; "min" = capacity, the fewest staff that area needs</div>':''}
+        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days</div>':''}
       </div>`;
 
     // Same per-area attendance breakdown as the chart above, as exact
     // numbers — a bar is for spotting the pattern at a glance, a table is
-    // for reading a precise count. "Min" repeats the area's capacity here
-    // too, right next to the incident counts, rather than making the
-    // reader cross-reference the Cap. column further down.
+    // for reading a precise count. Capacity already has its own Cap.
+    // column in the table further down, so it isn't repeated here.
     const areaImpactTable = areaImpactStats.length ? `
       <table class="report-table" style="margin-bottom:16pt;">
         <thead><tr>
@@ -16445,7 +16648,6 @@ function attachHandlers(){
           <th style="width:60px;text-align:center">Late Arrivals</th>
           <th style="width:60px;text-align:center">Left Early</th>
           <th style="width:60px;text-align:center">Leave Days</th>
-          <th style="width:50px;text-align:center" title="Capacity — the fewest staff this area needs">Min</th>
         </tr></thead><tbody>
         ${areaImpactStats.map(a=>`<tr>
           <td><b>${escapeHtml(a.name)}</b></td>
@@ -16453,7 +16655,6 @@ function attachHandlers(){
           <td style="text-align:center">${a.late||'—'}</td>
           <td style="text-align:center">${a.early||'—'}</td>
           <td style="text-align:center">${a.leaveDays||'—'}</td>
-          <td style="text-align:center;font-weight:700">${a.cap}</td>
         </tr>`).join('')}
       </tbody></table>` : '';
 
@@ -16855,6 +17056,7 @@ function attachHandlers(){
   on('nav-roster', ()=>{ viewMode='roster'; closeNav(); render(); });
   on('nav-manage-staff',        ()=>{ closeNav(); openModal({type:'staff-manager'}); });
   on('nav-import-staff',        ()=>{ closeNav(); openModal({type:'staff-import', step:'pick'}); });
+  on('nav-import-prior-exp',    ()=>{ closeNav(); openModal({type:'prior-exp-import', step:'pick'}); });
   on('nav-manage-supervisors',  ()=>{ closeNav(); openModal({type:'supervisor-manager'}); });
   on('nav-org-diagram',         ()=>{ closeNav(); openModal({type:'org-diagram'}); });
   on('nav-manage-blocks',       ()=>{ closeNav(); openModal({type:'blocks-manager'}); });
@@ -16869,6 +17071,7 @@ function attachHandlers(){
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
+  on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
@@ -17017,6 +17220,11 @@ function attachHandlers(){
       await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
       render();
     }));
+  }
+
+  // --- ready for a new path (100% area coverage list) ---
+  if(activeModal.type==='ready-for-path'){
+    on('modal-close-ready-path', closeModal);
   }
 
   // ── Position request: approve / deny ──
@@ -18718,6 +18926,59 @@ function attachHandlers(){
     }
 
     on('import-done-btn', ()=>{ closeModal(); openModal({type:'staff-manager'}); });
+  }
+
+  // --- bulk prior-experience import (Excel/CSV) ---
+  if(activeModal.type==='prior-exp-import'){
+    const m = activeModal;
+
+    if(m.step==='pick' || !m.step){
+      on('import-pexp-download-template', downloadPriorExperienceTemplate);
+      const fileInput = document.getElementById('prior-exp-import-file');
+      if(fileInput) fileInput.addEventListener('change', async ()=>{
+        const file = fileInput.files[0];
+        if(!file) return;
+        try{
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array'});
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:false});
+          if(rows.length===0){ openModal({...m, error:'No rows found in that file.'}); return; }
+          const headers = Object.keys(rows[0]);
+          openModal({type:'prior-exp-import', step:'preview', fileName:file.name, headers, rawRows:rows});
+        }catch(e){
+          openModal({...m, error:'Could not read that file: '+((e&&e.message)||'unknown error')});
+        }
+      });
+    }
+
+    if(m.step==='preview'){
+      on('import-pexp-back-btn', ()=>openModal({type:'prior-exp-import', step:'pick'}));
+      on('import-pexp-confirm-btn', async ()=>{
+        const { rows } = buildPriorExpImportPreview(m.rawRows, m.headers);
+        const toApply = [];
+        rows.forEach(r=>{ if(!r.error) r.newMarks.forEach(area=>toApply.push({staff:r.staff, area})); });
+        openModal({type:'prior-exp-import', step:'importing', progress:{done:0, total:toApply.length}});
+        let added = 0; const failed = [];
+        for(const {staff, area} of toApply){
+          const sync = await syncCrudWrite(()=>window.RC.setPriorExperience({
+            staffId: staff.id, areaId: area.id, note:'', actingAccountId: authState.account.id,
+          }));
+          if(sync.ok){
+            if(!state.priorExperience[staff.id]) state.priorExperience[staff.id] = [];
+            state.priorExperience[staff.id].push({id: sync.result?.id || uid('pex'), areaId: area.id, note:''});
+            added++;
+          } else {
+            failed.push({name: staff.name+' · '+area.name, error: (sync.error&&sync.error.message)||'Save failed'});
+          }
+          openModal({type:'prior-exp-import', step:'importing', progress:{done:added+failed.length, total:toApply.length}});
+        }
+        saveState();
+        openModal({type:'prior-exp-import', step:'done', results:{added, failed}});
+      });
+    }
+
+    on('import-pexp-done-btn', closeModal);
   }
 
   // --- manage accounts ---
