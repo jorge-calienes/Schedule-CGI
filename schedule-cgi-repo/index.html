@@ -15743,21 +15743,12 @@ function attachHandlers(){
     const groups  = areasByDepartment();
     const fixed   = state.areas.filter(a=>a.fixed);
     const calledOut = state.staff.filter(s=>s.active!==false && state.callouts[s.id]);
-    const langStaff = state.staff.filter(s=>s.active!==false && ((s.languageCerts||[]).length || s.counterCert));
+    const certStaff = state.staff.filter(s=>s.active!==false && (s.counterCert || (showAccom&&s.needsAccommodations)));
+    const languageStaff = state.staff.filter(s=>s.active!==false && (s.languageCerts||[]).length);
     const langNames = s=>(s.languageCerts||[]).map(id=>state.languages.find(x=>x.id===id)?.name).filter(Boolean).join(', ');
     const friendlyD = d=>{ try{const[y,m,dd]=d.split('-');const dt=new Date(y,m-1,dd);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;}};
 
     // ── Helpers ──────────────────────────────────────────────────────────
-    function totalHoursWorked(s){
-      // Sum hours from shift label e.g. "7:30 – 4:15" = 8.75h
-      const m = (s.shiftHours||'').match(/(\d+):(\d+)[^\d]+(\d+):(\d+)/);
-      if(!m) return null;
-      const start = parseInt(m[1])*60+parseInt(m[2]);
-      const end   = parseInt(m[3])*60+parseInt(m[4]);
-      const daily = (end - start) / 60;
-      const periods = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
-      return periods > 0 ? (daily * periods).toFixed(1) : null;
-    }
     // Callouts / late arrivals / left-early / scheduled-leave days, all
     // scoped to the report's picked date range (defaults to the last 30
     // days — see openReportBuilder()) via the same durable, server-synced
@@ -15796,6 +15787,7 @@ function attachHandlers(){
       return {name:a.name, placed, cap, pct};
     }).sort((a,b)=>a.pct-b.pct);
     const understaffedToday = ovAreaStats.filter(a=>a.pct<80).length;
+    const busiestArea = ovAreaStats.length ? ovAreaStats.slice().sort((a,b)=>b.placed-a.placed)[0] : null;
 
     const ovKpi = (num, label, sub, alert) => `
       <div class="ov-kpi-tile ${alert?'ov-kpi-alert':''}">
@@ -15824,8 +15816,50 @@ function attachHandlers(){
     const utilizationChart = `
       <div class="ov-chart">
         <div class="ov-chart-title">Area utilization &nbsp;·&nbsp; today, worst first</div>
+        ${busiestArea?`<div class="ov-chart-highlight">👑 Busiest area: <strong>${escapeHtml(busiestArea.name)}</strong> — ${busiestArea.placed} staff</div>`:''}
         ${ovAreaStats.length ? ovAreaStats.map(a=>ovBarRow(a.name, a.pct, 100, a.pct>=80?'#0ca30c':a.pct>=50?'#fab219':'#d03b3b', a.pct+'% ('+a.placed+'/'+a.cap+')')).join('') : '<div class="empty">No areas configured.</div>'}
         ${ovAreaStats.length?'<div class="ov-chart-legend">🟢 80%+ staffed &nbsp; 🟡 50–79% &nbsp; 🔴 under 50%</div>':''}
+      </div>`;
+
+    // Staff-by-position donut. Pie/donut is only the right form for an
+    // at-a-glance part-to-whole read with <=6 segments (more than that and
+    // adjacent slices blur together) — fold any smaller tail into "Other"
+    // rather than let the ring get busy. "No position" gets a neutral gray
+    // rather than a categorical color since it's an absence of a value, not
+    // one more identity to compare.
+    const posCountsRaw = {};
+    const posActiveStaff = state.staff.filter(s=>s.active!==false);
+    posActiveStaff.forEach(s=>{
+      const label = s.positionId ? (state.positions.find(p=>p.id===s.positionId)?.name || 'Unknown') : 'No position';
+      posCountsRaw[label] = (posCountsRaw[label]||0) + 1;
+    });
+    let posEntries = Object.entries(posCountsRaw).sort((a,b)=>b[1]-a[1]);
+    if(posEntries.length > 6){
+      const head = posEntries.slice(0,5);
+      const tailSum = posEntries.slice(5).reduce((s,[,n])=>s+n,0);
+      posEntries = [...head, ['Other', tailSum]];
+    }
+    const posPalette = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300'];
+    const posTotalStaff = posActiveStaff.length || 1;
+    let posCursor = 0;
+    const posGradientParts = [];
+    const posLegendRows = [];
+    posEntries.forEach(([label,count],i)=>{
+      const pct = count/posTotalStaff*100;
+      const color = (label==='No position'||label==='Other') ? '#898781' : (posPalette[i]||'#898781');
+      posGradientParts.push(`${color} ${posCursor}% ${posCursor+pct}%`);
+      posCursor += pct;
+      posLegendRows.push(`<div class="ov-donut-legend-row"><span class="ov-donut-swatch" style="background:${color}"></span><span class="ov-donut-legend-label">${escapeHtml(label)}</span><span class="ov-donut-legend-value">${count} (${Math.round(pct)}%)</span></div>`);
+    });
+    const positionChart = `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Staff by position</div>
+        ${posEntries.length ? `<div class="ov-donut-row">
+          <div class="ov-donut" style="background:conic-gradient(${posGradientParts.join(', ')});">
+            <div class="ov-donut-hole"><div class="ov-donut-center-num">${posTotalStaff}</div><div class="ov-donut-center-label">staff</div></div>
+          </div>
+          <div class="ov-donut-legend">${posLegendRows.join('')}</div>
+        </div>` : '<div class="empty">No staff to chart.</div>'}
       </div>`;
 
     let page0 = `<div class="page page-break">
@@ -15847,6 +15881,7 @@ function attachHandlers(){
       <div class="ov-chart-row">
         ${attendanceChart}
         ${utilizationChart}
+        ${positionChart}
       </div>
     </div>`;
 
@@ -15959,7 +15994,6 @@ function attachHandlers(){
           <th style="min-width:100px">Current Area</th>
           ${showTimes?'<th style="width:72px">Shift</th>':''}
           <th style="width:52px;text-align:center" title="Total rotation periods worked">Rots.</th>
-          <th style="width:58px;text-align:center" title="Estimated hours from shift × rotations">Est. Hrs</th>
           <th style="width:48px;text-align:center" title="Call-outs in the selected date range">Callouts</th>
           <th style="width:44px;text-align:center" title="Late arrivals in the selected date range">Late</th>
           <th style="width:44px;text-align:center" title="Left-early events in the selected date range">Left Early</th>
@@ -15974,7 +16008,6 @@ function attachHandlers(){
       const areaId   = state.assignments[s.id];
       const area     = getAreaById(areaId);
       const rots     = rotationCount(s);
-      const hrs      = totalHoursWorked(s);
       const ar       = attendanceByStaff[s.id];
       const cos      = ar ? ar.callout.length : 0;
       const lateCnt  = ar ? ar.lateArrival.length : 0;
@@ -16015,7 +16048,6 @@ function attachHandlers(){
         <td>${area?escapeHtml(area.name):'<em style="color:#aaa">Unassigned</em>'}<br><small style="color:#888">${escapeHtml(s.department||'')}</small></td>
         ${showTimes?`<td style="font-size:10pt">${escapeHtml(s.shiftHours||'—')}</td>`:''}
         <td style="text-align:center">${rots||'—'}</td>
-        <td style="text-align:center">${hrs?hrs+'h':'—'}</td>
         <td style="text-align:center;${cosStyle}">${cos||'—'}</td>
         <td style="text-align:center">${lateCnt||'—'}</td>
         <td style="text-align:center">${earlyCnt||'—'}</td>
@@ -16031,20 +16063,21 @@ function attachHandlers(){
     page2 += `</tbody></table></div>`;
 
     // ─────────────────────────────────────────────────────────────────────
-    // PAGE 3 — Certifications & Call-outs
+    // PAGE 3 — Certifications, Languages & Absences (three separate
+    // sections rather than one merged "certifications" table, so
+    // Counter-Acceptance/accommodations, language speakers, and today's
+    // absences can each be scanned on their own).
     // ─────────────────────────────────────────────────────────────────────
     let page3 = `<div class="page page-break">
       <h1>Certifications &amp; Absences</h1>
       <div class="subtitle">Period: ${period}</div>`;
 
-    if(langStaff.length){
-      page3 += `<div class="to-section"><div class="to-section-head">Language speakers &amp; certified staff (${langStaff.length})</div>
+    if(certStaff.length){
+      page3 += `<div class="to-section"><div class="to-section-head">Certifications (${certStaff.length})</div>
         <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th><th>Certifications</th></tr></thead><tbody>`;
-      langStaff.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+      certStaff.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
         const areaName = getAreaById(state.assignments[s.id])?.name||'—';
-        const ln = langNames(s);
         const certs = [];
-        if(ln) certs.push('🌐 '+ln);
         if(s.counterCert) certs.push('✓ CA Cert');
         if(showAccom&&s.needsAccommodations) certs.push('♿ Accommodations');
         page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td><td>${certs.join('  ·  ')}</td></tr>`;
@@ -16052,8 +16085,18 @@ function attachHandlers(){
       page3 += `</tbody></table></div>`;
     }
 
+    if(languageStaff.length){
+      page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Languages (${languageStaff.length})</div>
+        <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th><th>Languages</th></tr></thead><tbody>`;
+      languageStaff.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+        const areaName = getAreaById(state.assignments[s.id])?.name||'—';
+        page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td><td>🌐 ${escapeHtml(langNames(s))}</td></tr>`;
+      });
+      page3 += `</tbody></table></div>`;
+    }
+
     if(calledOut.length){
-      page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Called out today (${calledOut.length})</div>`;
+      page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Absences — called out today (${calledOut.length})</div>`;
       calledOut.forEach(s=>{
         const area = getAreaById(state.assignments[s.id]);
         const sched = isScheduledOut(s.id,today);
@@ -16067,15 +16110,23 @@ function attachHandlers(){
       });
       page3 += `</div>`;
     }
+    if(!certStaff.length && !languageStaff.length && !calledOut.length){
+      page3 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No certifications, languages, or absences recorded.</div>`;
+    }
     page3 += `</div>`;
 
     // ─────────────────────────────────────────────────────────────────────
-    // PAGE 4 — Scheduled Time Off (upcoming)
+    // PAGE 4 — Scheduled Time Off
+    // Scoped to the report's picked date range (any record overlapping it),
+    // not just "today onward" — a range picked entirely in the past (e.g.
+    // last July–August) used to come back with almost nobody in it, since
+    // records that had already ended before today were filtered out before
+    // the range was ever consulted.
     // ─────────────────────────────────────────────────────────────────────
     const allOff = [];
     state.staff.forEach(s=>{
       ((state.timeOff||{})[s.id]||[]).forEach(r=>{
-        if(r.endDate>=today){
+        if(r.endDate>=attendanceRangeStart && r.startDate<=attendanceRangeEnd){
           const area = getAreaById(state.assignments[s.id]);
           const cov  = r.coverageStaffId ? getStaffById(r.coverageStaffId) : null;
           allOff.push({...r, staff:s, area, cov});
@@ -16083,12 +16134,16 @@ function attachHandlers(){
       });
     });
     allOff.sort((a,b)=>a.startDate.localeCompare(b.startDate));
-    const upcoming = allOff.filter(r=>r.startDate>today);
-    const active   = allOff.filter(r=>r.startDate<=today&&r.endDate>=today);
+    // "Active today" only makes sense when today actually falls inside the
+    // picked range — a report over a past period shouldn't claim anyone is
+    // "out today" just because today happens to be after that period.
+    const todayInRange = today>=attendanceRangeStart && today<=attendanceRangeEnd;
+    const active = todayInRange ? allOff.filter(r=>r.startDate<=today&&r.endDate>=today) : [];
+    const rest   = allOff.filter(r=>!active.includes(r));
 
     let page4 = `<div class="page">
       <h1>Scheduled Time Off</h1>
-      <div class="subtitle">Period: ${period}</div>`;
+      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>`;
 
     if(active.length){
       page4 += `<div class="to-section"><div class="to-section-head">Out today (${active.length})</div>`;
@@ -16101,10 +16156,10 @@ function attachHandlers(){
       });
       page4 += `</div>`;
     }
-    if(upcoming.length){
-      page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Upcoming (${upcoming.length})</div>
+    if(rest.length){
+      page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Scheduled leave in this period (${rest.length})</div>
         <table><thead><tr><th style="width:160px">Name</th><th style="width:110px">Area</th><th>Dates</th><th>Label</th><th>Coverage</th></tr></thead><tbody>`;
-      upcoming.forEach(r=>{
+      rest.forEach(r=>{
         page4 += `<tr>
           <td><b>${escapeHtml(r.staff.name)}</b></td>
           <td>${r.area?escapeHtml(r.area.name):'—'}</td>
@@ -16115,8 +16170,8 @@ function attachHandlers(){
       });
       page4 += `</tbody></table></div>`;
     }
-    if(!active.length&&!upcoming.length){
-      page4 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No scheduled time off recorded.</div>`;
+    if(!active.length&&!rest.length){
+      page4 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No scheduled time off in this period.</div>`;
     }
     page4 += `</div>`;
 
@@ -16298,9 +16353,43 @@ function attachHandlers(){
       return Math.round(under/total*100);
     };
 
+    // Attendance-impact-by-area chart: how much of the report's callouts,
+    // late arrivals, left-earlys and leave days landed on staff currently
+    // assigned to each area, stacked so the bar length reads as "how often
+    // it's happened" and the segments show which kind of issue it was.
+    // "min N" alongside each bar is the area's capacity — the minimum
+    // staff it needs — so impact and staffing need read side by side.
+    const areaImpactStats = state.areas.filter(a=>!a.fixed).map(a=>{
+      const members = staffInArea(a.id).filter(s=>s.active!==false);
+      let callout=0, late=0, early=0, leaveDays=0;
+      members.forEach(s=>{
+        const ar = attendanceByStaff[s.id];
+        if(!ar) return;
+        callout += ar.callout.length;
+        late += ar.lateArrival.length;
+        early += ar.leftEarly.length;
+        leaveDays += ar.leaveDays;
+      });
+      return {name:a.name, cap:a.capacity||1, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
+    }).sort((a,b)=>b.total-a.total);
+    const areaImpactMax = Math.max(1, ...areaImpactStats.map(a=>a.total));
+    const aiSeg = (value,max,color) => value>0 ? `<span class="ai-bar-seg" style="width:${Math.max(2,Math.round(value/max*100))}%;background:${color}"></span>` : '';
+    const areaImpactChart = `
+      <div class="ov-chart" style="margin-bottom:16pt;">
+        <div class="ov-chart-title">Attendance impact by area &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+        ${areaImpactStats.length ? areaImpactStats.map(a=>`
+          <div class="ai-bar-row">
+            <div class="ai-bar-label">${escapeHtml(a.name)}</div>
+            <div class="ai-bar-track">${aiSeg(a.callout,areaImpactMax,'#2a78d6')}${aiSeg(a.late,areaImpactMax,'#eb6834')}${aiSeg(a.early,areaImpactMax,'#1baf7a')}${aiSeg(a.leaveDays,areaImpactMax,'#eda100')}</div>
+            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'} &nbsp;·&nbsp; min ${a.cap}</div>
+          </div>`).join('') : '<div class="empty">No areas configured.</div>'}
+        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days &nbsp;·&nbsp; "min" = capacity, the fewest staff that area needs</div>':''}
+      </div>`;
+
     let page7 = `<div class="page page-break">
       <h1>Area Utilization</h1>
       <div class="subtitle">Period: ${period} — Today's staffing vs capacity, with history</div>
+      ${areaImpactChart}
       <table class="report-table">
         <thead><tr>
           <th>Area</th>
@@ -16531,6 +16620,24 @@ function attachHandlers(){
       .ov-bar-fill{height:100%;border-radius:6pt;min-width:2px;}
       .ov-bar-value{flex:0 0 auto;font-size:8.5pt;font-weight:600;color:#333;font-variant-numeric:tabular-nums;min-width:44pt;text-align:right;}
       .ov-chart-legend{font-size:7.5pt;color:#999;margin-top:8pt;}
+      .ai-bar-row{display:flex;align-items:center;gap:8pt;margin-bottom:7pt;}
+      .ai-bar-row:last-child{margin-bottom:0;}
+      .ai-bar-label{flex:0 0 120pt;font-size:8.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ai-bar-track{flex:1;height:12pt;background:#f0f0ee;border-radius:6pt;overflow:hidden;display:flex;gap:1pt;}
+      .ai-bar-seg{height:100%;border-radius:2pt;min-width:2px;}
+      .ai-bar-value{flex:0 0 auto;font-size:8pt;color:#555;font-variant-numeric:tabular-nums;min-width:96pt;text-align:right;}
+      .ov-chart-highlight{font-size:8.5pt;color:#555;background:#f7f5ee;border-radius:5pt;padding:5pt 8pt;margin-bottom:8pt;}
+      .ov-chart-highlight strong{color:#111;}
+      .ov-donut-row{display:flex;align-items:center;gap:14pt;flex-wrap:wrap;}
+      .ov-donut{width:100pt;height:100pt;border-radius:50%;flex-shrink:0;position:relative;}
+      .ov-donut-hole{position:absolute;top:14pt;left:14pt;right:14pt;bottom:14pt;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+      .ov-donut-center-num{font-size:16pt;font-weight:700;color:#111;}
+      .ov-donut-center-label{font-size:7pt;color:#999;text-transform:uppercase;letter-spacing:.04em;}
+      .ov-donut-legend{flex:1;min-width:120pt;display:flex;flex-direction:column;gap:5pt;}
+      .ov-donut-legend-row{display:flex;align-items:center;gap:6pt;font-size:9pt;}
+      .ov-donut-swatch{width:9pt;height:9pt;border-radius:2pt;flex-shrink:0;}
+      .ov-donut-legend-label{flex:1;color:#333;}
+      .ov-donut-legend-value{color:#777;font-variant-numeric:tabular-nums;font-size:8.5pt;}
 
       /* ── Screen (phone/tablet/desktop) reflow — print rules above are
          untouched; this only overrides how the same markup reads on a
@@ -16547,6 +16654,11 @@ function attachHandlers(){
         .ov-bar-label{font-size:10px;flex-basis:110px;}
         .ov-bar-value{font-size:10px;}
         .ov-chart-title{font-size:13px;}
+        .ai-bar-label{font-size:10px;flex-basis:130px;}
+        .ai-bar-value{font-size:10px;min-width:110px;}
+        .ov-donut-legend-row{font-size:11px;}
+        .ov-donut-legend-value{font-size:10.5px;}
+        .ov-donut-center-num{font-size:18px;}
         /* Wide tables scroll horizontally within themselves instead of
            forcing the whole page to scroll sideways on a phone. */
         .report-table, table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
@@ -17909,11 +18021,6 @@ function attachHandlers(){
         const esc = s => String(s==null?'':s).replace(/"/g,'""');
         const col = s => '"'+esc(s)+'"';
         const toMin = t => { if(!t) return null; const p=String(t).split(':'); return parseInt(p[0])*60+(parseInt(p[1])||0); };
-        const shiftHrs = s => {
-          const m=(s.shiftHours||'').match(/(\d+):(\d+)[^\d]+(\d+):(\d+)/);
-          if(!m) return null;
-          return ((parseInt(m[3])*60+parseInt(m[4]))-(parseInt(m[1])*60+parseInt(m[2])))/60;
-        };
         const senYrs = s => {
           if(!s.hireDate) return '';
           try{ return ((new Date()-new Date(s.hireDate))/(1000*60*60*24*365.25)).toFixed(1); }catch(e){ return ''; }
@@ -17929,15 +18036,13 @@ function attachHandlers(){
 
         // ── Sheet 1: Staff Report ─────────────────────────────────────────
         const sh1 = [
-          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Est. Hours','Callouts','Late Arrivals','Left Early','Leave Days','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
+          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Callouts','Late Arrivals','Left Early','Leave Days','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
         ];
         state.staff.filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
           const area  = getAreaById(state.assignments[s.id]);
           const sup   = getSupervisorById(s.supervisorId);
           const langs = (s.languageCerts||[]).map(id=>state.languages.find(l=>l.id===id)?.name).filter(Boolean).join(', ');
           const rots  = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
-          const dly   = shiftHrs(s);
-          const hrs   = dly!=null ? (dly*rots).toFixed(1) : '';
           const xar   = xlsAttendanceByStaff[s.id];
           const cos   = xar ? xar.callout.length : 0;
           const late  = xar ? xar.lateArrival.length : 0;
@@ -17947,7 +18052,7 @@ function attachHandlers(){
           const reqs  = (s.positionRequests||[]).filter(r=>!r.status||r.status==='pending').length;
           sh1.push([
             s.name, s.department||'', area?.name||'', s.shiftHours||'',
-            senYrs(s), rots||0, hrs||'', cos||0, late||0, early||0, leaves||0,
+            senYrs(s), rots||0, cos||0, late||0, early||0, leaves||0,
             move?'Yes':'No', s.isTeamLead?'Yes':'No', ...(showAccom?[s.needsAccommodations?'Yes':'No']:[]),
             langs, sup?.name||'', reqs||0, s.hireDate||'', s.lateStart||''
           ]);
