@@ -11066,6 +11066,7 @@ function renderRoster(){
       </div>
       <div class="roster-toolbar-right">
         <span class="roster-count">${rows.length}/${state.staff.length}</span>
+        <button class="btn btn-light btn-sm" id="roster-export-excel" title="Export ${rows.length===state.staff.length?'the roster':'these '+rows.length+' filtered staff'} to Excel">⬇ Excel</button>
         <button class="btn btn-primary btn-sm" id="roster-add-staff">+ Add</button>
       </div>
     </div>
@@ -13009,6 +13010,34 @@ function downloadStaffImportTemplate(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Staff');
   XLSX.writeFile(wb, 'staff-import-template.xlsx');
+}
+
+// Mirrors exactly what's on screen in the Roster table/toolbar — whatever
+// search + filters the user currently has applied — so the export matches
+// what they're looking at rather than silently exporting everyone.
+function exportRosterToExcel(){
+  const rows = rosterRows();
+  const headers = ['Name','TDIS #','Department','Area','Position','Shift','Lunch/Break','CA Cert','Languages','Tag','Supervisor','Rotation Flow','Team Lead','AGS','Status'];
+  const aoa = [headers];
+  rows.forEach(s=>{
+    const area = getAreaById(state.assignments[s.id]);
+    const sup  = getSupervisorById(s.supervisorId);
+    const flow = getFlowById(s.flowId);
+    const position = s.positionId ? state.positions.find(p=>p.id===s.positionId)?.name : '';
+    const langs = (s.languageCerts||[]).map(id=>state.languages.find(l=>l.id===id)?.name).filter(Boolean).join(', ');
+    const status = state.callouts[s.id] ? 'Out today' : (s.active===false ? 'Inactive' : 'Active');
+    aoa.push([
+      s.name, s.tdisNumber||'', s.department||'', area?.name||'', position||'',
+      s.shiftHours||'', s.breakTimes||'', s.counterCert?'Yes':'No', langs, s.tags||'',
+      sup?.name||'', flow?.name||'', s.isTeamLead?'Yes':'No', s.isSubcontractor?'Yes':'No', status,
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = headers.map((h,i)=> i===0 ? {wch:22} : i===8 ? {wch:18} : {wch:12});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Roster');
+  XLSX.writeFile(wb, 'roster-'+todayLabel()+'.xlsx');
+  showToast('Exported '+rows.length+' staff to Excel', 'teal');
 }
 
 function renderStaffImportModal(m){
@@ -15448,6 +15477,7 @@ function attachHandlers(){
       });
     }
     on('roster-add-staff', ()=>openModal({type:'staff-manager'}));
+    on('roster-export-excel', exportRosterToExcel);
     on('roster-filters-toggle', ()=>{ rosterFiltersOpen = !rosterFiltersOpen; render(); });
     on('roster-filter-ags', ()=>{ rosterFacets.ags = !rosterFacets.ags; render(); });
     on('roster-filter-lead', ()=>{ rosterFacets.lead = !rosterFacets.lead; render(); });
