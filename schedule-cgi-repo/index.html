@@ -10060,6 +10060,18 @@ function navBadgeCount(){
   if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending;
   return 0;
 }
+// A background data refresh (badge counts, board/history reloads) calls
+// this instead of render() directly. render() replaces #root.innerHTML
+// wholesale, which would wipe the Report Builder's preview iframe(s) —
+// their content is written imperatively (see rp-tab-live / rp-preview-btn
+// handlers) and nothing re-populates it on a plain re-render, so the
+// preview goes blank a few seconds after opening it. The underlying state
+// is still updated either way; it just surfaces next time something
+// re-renders normally (closing the modal, switching its tabs, etc.).
+function renderUnlessReportPreviewOpen(){
+  if(activeModal && activeModal.type==='report-preview') return;
+  render();
+}
 async function refreshEvalBadgeCounts(){
   if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
   try{
@@ -10070,7 +10082,7 @@ async function refreshEvalBadgeCounts(){
       const items = await window.RC.fetchPendingEvaluations();
       evalBadgeCounts.pending = (items||[]).length;
     }
-    render();
+    renderUnlessReportPreviewOpen();
   }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
 }
 
@@ -10596,7 +10608,7 @@ function renderCalloutBanner(){
     const elapsed = Date.now() - window._bannerAllCoveredAt;
     if(elapsed > 8000) return ''; // auto-hide after 8 seconds
     // schedule re-render to remove it
-    if(!window._bannerTimer) window._bannerTimer = setTimeout(()=>{ window._bannerAllCoveredAt=null; window._bannerTimer=null; render(); }, 8000 - elapsed);
+    if(!window._bannerTimer) window._bannerTimer = setTimeout(()=>{ window._bannerAllCoveredAt=null; window._bannerTimer=null; renderUnlessReportPreviewOpen(); }, 8000 - elapsed);
     return `<div class="callout-banner all-covered">
       <div class="callout-banner-left">
         <span class="callout-banner-icon">✅</span>
@@ -11054,6 +11066,7 @@ function renderRoster(){
       </div>
       <div class="roster-toolbar-right">
         <span class="roster-count">${rows.length}/${state.staff.length}</span>
+        <button class="btn btn-light btn-sm" id="roster-export-excel" title="Export ${rows.length===state.staff.length?'the roster':'these '+rows.length+' filtered staff'} to Excel">⬇ Excel</button>
         <button class="btn btn-primary btn-sm" id="roster-add-staff">+ Add</button>
       </div>
     </div>
@@ -12999,6 +13012,34 @@ function downloadStaffImportTemplate(){
   XLSX.writeFile(wb, 'staff-import-template.xlsx');
 }
 
+// Mirrors exactly what's on screen in the Roster table/toolbar — whatever
+// search + filters the user currently has applied — so the export matches
+// what they're looking at rather than silently exporting everyone.
+function exportRosterToExcel(){
+  const rows = rosterRows();
+  const headers = ['Name','TDIS #','Department','Area','Position','Shift','Lunch/Break','CA Cert','Languages','Tag','Supervisor','Rotation Flow','Team Lead','AGS','Status'];
+  const aoa = [headers];
+  rows.forEach(s=>{
+    const area = getAreaById(state.assignments[s.id]);
+    const sup  = getSupervisorById(s.supervisorId);
+    const flow = getFlowById(s.flowId);
+    const position = s.positionId ? state.positions.find(p=>p.id===s.positionId)?.name : '';
+    const langs = (s.languageCerts||[]).map(id=>state.languages.find(l=>l.id===id)?.name).filter(Boolean).join(', ');
+    const status = state.callouts[s.id] ? 'Out today' : (s.active===false ? 'Inactive' : 'Active');
+    aoa.push([
+      s.name, s.tdisNumber||'', s.department||'', area?.name||'', position||'',
+      s.shiftHours||'', s.breakTimes||'', s.counterCert?'Yes':'No', langs, s.tags||'',
+      sup?.name||'', flow?.name||'', s.isTeamLead?'Yes':'No', s.isSubcontractor?'Yes':'No', status,
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = headers.map((h,i)=> i===0 ? {wch:22} : i===8 ? {wch:18} : {wch:12});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Roster');
+  XLSX.writeFile(wb, 'roster-'+todayLabel()+'.xlsx');
+  showToast('Exported '+rows.length+' staff to Excel', 'teal');
+}
+
 function renderStaffImportModal(m){
   if(m.step==='preview'){
     const preview = buildStaffImportPreview(m.rawRows, m.mapping);
@@ -14907,17 +14948,6 @@ function renderReportPreviewModal(m){
 
   const selectedCount = pages.filter(p=>secs[p.id]).length;
 
-  // Build live preview of selected page
-  let previewHTML = '';
-  if(previewPage && secs[previewPage]){
-    try{
-      const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
-      const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
-      const rawPage = pageMap[previewPage]||'';
-      previewHTML = rawPage;
-    } catch(e){ previewHTML = '<div style="color:red">Preview error: '+e.message+'</div>'; }
-  }
-
   return `
   <div class="modal report-modal">
   <div class="modal-head" style="padding-bottom:12px;">
@@ -15011,18 +15041,7 @@ function renderReportPreviewModal(m){
         </div>
         <div class="rp-preview-frame">
           <iframe id="rp-preview-iframe" sandbox="allow-same-origin"></iframe>
-        </div>
-        <script>
-          (function(){
-            const iframe = document.getElementById('rp-preview-iframe');
-            if(iframe){
-              const doc = iframe.contentDocument || iframe.contentWindow.document;
-              doc.open();
-              doc.write(${JSON.stringify('<style>body{font-family:-apple-system,sans-serif;font-size:11pt;color:#111;padding:12pt;}'+previewHTML+'</style>'+previewHTML)});
-              doc.close();
-            }
-          })();
-        </scr`+'ipt>' : `
+        </div>` : `
         <div class="rp-preview-empty">
           <div class="rp-preview-empty-icon">👁</div>
           <div class="rp-preview-empty-title">Preview a section</div>
@@ -15458,6 +15477,7 @@ function attachHandlers(){
       });
     }
     on('roster-add-staff', ()=>openModal({type:'staff-manager'}));
+    on('roster-export-excel', exportRosterToExcel);
     on('roster-filters-toggle', ()=>{ rosterFiltersOpen = !rosterFiltersOpen; render(); });
     on('roster-filter-ags', ()=>{ rosterFacets.ags = !rosterFacets.ags; render(); });
     on('roster-filter-lead', ()=>{ rosterFacets.lead = !rosterFacets.lead; render(); });
@@ -19728,7 +19748,7 @@ async function bootApp(){
       boardLoadedFromServer = true;
       reconcileStaleCoverage();
       reconcileStaleTempMoves();
-      render();
+      renderUnlessReportPreviewOpen();
       if(typeof window.RC.subscribeToBoardChanges==='function'){
         window.RC.subscribeToBoardChanges(scheduleRealtimeRefresh);
       }
@@ -19741,7 +19761,7 @@ async function bootApp(){
   try{
     if(window.RC && typeof window.RC.fetchRotationHistory==='function'){
       state.history = await window.RC.fetchRotationHistory();
-      render();
+      renderUnlessReportPreviewOpen();
     }
   }catch(e){
     console.warn('Could not load rotation history from Supabase — showing local data instead.', e && e.message);
