@@ -16408,8 +16408,6 @@ function attachHandlers(){
     // late arrivals, left-earlys and leave days landed on staff currently
     // assigned to each area, stacked so the bar length reads as "how often
     // it's happened" and the segments show which kind of issue it was.
-    // "min N" alongside each bar is the area's capacity — the minimum
-    // staff it needs — so impact and staffing need read side by side.
     const areaImpactStats = state.areas.filter(a=>!a.fixed).map(a=>{
       const members = staffInArea(a.id).filter(s=>s.active!==false);
       let callout=0, late=0, early=0, leaveDays=0;
@@ -16421,7 +16419,7 @@ function attachHandlers(){
         early += ar.leftEarly.length;
         leaveDays += ar.leaveDays;
       });
-      return {name:a.name, cap:a.capacity||1, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
+      return {name:a.name, callout, late, early, leaveDays, total: callout+late+early+leaveDays};
     }).sort((a,b)=>b.total-a.total);
     const areaImpactMax = Math.max(1, ...areaImpactStats.map(a=>a.total));
     const aiSeg = (value,max,color) => value>0 ? `<span class="ai-bar-seg" style="width:${Math.max(2,Math.round(value/max*100))}%;background:${color}"></span>` : '';
@@ -16432,16 +16430,15 @@ function attachHandlers(){
           <div class="ai-bar-row">
             <div class="ai-bar-label">${escapeHtml(a.name)}</div>
             <div class="ai-bar-track">${aiSeg(a.callout,areaImpactMax,'#2a78d6')}${aiSeg(a.late,areaImpactMax,'#eb6834')}${aiSeg(a.early,areaImpactMax,'#1baf7a')}${aiSeg(a.leaveDays,areaImpactMax,'#eda100')}</div>
-            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'} &nbsp;·&nbsp; min ${a.cap}</div>
+            <div class="ai-bar-value">${a.total} incident${a.total===1?'':'s'}</div>
           </div>`).join('') : '<div class="empty">No areas configured.</div>'}
-        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days &nbsp;·&nbsp; "min" = capacity, the fewest staff that area needs</div>':''}
+        ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days</div>':''}
       </div>`;
 
     // Same per-area attendance breakdown as the chart above, as exact
     // numbers — a bar is for spotting the pattern at a glance, a table is
-    // for reading a precise count. "Min" repeats the area's capacity here
-    // too, right next to the incident counts, rather than making the
-    // reader cross-reference the Cap. column further down.
+    // for reading a precise count. Capacity already has its own Cap.
+    // column in the table further down, so it isn't repeated here.
     const areaImpactTable = areaImpactStats.length ? `
       <table class="report-table" style="margin-bottom:16pt;">
         <thead><tr>
@@ -16450,7 +16447,6 @@ function attachHandlers(){
           <th style="width:60px;text-align:center">Late Arrivals</th>
           <th style="width:60px;text-align:center">Left Early</th>
           <th style="width:60px;text-align:center">Leave Days</th>
-          <th style="width:50px;text-align:center" title="Capacity — the fewest staff this area needs">Min</th>
         </tr></thead><tbody>
         ${areaImpactStats.map(a=>`<tr>
           <td><b>${escapeHtml(a.name)}</b></td>
@@ -16458,7 +16454,6 @@ function attachHandlers(){
           <td style="text-align:center">${a.late||'—'}</td>
           <td style="text-align:center">${a.early||'—'}</td>
           <td style="text-align:center">${a.leaveDays||'—'}</td>
-          <td style="text-align:center;font-weight:700">${a.cap}</td>
         </tr>`).join('')}
       </tbody></table>` : '';
 
