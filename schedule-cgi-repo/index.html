@@ -10880,7 +10880,12 @@ function renderAreaCol(area){
   const over = present > area.capacity;
   const under = isUnderStaffed(area.id);
   const readOnly = isTeamLeadRole();
-  const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && !area.fixed;
+  // A fixed area (e.g. Cashier) isn't a tap target for a permanent move —
+  // it's meant to hold its own assigned staff, not absorb someone from the
+  // rotation. But with a "Today only"/"This rotation" scope picked, this is
+  // exactly backup coverage (an extra body for the day who automatically
+  // returns to their own spot after) — not a change to who's fixed there.
+  const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && (!area.fixed || tempMoveScope);
   // areas with a handful of people pack two-per-row on desktop instead of
   // one long single-file list — cuts how much you scroll to see everyone
   // in a busy area like Communications or Processing.
@@ -14885,10 +14890,14 @@ function attemptPlace(staffId, areaId, force, scope){
       return;
     }
   }
-  // capacity is a hard stop with no override — even a forced placement (from another
-  // modal's "place anyway") must still respect it, since the only valid fix is
-  // raising the area's capacity, not bypassing the limit.
-  if(areaId){
+  // capacity is a hard stop with no override for a permanent placement — even
+  // a forced one (from another modal's "place anyway") must still respect
+  // it, since the only valid fix there is raising the area's capacity, not
+  // bypassing the limit. A scoped placement (Today only/This rotation) is
+  // backup coverage brought in on top of who's already there, so it's
+  // allowed to push the area over capacity — it isn't changing who
+  // permanently belongs there, and it returns to normal on its own.
+  if(areaId && !scope){
     const area = getAreaById(areaId);
     const currentlyThere = activeInArea(areaId, staffId).length; // excludes callouts — they don't occupy a slot
     if(area && currentlyThere >= area.capacity){
