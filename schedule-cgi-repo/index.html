@@ -7374,12 +7374,17 @@
   .rec-opt-t{font-weight:700;font-size:13.5px;}
   .rec-opt-d{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
 
-  /* ── Evaluation trend chart (staff performance profile) ── */
-  .trend-chart{height:110px;display:flex;align-items:flex-end;gap:7px;padding:16px 4px 0;}
-  .trend-bar{flex:1;min-width:0;background:linear-gradient(to top,#2F5FA8,#6E97D6);border-radius:5px 5px 0 0;position:relative;}
+  /* ── Evaluation trend chart (staff performance profile) ── card-wrapped
+     and token-colored to match the eval-history-row cards it sits above,
+     instead of floating bars in a hardcoded blue that didn't adapt to
+     dark mode. Bars are width-capped and centered so 1-2 periods don't
+     stretch into one giant block (flex:1 used to do exactly that). */
+  .trend-chart-card{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);margin-bottom:var(--md-space-3);}
+  .trend-chart{height:110px;display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:16px 4px 0;border-bottom:1.5px solid var(--md-sys-color-outline-variant);}
+  .trend-bar{flex:0 1 44px;min-width:0;background:linear-gradient(to top,var(--md-sys-color-primary),var(--md-sys-color-primary-container));border-radius:5px 5px 0 0;position:relative;cursor:default;}
   .trend-bar-v{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);}
-  .trend-labels{display:flex;gap:7px;margin-top:6px;margin-bottom:var(--md-space-4);}
-  .trend-labels span{flex:1;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
+  .trend-labels{display:flex;justify-content:center;gap:10px;margin-top:6px;}
+  .trend-labels span{flex:0 1 44px;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
 
   /* ── Team dashboard ── */
   .team-dash-summary{display:flex;gap:var(--md-space-5);flex-wrap:wrap;margin-bottom:var(--md-space-4);padding-bottom:var(--md-space-4);border-bottom:1px solid var(--md-sys-color-outline-variant);}
@@ -14502,10 +14507,10 @@ function renderEvalTrendChart(approvedRows){
   };
   return '<div class="stats-prof-section-label" style="margin-top:0;">Trend over time</div>'+
     '<div class="small-muted" style="margin-bottom:6px;">Combined score, last '+periods.length+' rotation period'+(periods.length===1?'':'s')+'</div>'+
-    '<div class="trend-chart">'+
-      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
+    '<div class="trend-chart-card"><div class="trend-chart">'+
+      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;" title="'+escapeHtml(shortLabel(p.label))+': '+p.combined.toFixed(1)+' / 5"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
     '</div>'+
-    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div>';
+    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div></div>';
 }
 
 // Groups raw evaluation rows (as returned by fetchTeamPerformanceOverview)
