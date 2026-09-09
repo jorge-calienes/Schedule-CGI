@@ -14977,6 +14977,12 @@ function renderReportPreviewModal(m){
   <div class="rp-live-view">
     <div class="rp-live-toolbar">
       <span class="rp-live-info">${selectedCount} sections · ${pages.filter(p=>secs[p.id]).map(p=>p.label).join(' · ')}</span>
+      <label class="rp-live-opt" style="border-right:2px solid var(--c-border);padding-right:10px;">Supervisor:
+        <select class="roster-select" id="rp-supervisor-filter-live" style="margin-left:4px;">
+          <option value="">All</option>
+          ${state.supervisors.map(sv=>`<option value="${sv.id}" ${m.supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+        </select>
+      </label>
       <label class="rp-live-opt"><input type="checkbox" id="rp-show-times-live" ${m.showTimes!==false?'checked':''}> Shift times</label>
       <label class="rp-live-opt"><input type="checkbox" id="rp-show-breaks-live" ${m.showBreaks!==false?'checked':''}> Breaks</label>
       <label class="rp-live-opt"><input type="checkbox" id="rp-show-seniority-live" ${m.showSeniority!==false?'checked':''}> Seniority</label>
@@ -15019,6 +15025,15 @@ function renderReportPreviewModal(m){
         </label>
       </div>
       <div class="rp-date-hint">${m.activityLoading ? 'Loading activity…' : m.activityError ? m.activityError : `Applies to the Daily activity log · ${(m.activityLog||[]).length} event${(m.activityLog||[]).length===1?'':'s'} in range`}</div>
+
+      <div class="rp-sidebar-divider"></div>
+
+      <div class="rp-sidebar-head" style="margin-top:0">Staff Performance filter</div>
+      <select class="roster-select" id="rp-supervisor-filter" style="width:100%;">
+        <option value="">All supervisors</option>
+        ${state.supervisors.map(sv=>`<option value="${sv.id}" ${m.supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+      </select>
+      <div class="rp-date-hint">Limits the Staff Performance Report to one supervisor's team</div>
 
       <div class="rp-sidebar-divider"></div>
 
@@ -15977,6 +15992,7 @@ function attachHandlers(){
     // ─────────────────────────────────────────────────────────────────────
     const reportStaff = state.staff
       .filter(s=>s.active!==false)
+      .filter(s=>!opts.supervisorFilter || s.supervisorId===opts.supervisorFilter)
       .sort((a,b)=>a.name.localeCompare(b.name));
 
     // ── Extra metrics ──
@@ -16012,9 +16028,10 @@ function attachHandlers(){
       return '';
     }
 
+    const supervisorFilterName = opts.supervisorFilter ? getSupervisorById(opts.supervisorFilter)?.name : null;
     let page2 = `<div class="page page-break">
       <h1>Staff Performance Report</h1>
-      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members${supervisorFilterName?' &nbsp;·&nbsp; Supervisor: '+escapeHtml(supervisorFilterName):''} &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
       <table class="report-table">
         <thead><tr>
           <th style="min-width:140px">Name &amp; Role</th>
@@ -16187,14 +16204,14 @@ function attachHandlers(){
     }
     if(rest.length){
       page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Scheduled leave in this period (${rest.length})</div>
-        <table><thead><tr><th style="width:160px">Name</th><th style="width:110px">Area</th><th>Dates</th><th>Label</th><th>Coverage</th></tr></thead><tbody>`;
+        <table><thead><tr><th style="width:160px">Name</th><th style="width:110px">Area</th><th>Dates</th><th style="width:50px;text-align:center">Days</th><th>Label</th></tr></thead><tbody>`;
       rest.forEach(r=>{
         page4 += `<tr>
           <td><b>${escapeHtml(r.staff.name)}</b></td>
           <td>${r.area?escapeHtml(r.area.name):'—'}</td>
           <td>${friendlyD(r.startDate)}${r.startDate!==r.endDate?' – '+friendlyD(r.endDate):''}</td>
+          <td style="text-align:center">${businessDaysBetween(r.startDate, r.endDate)}</td>
           <td>${escapeHtml(r.label||'—')}</td>
-          <td>${r.cov?escapeHtml(r.cov.name):'<span style="color:#e67e22">⚠ Needed</span>'}</td>
         </tr>`;
       });
       page4 += `</tbody></table></div>`;
@@ -16415,10 +16432,36 @@ function attachHandlers(){
         ${areaImpactStats.length?'<div class="ov-chart-legend">🔵 Callouts &nbsp; 🟠 Late arrivals &nbsp; 🟢 Left early &nbsp; 🟡 Leave days &nbsp;·&nbsp; "min" = capacity, the fewest staff that area needs</div>':''}
       </div>`;
 
+    // Same per-area attendance breakdown as the chart above, as exact
+    // numbers — a bar is for spotting the pattern at a glance, a table is
+    // for reading a precise count. "Min" repeats the area's capacity here
+    // too, right next to the incident counts, rather than making the
+    // reader cross-reference the Cap. column further down.
+    const areaImpactTable = areaImpactStats.length ? `
+      <table class="report-table" style="margin-bottom:16pt;">
+        <thead><tr>
+          <th>Area</th>
+          <th style="width:60px;text-align:center">Callouts</th>
+          <th style="width:60px;text-align:center">Late Arrivals</th>
+          <th style="width:60px;text-align:center">Left Early</th>
+          <th style="width:60px;text-align:center">Leave Days</th>
+          <th style="width:50px;text-align:center" title="Capacity — the fewest staff this area needs">Min</th>
+        </tr></thead><tbody>
+        ${areaImpactStats.map(a=>`<tr>
+          <td><b>${escapeHtml(a.name)}</b></td>
+          <td style="text-align:center">${a.callout||'—'}</td>
+          <td style="text-align:center">${a.late||'—'}</td>
+          <td style="text-align:center">${a.early||'—'}</td>
+          <td style="text-align:center">${a.leaveDays||'—'}</td>
+          <td style="text-align:center;font-weight:700">${a.cap}</td>
+        </tr>`).join('')}
+      </tbody></table>` : '';
+
     let page7 = `<div class="page page-break">
       <h1>Area Utilization</h1>
       <div class="subtitle">Period: ${period} — Today's staffing vs capacity, with history</div>
       ${areaImpactChart}
+      ${areaImpactTable}
       <table class="report-table">
         <thead><tr>
           <th>Area</th>
@@ -18012,7 +18055,7 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-live-iframe');
         if(!iframe) return;
         try{
-          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+          const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate, supervisorFilter:m.supervisorFilter});
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -18021,19 +18064,20 @@ function attachHandlers(){
       }, 60);
     });
 
-    // Live view format checkboxes
-    ['rp-show-times-live','rp-show-breaks-live','rp-show-seniority-live','rp-show-accom-live'].forEach(id=>{
+    // Live view format checkboxes + supervisor filter
+    ['rp-show-times-live','rp-show-breaks-live','rp-show-seniority-live','rp-show-accom-live','rp-supervisor-filter-live'].forEach(id=>{
       document.getElementById(id)?.addEventListener('change', ()=>{
         const t=document.getElementById('rp-show-times-live')?.checked!==false;
         const b=document.getElementById('rp-show-breaks-live')?.checked!==false;
         const s=document.getElementById('rp-show-seniority-live')?.checked!==false;
         const ac=document.getElementById('rp-show-accom-live')?.checked===true;
-        openModal({...activeModal, showTimes:t, showBreaks:b, showSeniority:s, showAccom:ac});
+        const sup=document.getElementById('rp-supervisor-filter-live')?.value||null;
+        openModal({...activeModal, showTimes:t, showBreaks:b, showSeniority:s, showAccom:ac, supervisorFilter:sup});
         render();
         setTimeout(()=>{
           const iframe=document.getElementById('rp-live-iframe');
           if(!iframe) return;
-          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate});
+          const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate,supervisorFilter:sup});
           const doc=iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
           doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
@@ -18067,7 +18111,7 @@ function attachHandlers(){
         const sh1 = [
           ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Callouts','Late Arrivals','Left Early','Leave Days','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
         ];
-        state.staff.filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+        state.staff.filter(s=>s.active!==false).filter(s=>!m.supervisorFilter || s.supervisorId===m.supervisorFilter).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
           const area  = getAreaById(state.assignments[s.id]);
           const sup   = getSupervisorById(s.supervisorId);
           const langs = (s.languageCerts||[]).map(id=>state.languages.find(l=>l.id===id)?.name).filter(Boolean).join(', ');
@@ -18267,7 +18311,7 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-preview-iframe');
         if(!iframe) return;
         try{
-          const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+          const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate, supervisorFilter:m.supervisorFilter});
           const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
@@ -18319,9 +18363,15 @@ function attachHandlers(){
     showSenEl?.addEventListener('change', saveFormatPrefsAll);
     showAccomEl?.addEventListener('change', saveFormatPrefsAll);
 
+    // Staff Performance Report — supervisor filter (Configure sidebar)
+    document.getElementById('rp-supervisor-filter')?.addEventListener('change', e=>{
+      openModal({...activeModal, supervisorFilter: e.target.value||null});
+      render();
+    });
+
     // Download
     on('rp-btn-download',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate, supervisorFilter:m.supervisorFilter});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
@@ -18335,7 +18385,7 @@ function attachHandlers(){
 
     // Print
     on('rp-btn-print',()=>{
-      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+      const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate, supervisorFilter:m.supervisorFilter});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
       const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
