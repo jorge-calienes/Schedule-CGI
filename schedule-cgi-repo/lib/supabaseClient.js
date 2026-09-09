@@ -150,6 +150,7 @@ export async function getCurrentAccount() {
     .from('accounts')
     .select('id, name, role, assigned_area_ids')
     .eq('user_id', session.user.id)
+    .eq('status', 'active')
     .single();
   if (error || !data) return null;
   return data;
@@ -164,7 +165,7 @@ export async function getCurrentAccount() {
 export async function loadBoard() {
   const [
     { data: areas }, { data: staff }, { data: assignments }, { data: departments }, { data: callouts },
-    { data: supervisors }, { data: shifts }, { data: languages }, { data: staffLanguageCerts },
+    { data: supervisors }, { data: shifts }, { data: languages }, { data: positions }, { data: staffLanguageCerts },
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
     { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
@@ -177,6 +178,7 @@ export async function loadBoard() {
     supabase.from('supervisors').select('*').order('name'),
     supabase.from('shifts').select('*'),
     supabase.from('languages').select('*').order('name'),
+    supabase.from('positions').select('*').order('sort_order'),
     supabase.from('staff_language_certs').select('*'),
     supabase.from('rotation_flows').select('*').order('created_at'),
     supabase.from('rotation_flow_stages').select('*').order('stage_order'),
@@ -193,7 +195,7 @@ export async function loadBoard() {
   ]);
   return {
     areas, staff, assignments, departments, callouts,
-    supervisors, shifts, languages, staffLanguageCerts, rotationFlows, rotationFlowStages,
+    supervisors, shifts, languages, positions, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
     attendanceEvents, activeRotation, tempMoves,
   };
@@ -303,7 +305,7 @@ export async function waiveCoverage({ staffId, actingAccountId }) {
   const { error } = await supabase.from('coverage_waivers').upsert({
     staff_id: staffId,
     waived_by: actingAccountId,
-  });
+  }, { onConflict: 'staff_id' });
   if (error) throw error;
 }
 
@@ -365,7 +367,7 @@ export async function ensureDepartment(name) {
   return data.id;
 }
 
-function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate, supervisorId, flowId, flowEnrolled }) {
+function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate, supervisorId, positionId, flowId, flowEnrolled }) {
   return {
     name,
     tdis_number: tdisNumber || null,
@@ -380,6 +382,7 @@ function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSu
     counter_cert: !!counterCert,
     hire_date: hireDate || null,
     supervisor_id: supervisorId || null,
+    position_id: positionId || null,
     flow_id: flowId || null,
     flow_enrolled: !!flowEnrolled,
   };
@@ -604,6 +607,20 @@ export async function updateLanguage({ languageId, name }) {
 }
 export async function deleteLanguage({ languageId }) {
   const { error } = await supabase.from('languages').delete().eq('id', languageId);
+  if (error) throw error;
+}
+
+export async function createPosition({ name, sortOrder }) {
+  const { data, error } = await supabase.from('positions').insert({ name, sort_order: sortOrder || 0 }).select().single();
+  if (error) throw error;
+  return data;
+}
+export async function updatePosition({ positionId, name, sortOrder }) {
+  const { error } = await supabase.from('positions').update({ name, sort_order: sortOrder || 0 }).eq('id', positionId);
+  if (error) throw error;
+}
+export async function deletePosition({ positionId }) {
+  const { error } = await supabase.from('positions').delete().eq('id', positionId);
   if (error) throw error;
 }
 
@@ -1000,7 +1017,7 @@ export async function fetchAuditLog({ limit = 50, startDate, endDate } = {}) {
 
 const REALTIME_TABLES = [
   'areas', 'staff', 'assignments', 'departments', 'callouts', 'supervisors',
-  'shifts', 'languages', 'staff_language_certs', 'rotation_flows',
+  'shifts', 'languages', 'positions', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
   'attendance_events', 'active_rotation', 'temp_moves',
@@ -1084,6 +1101,9 @@ window.RC = {
   createLanguage,
   updateLanguage,
   deleteLanguage,
+  createPosition,
+  updatePosition,
+  deletePosition,
   createRotationFlow,
   updateRotationFlow,
   deleteRotationFlow,

@@ -8879,6 +8879,7 @@ let state = {
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
   languages: [],   // [{id, name}] editable language certifications list
+  positions: [],   // [{id, name, sortOrder}] editable job position/title catalog (SA2, SA3, AAA, ...)
   calloutHistory: {},  // {staffId: [{date, period, reason}]}
   rotationNotes: {},   // {period: string}
   dailyLog: [],         // [{ts, type, staffId, fromArea, toArea, note, period}]
@@ -10507,6 +10508,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
+      <button class="nav-item" id="nav-manage-positions"><span class="nav-item-icon">🏷</span>Positions</button>
       <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
@@ -11517,6 +11519,7 @@ function renderModal(){
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
   else if(m.type==='time-management') inner = renderTimeManagementModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
+  else if(m.type==='positions-manager') inner = renderPositionsManagerModal(m);
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
   else if(m.type==='eval-form') inner = renderEvalFormModal(m);
@@ -11856,10 +11859,17 @@ function renderStaffManagerModal(m){
         </select>
       </div>
     </div>
-    <div class="field"><label>Supervisor</label>
-      <select id="staff-supervisor-input"><option value="">—</option>
-        ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
-      </select>
+    <div class="sm-grid-2">
+      <div class="field"><label>Supervisor</label>
+        <select id="staff-supervisor-input"><option value="">—</option>
+          ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
+        </select>
+      </div>
+      <div class="field"><label>Position <span class="field-hint">(job title)</span></label>
+        <select id="staff-position-input"><option value="">—</option>
+          ${state.positions.map(p=>'<option value="'+p.id+'" '+((m.positionId!==undefined ? m.positionId===p.id : editing&&editing.positionId===p.id)?'selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')}
+        </select>
+      </div>
     </div>
     <div class="field">
       <label>Hire date <span class="field-hint">(for seniority)</span></label>
@@ -13398,7 +13408,13 @@ function attendancePeriodRange(periodType, anchorMonth){
 // number — the count alone doesn't say whether two callouts landed back
 // to back or a month apart.
 function computeAttendanceReport(periodType, anchorMonth){
-  const range = attendancePeriodRange(periodType, anchorMonth);
+  return computeAttendanceReportForRange(attendancePeriodRange(periodType, anchorMonth));
+}
+
+// Same computation as computeAttendanceReport(), but for an explicit
+// {start,end} range rather than a month/quarter/year anchor — used by the
+// Report Builder's date-range picker, which lets the caller pick any span.
+function computeAttendanceReportForRange(range){
   const inRange = d => d>=range.start && d<=range.end;
   const byStaff = {};
   const ensure = id => byStaff[id] || (byStaff[id] = {callout:[], late_arrival:[], left_early:[], leaveRanges:[]});
@@ -13976,6 +13992,36 @@ function renderLanguagesManagerModal(m){
       ${state.languages.map(l=>`
         <div class="option-card" data-edit-lang="${l.id}">
           <div class="oc-left"><span class="oc-name">🌐 ${escapeHtml(l.name)}</span></div>
+        </div>`).join('')}
+      `}
+    </div>
+  </div>`;
+}
+
+// --- Positions manager (admin) — job title/position codes (SA2, SA3, AAA...) ---
+function renderPositionsManagerModal(m){
+  const isNew = m.editId === '__new__';
+  const editing = isNew ? {name:''} : (m.editId ? state.positions.find(p=>p.id===m.editId) : null);
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Positions</h2><p>Job title / position codes staff can be assigned in their profile — add as many as you need.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${editing?`
+      <div class="field"><label>Position name</label><input type="text" id="pos-name-input" value="${escapeHtml(editing.name)}" placeholder="e.g. SA4FL"/></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-primary" id="pos-save-btn" style="flex:1;">Save</button>
+        ${isNew?'':'<button class="btn btn-danger" id="pos-delete-btn">Delete</button>'}
+      </div>
+      <button class="btn btn-light" id="pos-cancel-btn" style="width:100%;">Cancel</button>
+      `:`
+      <button class="btn btn-primary" id="btn-new-pos" style="width:100%;margin-bottom:16px;">+ Add position</button>
+      ${state.positions.length===0?'<div class="small-muted">No positions yet.</div>':''}
+      ${state.positions.map(p=>`
+        <div class="option-card" data-edit-pos="${p.id}">
+          <div class="oc-left"><span class="oc-name">🏷 ${escapeHtml(p.name)}</span></div>
         </div>`).join('')}
       `}
     </div>
@@ -14714,7 +14760,7 @@ async function openReportBuilder(extra={}){
   const def = defaultReportDateRange();
   const base = {
     type:'report-preview',
-    sections:{board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
+    sections:{dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true},
     ...extra,
     reportStartDate: extra.reportStartDate || def.startDate,
     reportEndDate:   extra.reportEndDate   || def.endDate,
@@ -14843,11 +14889,12 @@ function attemptPlace(staffId, areaId, force, scope){
 // ============ EVENT WIRING ============
 
 function renderReportPreviewModal(m){
-  const secs = m.sections || {board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
+  const secs = m.sections || {dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
   const viewMode2 = m.viewMode2 || 'config';
-  const previewPage = m.previewPage || null; // null = overview, 'board'|'staff'|'certs'|'timeoff'|'activity'
+  const previewPage = m.previewPage || null; // null = no page picked yet (shows the section summary grid), 'dashboard'|'board'|'staff'|'certs'|'timeoff'|'activity'|...
 
   const pages = [
+    {id:'dashboard', icon:'🎛', label:'Overview',           desc:'KPI tiles & charts — attendance and staffing at a glance'},
     {id:'board',    icon:'📋', label:'Board layout',        desc:'Current positions by dept & area'},
     {id:'staff',    icon:'👥', label:'Staff report',        desc:'Hours, callouts, seniority, flexibility'},
     {id:'certs',    icon:'🌐', label:'Certifications',      desc:'Languages, CA cert, callouts today'},
@@ -14864,8 +14911,8 @@ function renderReportPreviewModal(m){
   let previewHTML = '';
   if(previewPage && secs[previewPage]){
     try{
-      const {page1,page2,page3,page4,page5,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
-      const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5};
+      const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+      const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
       const rawPage = pageMap[previewPage]||'';
       previewHTML = rawPage;
     } catch(e){ previewHTML = '<div style="color:red">Preview error: '+e.message+'</div>'; }
@@ -15711,14 +15758,15 @@ function attachHandlers(){
       const periods = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
       return periods > 0 ? (daily * periods).toFixed(1) : null;
     }
-    function calloutCount(s){
-      return (state.calloutHistory||{})[s.id]?.length || 0;
-    }
-    function scheduledLeaveCount(s){
-      const offs = (state.timeOff||{})[s.id]||[];
-      const upcoming = offs.filter(r=>r.endDate>=today);
-      return upcoming.length;
-    }
+    // Callouts / late arrivals / left-early / scheduled-leave days, all
+    // scoped to the report's picked date range (defaults to the last 30
+    // days — see openReportBuilder()) via the same durable, server-synced
+    // attendance_events + time_off data the standalone Attendance Report
+    // uses, rather than the old all-time/upcoming-only local counts.
+    const attendanceRangeStart = opts.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+    const attendanceRangeEnd   = opts.reportEndDate   || today;
+    const attendanceByStaff = {};
+    computeAttendanceReportForRange({start:attendanceRangeStart, end:attendanceRangeEnd}).rows.forEach(r=>{ attendanceByStaff[r.staffId] = r; });
     function rotationCount(s){
       return state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
     }
@@ -15726,6 +15774,81 @@ function attachHandlers(){
       if(!areaId) return false;
       return isRepeatArea(s.id, areaId);
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PAGE 0 — Overview (management dashboard: KPI tiles + charts). Reuses
+    // the same period-scoped attendance data as the Staff Report page and
+    // the live area-fill formula from Area Utilization, so all three agree.
+    // Bars are width-percentage HTML/CSS (not print-only fixed pixels) so
+    // they scale correctly on phone, tablet, and desktop alike.
+    // ─────────────────────────────────────────────────────────────────────
+    const attendanceTotals = Object.values(attendanceByStaff).reduce((sum,r)=>({
+      callout: sum.callout + r.callout.length,
+      late: sum.late + r.lateArrival.length,
+      early: sum.early + r.leftEarly.length,
+      leaveDays: sum.leaveDays + r.leaveDays,
+    }), {callout:0, late:0, early:0, leaveDays:0});
+
+    const ovAreaStats = state.areas.filter(a=>!a.fixed).map(a=>{
+      const placed = staffInArea(a.id).filter(s=>s.active!==false&&!state.callouts[s.id]).length;
+      const cap = a.capacity||1;
+      const pct = Math.max(0, Math.min(100, Math.round((placed/cap)*100)));
+      return {name:a.name, placed, cap, pct};
+    }).sort((a,b)=>a.pct-b.pct);
+    const understaffedToday = ovAreaStats.filter(a=>a.pct<80).length;
+
+    const ovKpi = (num, label, sub, alert) => `
+      <div class="ov-kpi-tile ${alert?'ov-kpi-alert':''}">
+        <div class="ov-kpi-num">${num}</div>
+        <div class="ov-kpi-label">${escapeHtml(label)}</div>
+        ${sub?`<div class="ov-kpi-sub">${escapeHtml(sub)}</div>`:''}
+      </div>`;
+
+    const ovBarRow = (label, value, max, color, valueLabel) => `
+      <div class="ov-bar-row">
+        <div class="ov-bar-label">${escapeHtml(label)}</div>
+        <div class="ov-bar-track"><div class="ov-bar-fill" style="width:${max>0?Math.max(value>0?2:0,Math.round(value/max*100)):0}%;background:${color}"></div></div>
+        <div class="ov-bar-value">${valueLabel!=null?valueLabel:value}</div>
+      </div>`;
+
+    const attendanceMax = Math.max(1, attendanceTotals.callout, attendanceTotals.late, attendanceTotals.early, attendanceTotals.leaveDays);
+    const attendanceChart = `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Attendance &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+        ${ovBarRow('⚡ Callouts', attendanceTotals.callout, attendanceMax, '#2a78d6')}
+        ${ovBarRow('⏰ Late arrivals', attendanceTotals.late, attendanceMax, '#eb6834')}
+        ${ovBarRow('🚪 Left early', attendanceTotals.early, attendanceMax, '#1baf7a')}
+        ${ovBarRow('📅 Leave days', attendanceTotals.leaveDays, attendanceMax, '#eda100')}
+      </div>`;
+
+    const utilizationChart = `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Area utilization &nbsp;·&nbsp; today, worst first</div>
+        ${ovAreaStats.length ? ovAreaStats.map(a=>ovBarRow(a.name, a.pct, 100, a.pct>=80?'#0ca30c':a.pct>=50?'#fab219':'#d03b3b', a.pct+'% ('+a.placed+'/'+a.cap+')')).join('') : '<div class="empty">No areas configured.</div>'}
+        ${ovAreaStats.length?'<div class="ov-chart-legend">🟢 80%+ staffed &nbsp; 🟡 50–79% &nbsp; 🔴 under 50%</div>':''}
+      </div>`;
+
+    let page0 = `<div class="page page-break">
+      <div class="report-header">
+        <div>
+          <h1>Overview</h1>
+          <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${today}</div>
+        </div>
+      </div>
+      <div class="ov-kpi-row">
+        ${ovKpi(state.staff.filter(s=>s.active!==false).length, 'Total Staff', null, false)}
+        ${ovKpi(calledOut.length, 'Out Today', 'today', calledOut.length>0)}
+        ${ovKpi(attendanceTotals.callout, 'Callouts', 'this period', false)}
+        ${ovKpi(attendanceTotals.late, 'Late Arrivals', 'this period', false)}
+        ${ovKpi(attendanceTotals.early, 'Left Early', 'this period', false)}
+        ${ovKpi(attendanceTotals.leaveDays, 'Leave Days', 'this period', false)}
+        ${ovKpi(understaffedToday, 'Areas Under 80%', 'today', understaffedToday>0)}
+      </div>
+      <div class="ov-chart-row">
+        ${attendanceChart}
+        ${utilizationChart}
+      </div>
+    </div>`;
 
     // ─────────────────────────────────────────────────────────────────────
     // PAGE 1 — Board layout
@@ -15827,7 +15950,7 @@ function attachHandlers(){
 
     let page2 = `<div class="page page-break">
       <h1>Staff Performance Report</h1>
-      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members</div>
+      <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
       <table class="report-table">
         <thead><tr>
           <th style="min-width:140px">Name &amp; Role</th>
@@ -15837,8 +15960,10 @@ function attachHandlers(){
           ${showTimes?'<th style="width:72px">Shift</th>':''}
           <th style="width:52px;text-align:center" title="Total rotation periods worked">Rots.</th>
           <th style="width:58px;text-align:center" title="Estimated hours from shift × rotations">Est. Hrs</th>
-          <th style="width:48px;text-align:center" title="Total recorded call-outs">Callouts</th>
-          <th style="width:52px;text-align:center" title="Upcoming scheduled leaves">Leaves</th>
+          <th style="width:48px;text-align:center" title="Call-outs in the selected date range">Callouts</th>
+          <th style="width:44px;text-align:center" title="Late arrivals in the selected date range">Late</th>
+          <th style="width:44px;text-align:center" title="Left-early events in the selected date range">Left Early</th>
+          <th style="width:52px;text-align:center" title="Scheduled leave days in the selected date range">Leave Days</th>
           <th style="width:52px;text-align:center" title="Avg. unique positions per rotation (higher = more flexible)">Flex.</th>
           <th style="width:52px;text-align:center" title="Average proficiency rating across all areas (1–5)">Prof.</th>
           <th style="width:62px;text-align:center" title="Should supervisor move them to a new area?">Needs Move</th>
@@ -15850,8 +15975,11 @@ function attachHandlers(){
       const area     = getAreaById(areaId);
       const rots     = rotationCount(s);
       const hrs      = totalHoursWorked(s);
-      const cos      = calloutCount(s);
-      const leaves   = scheduledLeaveCount(s);
+      const ar       = attendanceByStaff[s.id];
+      const cos      = ar ? ar.callout.length : 0;
+      const lateCnt  = ar ? ar.lateArrival.length : 0;
+      const earlyCnt = ar ? ar.leftEarly.length : 0;
+      const leaves   = ar ? ar.leaveDays : 0;
       const move     = needsChange(s, areaId);
       const flex     = avgPositionsPerRotation(s);
       const prof     = areasProficiency(s);
@@ -15875,9 +16003,10 @@ function attachHandlers(){
       const senYrs = seniorityYears(s);
       const senLbl = seniorityLabel(s);
       const veteran = isVeteran(s); const senior = isSenior(s);
+      const posName = s.positionId ? state.positions.find(p=>p.id===s.positionId)?.name : '';
       page2 += `<tr class="${todayOut?'out-row':''}">
         <td>
-          <b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b>
+          <b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b>${posName?' <span style="font-size:8pt;font-weight:600;color:#555;background:#f0f0f0;padding:1pt 5pt;border-radius:3pt;">'+escapeHtml(posName)+'</span>':''}
           ${veteran?'<br><small style="color:#7d5a00">🏅 Veteran</small>':senior?'<br><small style="color:#555">⭐ Senior</small>':''}
           ${showAccom&&s.needsAccommodations?'<br><small style="color:#555">♿ Accommodations</small>':''}
           ${s.lateStart?'<br><small style="color:#D97706">⏰ Late: '+escapeHtml(s.lateStart)+'</small>':''}
@@ -15888,6 +16017,8 @@ function attachHandlers(){
         <td style="text-align:center">${rots||'—'}</td>
         <td style="text-align:center">${hrs?hrs+'h':'—'}</td>
         <td style="text-align:center;${cosStyle}">${cos||'—'}</td>
+        <td style="text-align:center">${lateCnt||'—'}</td>
+        <td style="text-align:center">${earlyCnt||'—'}</td>
         <td style="text-align:center">${leaves||'—'}</td>
         <td style="text-align:center;color:${flex&&parseFloat(flex)<0.5?'#e67e22':'#555'}">${flex||'—'}</td>
         <td style="text-align:center;color:${prof&&parseFloat(prof)>=4?'#27ae60':prof&&parseFloat(prof)<2.5?'#c0392b':'#555'}">${prof||'—'}</td>
@@ -16381,10 +16512,65 @@ function attachHandlers(){
       .log-table th{background:#fafafa;text-align:left;padding:4pt 6pt;border-bottom:1pt solid #eee;font-size:8.5pt;font-weight:700;color:#555;}
       .log-table td{padding:3.5pt 6pt;border-bottom:0.5pt solid #f0f0f0;vertical-align:middle;}
       .log-table tr:last-child td{border-bottom:none;}
+
+      /* ── Overview page: KPI tiles + bar charts ── */
+      .ov-kpi-row{display:flex;flex-wrap:wrap;gap:8pt;margin-bottom:18pt;}
+      .ov-kpi-tile{flex:1 1 100pt;min-width:100pt;border:1pt solid #e2e2e2;border-radius:8pt;padding:10pt 8pt;text-align:center;background:#fafafa;}
+      .ov-kpi-tile.ov-kpi-alert{border-color:#f3c6c6;background:#fff6f6;}
+      .ov-kpi-num{font-size:22pt;font-weight:700;color:#111;font-variant-numeric:tabular-nums;}
+      .ov-kpi-tile.ov-kpi-alert .ov-kpi-num{color:#d03b3b;}
+      .ov-kpi-label{font-size:8.5pt;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.03em;margin-top:2pt;}
+      .ov-kpi-sub{font-size:7.5pt;color:#999;margin-top:1pt;}
+      .ov-chart-row{display:flex;gap:16pt;flex-wrap:wrap;}
+      .ov-chart{flex:1 1 240pt;min-width:220pt;border:1pt solid #eee;border-radius:8pt;padding:12pt;}
+      .ov-chart-title{font-size:10.5pt;font-weight:700;color:#111;margin-bottom:10pt;}
+      .ov-bar-row{display:flex;align-items:center;gap:8pt;margin-bottom:8pt;}
+      .ov-bar-row:last-child{margin-bottom:0;}
+      .ov-bar-label{flex:0 0 90pt;font-size:8.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ov-bar-track{flex:1;height:12pt;background:#f0f0ee;border-radius:6pt;overflow:hidden;}
+      .ov-bar-fill{height:100%;border-radius:6pt;min-width:2px;}
+      .ov-bar-value{flex:0 0 auto;font-size:8.5pt;font-weight:600;color:#333;font-variant-numeric:tabular-nums;min-width:44pt;text-align:right;}
+      .ov-chart-legend{font-size:7.5pt;color:#999;margin-top:8pt;}
+
+      /* ── Screen (phone/tablet/desktop) reflow — print rules above are
+         untouched; this only overrides how the same markup reads on a
+         screen instead of a printed/PDF page. ── */
+      @media screen{
+        body{font-size:14px;}
+        .page{min-height:auto;padding:20px;}
+        h1{font-size:20px;}
+        .subtitle{font-size:12px;}
+        .report-table, table{font-size:12px;}
+        .report-table th, table th{font-size:11px;}
+        .ov-kpi-num{font-size:24px;}
+        .ov-kpi-label{font-size:10px;}
+        .ov-bar-label{font-size:10px;flex-basis:110px;}
+        .ov-bar-value{font-size:10px;}
+        .ov-chart-title{font-size:13px;}
+        /* Wide tables scroll horizontally within themselves instead of
+           forcing the whole page to scroll sideways on a phone. */
+        .report-table, table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+        .report-table tbody, .report-table thead, .report-table tr,
+        table tbody, table thead, table tr{display:table;width:100%;table-layout:auto;}
+      }
+      @media screen and (max-width:700px){
+        body{font-size:15px;}
+        .page{padding:14px;}
+        h1{font-size:18px;}
+        .ov-kpi-tile{flex-basis:44%;}
+        .ov-chart{flex-basis:100%;}
+        .areas-row{gap:6px;}
+        .area-card{min-width:120px;}
+        .ov-bar-label{flex-basis:84px;font-size:9.5px;}
+      }
+      @media screen and (max-width:420px){
+        .ov-kpi-tile{flex-basis:100%;}
+      }
     `;
 
     // Build only selected sections
     const parts = [];
+    if(sections.dashboard)     parts.push(page0);
     if(sections.board)        parts.push(page1);
     if(sections.staff)        parts.push(page2);
     if(sections.certs)        parts.push(page3);
@@ -16393,7 +16579,7 @@ function attachHandlers(){
     if(sections.supervisors)  parts.push(page6);
     if(sections.utilization)  parts.push(page7);
     if(sections.notes)        parts.push(page8);
-    return {page1,page2,page3,page4,page5,page6,page7,page8, reportCSS, parts};
+    return {page0,page1,page2,page3,page4,page5,page6,page7,page8, reportCSS, parts};
   };
   // ── swap mode ──
   // Tap any chip while swap mode active → complete the swap immediately
@@ -16502,6 +16688,7 @@ function attachHandlers(){
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
+  on('nav-manage-positions',    ()=>{ closeNav(); openModal({type:'positions-manager'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
     if(window.RC && typeof window.RC.unsubscribeFromBoardChanges==='function'){
@@ -16839,6 +17026,7 @@ function attachHandlers(){
       const hireDate     = snap.hireDate    ?? activeModal.hireDate    ?? editing?.hireDate    ?? '';
       const lunchVal     = snap.lunchVal    ?? activeModal.lunchVal    ?? '';
       const supervisorId = snap.supervisorId!==undefined ? snap.supervisorId : (activeModal.supervisorId!==undefined ? activeModal.supervisorId : editing?.supervisorId ?? null);
+      const positionId   = snap.positionId  !==undefined ? snap.positionId   : (activeModal.positionId  !==undefined ? activeModal.positionId   : editing?.positionId   ?? null);
       const flowId       = snap.flowId      !== undefined ? snap.flowId      : (activeModal.flowId      !== undefined ? activeModal.flowId      : editing?.flowId      ?? null);
       // switches — prefer activeModal state (persisted on click), fall back to DOM, fall back to staff
       const isTeamLead         = activeModal.swTeamLead    ?? snap.swTeamLead    ?? !!(editing?.isTeamLead);
@@ -16884,13 +17072,13 @@ function attachHandlers(){
           const result = await window.RC.updateStaff({
             staffId:s.id, name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
-            supervisorId, flowId, flowEnrolled: !!flowId,
+            supervisorId, positionId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           await window.RC.setStaffLanguageCerts({staffId: s.id, languageIds: finalLangCerts});
           return result;
         });
-        Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,
+        Object.assign(s,{name,tdisNumber:tdisNumberRaw,tags,department:dept,shiftHours,breakTimes,isTeamLead,supervisorId,positionId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,flowId,flowEnrolled:!!flowId,lateStart,homeAreaId});
         if(flowId&&flowId!==prevFlow) showToast(`${s.name} enrolled in ${getFlowById(flowId)?.name||'flow'}`,'teal');
         saveState();
@@ -16903,7 +17091,7 @@ function attachHandlers(){
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
-            supervisorId, flowId, flowEnrolled: !!flowId,
+            supervisorId, positionId, flowId, flowEnrolled: !!flowId,
             shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, actingAccountId:authState.account.id,
           });
           createdId = row.id;
@@ -16914,7 +17102,7 @@ function attachHandlers(){
         // local record and the database row are the same entity from the
         // start — falls back to a local-only id if the sync failed.
         const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
-          isTeamLead,homeAreaId:null,supervisorId,flowId,flowEnrolled:!!flowId,
+          isTeamLead,homeAreaId:null,supervisorId,positionId,flowId,flowEnrolled:!!flowId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
         saveState();
@@ -16935,7 +17123,7 @@ function attachHandlers(){
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
       saveState();
-      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -16953,7 +17141,7 @@ function attachHandlers(){
       const sync = await syncCrudWrite(()=>window.RC.createBlockedPair({staffAId:a, staffBId:b}));
       state.blocks.push({id: sync.ok ? sync.result.id : uid('block'), a, b});
       saveState(); render();
-      showToast(sync.ok ? 'Block added — saved to database ✓' : `Block added here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? 'Block added — saved to database ✓' : `Block added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       openModal({type:'blocks-manager'});
     });
     document.querySelectorAll('[data-remove-block]').forEach(el=>el.addEventListener('click', async ()=>{
@@ -17355,6 +17543,40 @@ function attachHandlers(){
     }));
   }
 
+  // --- positions manager ---
+  if(activeModal.type==='positions-manager'){
+    on('btn-new-pos', ()=>openModal({type:'positions-manager', editId:'__new__'}));
+    on('pos-cancel-btn', ()=>openModal({type:'positions-manager'}));
+    on('pos-save-btn', async ()=>{
+      const name = document.getElementById('pos-name-input').value.trim();
+      if(!name){ showToast('Enter a position name','rust'); return; }
+      if(activeModal.editId==='__new__'){
+        const sortOrder = state.positions.length;
+        const sync = await syncCrudWrite(()=>window.RC.createPosition({name, sortOrder}));
+        state.positions.push({id: sync.ok ? sync.result.id : uid('pos'), name, sortOrder});
+        showToast(sync.ok ? 'Position added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      } else {
+        const p = state.positions.find(x=>x.id===activeModal.editId);
+        const sync = await syncCrudWrite(()=>window.RC.updatePosition({positionId: p.id, name, sortOrder: p?.sortOrder||0}));
+        if(p) p.name = name;
+        showToast(sync.ok ? 'Position updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      }
+      saveState(); openModal({type:'positions-manager'});
+    });
+    on('pos-delete-btn', async ()=>{
+      const id = activeModal.editId;
+      const sync = await syncCrudWrite(()=>window.RC.deletePosition({positionId:id}));
+      state.positions = state.positions.filter(p=>p.id!==id);
+      state.staff.forEach(s=>{ if(s.positionId===id) s.positionId = null; });
+      saveState();
+      showToast(sync.ok ? 'Position removed — saved to database ✓' : `Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({type:'positions-manager'});
+    });
+    document.querySelectorAll('[data-edit-pos]').forEach(el=>el.addEventListener('click',()=>{
+      openModal({type:'positions-manager', editId:el.dataset.editPos});
+    }));
+  }
+
   // --- language cert chips toggle in staff editor ---
   if(activeModal.type==='staff-manager'){
     document.querySelectorAll('.lang-cert-chip').forEach(chip=>{
@@ -17546,7 +17768,7 @@ function attachHandlers(){
       state.areas = state.areas.filter(a=>a.id!==id);
       Object.keys(state.assignments).forEach(sid=>{ if(state.assignments[sid]===id) state.assignments[sid]=null; });
       saveState();
-      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, 'rust');
+      showToast(sync.ok ? `"${removedName}" deleted — removed from database ✓` : `"${removedName}" deleted here, but not from the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       closeModal();
     });
   }
@@ -17638,7 +17860,7 @@ function attachHandlers(){
   // --- rotate preview (flow-aware rotation) ---
   if(activeModal.type==='report-preview'){
     const m = activeModal;
-    const secs = m.sections || {board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
+    const secs = m.sections || {dashboard:true,board:true,staff:true,certs:true,timeoff:true,activity:true,supervisors:true,utilization:true,notes:true};
   const viewMode2 = m.viewMode2 || 'config';
 
     // Tab switches: Configure ↔ Live
@@ -17652,7 +17874,7 @@ function attachHandlers(){
           const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
           doc.close();
         }catch(e){ console.error('live view error',e); }
       }, 60);
@@ -17673,7 +17895,7 @@ function attachHandlers(){
           const {parts,reportCSS}=buildReportHTML(secs,{showTimes:t,showBreaks:b,showSeniority:s,showAccom:ac,activityLog:m.activityLog,reportStartDate:m.reportStartDate,reportEndDate:m.reportEndDate});
           const doc=iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:16pt;} .page-break{page-break-after:avoid;}</style></head><body>'+parts.join('<hr style="border:none;border-top:2px dashed #ddd;margin:24pt 0;">')+'</body></html>');
           doc.close();
         },60);
       });
@@ -17697,9 +17919,17 @@ function attachHandlers(){
           try{ return ((new Date()-new Date(s.hireDate))/(1000*60*60*24*365.25)).toFixed(1); }catch(e){ return ''; }
         };
 
+        // Same range-scoped attendance data (server-synced attendance_events
+        // + time_off) the Staff Performance Report page and the standalone
+        // Attendance Report use — see computeAttendanceReportForRange().
+        const xlsAttendanceStart = m.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+        const xlsAttendanceEnd   = m.reportEndDate   || today;
+        const xlsAttendanceByStaff = {};
+        computeAttendanceReportForRange({start:xlsAttendanceStart, end:xlsAttendanceEnd}).rows.forEach(r=>{ xlsAttendanceByStaff[r.staffId] = r; });
+
         // ── Sheet 1: Staff Report ─────────────────────────────────────────
         const sh1 = [
-          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Est. Hours','Callouts','Sched. Leaves','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
+          ['Name','Department','Current Area','Shift','Seniority (yrs)','Rotations','Est. Hours','Callouts','Late Arrivals','Left Early','Leave Days','Needs Move','Team Lead',...(showAccom?['Accommodations']:[]),'Languages','Supervisor','Pending Requests','Hire Date','Late Start']
         ];
         state.staff.filter(s=>s.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
           const area  = getAreaById(state.assignments[s.id]);
@@ -17708,13 +17938,16 @@ function attachHandlers(){
           const rots  = state.history.filter(h=>h.assignments&&h.assignments[s.id]).length;
           const dly   = shiftHrs(s);
           const hrs   = dly!=null ? (dly*rots).toFixed(1) : '';
-          const cos   = (state.calloutHistory||{})[s.id]?.length||0;
-          const leaves= ((state.timeOff||{})[s.id]||[]).filter(r=>r.endDate>=today).length;
+          const xar   = xlsAttendanceByStaff[s.id];
+          const cos   = xar ? xar.callout.length : 0;
+          const late  = xar ? xar.lateArrival.length : 0;
+          const early = xar ? xar.leftEarly.length : 0;
+          const leaves= xar ? xar.leaveDays : 0;
           const move  = !!(area&&isRepeatArea(s.id,area.id));
           const reqs  = (s.positionRequests||[]).filter(r=>!r.status||r.status==='pending').length;
           sh1.push([
             s.name, s.department||'', area?.name||'', s.shiftHours||'',
-            senYrs(s), rots||0, hrs||'', cos||0, leaves||0,
+            senYrs(s), rots||0, hrs||'', cos||0, late||0, early||0, leaves||0,
             move?'Yes':'No', s.isTeamLead?'Yes':'No', ...(showAccom?[s.needsAccommodations?'Yes':'No']:[]),
             langs, sup?.name||'', reqs||0, s.hireDate||'', s.lateStart||''
           ]);
@@ -17900,11 +18133,11 @@ function attachHandlers(){
         const iframe = document.getElementById('rp-preview-iframe');
         if(!iframe) return;
         try{
-          const {page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
-          const pageMap = {board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
+          const {page0,page1,page2,page3,page4,page5,page6,page7,page8,reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
+          const pageMap = {dashboard:page0,board:page1,staff:page2,certs:page3,timeoff:page4,activity:page5,supervisors:page6,utilization:page7,notes:page8};
           const doc = iframe.contentDocument||iframe.contentWindow.document;
           doc.open();
-          doc.write('<!DOCTYPE html><html><head><style>'+reportCSS+' body{padding:12pt;} .page-break{page-break-after:avoid;}</style></head><body>'+pageMap[pg]+'</body></html>');
+          doc.write('<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>'+reportCSS+' body{padding:12pt;} .page-break{page-break-after:avoid;}</style></head><body>'+pageMap[pg]+'</body></html>');
           doc.close();
         }catch(e){ console.error(e); }
       }, 50);
@@ -17957,7 +18190,7 @@ function attachHandlers(){
       const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, showAccom:m.showAccom, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
-      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report — '+escapeHtml(state.currentPeriod||'')+'</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
       const blob = new Blob([html],{type:'text/html'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -17971,7 +18204,7 @@ function attachHandlers(){
       const {parts, reportCSS} = buildReportHTML(secs, {showTimes:m.showTimes, showBreaks:m.showBreaks, showSeniority:m.showSeniority, activityLog:m.activityLog, reportStartDate:m.reportStartDate, reportEndDate:m.reportEndDate});
       const orient = m.orient||'portrait';
       const orientCSS = orient==='landscape'?'@page{size:landscape;}':'';
-      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Schedule Report</title><style>'+reportCSS+orientCSS+'</style></head><body>'+parts.join('')+'</body></html>';
       const win = window.open('','_blank','width=900,height=700');
       if(win){ win.document.write(html); win.document.close(); win.onload=()=>{ win.focus(); win.print(); }; }
     });
@@ -18725,6 +18958,7 @@ function snapshotStaffForm(){
       lateStart:     v('staff-latestart-input'),
     lunchVal:      v('staff-lunch-input'),
     supervisorId:  v('staff-supervisor-input'),
+    positionId:    v('staff-position-input'),
     flowId:        v('staff-flow-input'),
     swTags:        sw('sw-tags'),
     swTeamLead:    sw('sw-team-lead'),
@@ -19195,6 +19429,7 @@ function mapSupabaseBoard(board){
     isTeamLead: !!s.is_team_lead,
     homeAreaId: s.home_area_id || null,
     supervisorId: s.supervisor_id || null,
+    positionId: s.position_id || null,
     shiftHours: s.shift_hours_label || '',
     breakTimes: s.break_times_label || '',
     department: deptById[s.department_id] || '',
@@ -19242,6 +19477,7 @@ function mapSupabaseBoard(board){
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
+  const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0 })).sort((a,b)=>a.sortOrder-b.sortOrder);
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
   const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
@@ -19293,7 +19529,7 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -19349,6 +19585,7 @@ function applyMappedBoard(mapped){
   state.coverageWaived = mapped.coverageWaived;
   state.attendanceEvents = mapped.attendanceEvents;
   state.languages = mapped.languages;
+  state.positions = mapped.positions;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
   state.callouts = mapped.callouts;
@@ -19436,6 +19673,7 @@ async function runRealtimeRefresh(){
     const board = await window.RC.loadBoard();
     applyMappedBoard(mapSupabaseBoard(board));
     reconcileStaleCoverage();
+    reconcileStaleTempMoves();
     saveState();
     render();
   }catch(e){
