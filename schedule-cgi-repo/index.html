@@ -10516,8 +10516,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Staff</div>
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-staff"><span class="nav-item-icon">📥</span>Import staff (Excel)</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-prior-exp"><span class="nav-item-icon">📥</span>Import prior experience (Excel)</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-data"><span class="nav-item-icon">📥</span>Import data (Excel)</button>` : ''}
       <button class="nav-item" id="nav-manage-supervisors"><span class="nav-item-icon">🏅</span>Supervisors</button>
       <button class="nav-item" id="nav-org-diagram"><span class="nav-item-icon">🗂</span>Org diagram</button>
       <button class="nav-item" id="nav-manage-blocks"><span class="nav-item-icon">🚫</span>Blocked Pairs</button>
@@ -11568,6 +11567,7 @@ function renderModal(){
   else if(m.type==='time-off-manager') inner = renderTimeOffManagerModal(m);
   else if(m.type==='eval-queue') inner = renderEvalQueueModal(m);
   else if(m.type==='eval-form') inner = renderEvalFormModal(m);
+  else if(m.type==='import-picker') inner = renderImportPickerModal(m);
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   else if(m.type==='prior-exp-import') inner = renderPriorExpImportModal(m);
   else if(m.type==='ready-for-path') inner = renderReadyForPathModal(m);
@@ -13159,6 +13159,35 @@ function exportRosterToExcel(){
   XLSX.utils.book_append_sheet(wb, ws, 'Roster');
   XLSX.writeFile(wb, 'roster-'+todayLabel()+'.xlsx');
   showToast('Exported '+rows.length+' staff to Excel', 'teal');
+}
+
+function renderImportPickerModal(m){
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>📥 Import data</h2><p>Choose what you'd like to import from an Excel file.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="option-list">
+        <div class="option-card" data-import-pick="staff">
+          <div class="oc-left">
+            <span class="oc-name">Staff roster</span>
+            <span class="oc-sub">Add or update staff members from a spreadsheet.</span>
+          </div>
+        </div>
+        <div class="option-card" data-import-pick="prior-exp">
+          <div class="oc-left">
+            <span class="oc-name">Prior area experience</span>
+            <span class="oc-sub">Mark which areas staff already know from before this system tracked rotations.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-import-picker" style="margin-left:auto;">Cancel</button>
+    </div>
+  </div>`;
 }
 
 function renderStaffImportModal(m){
@@ -17055,8 +17084,7 @@ function attachHandlers(){
   const closeNav = () => { navDrawerOpen=false; };
   on('nav-roster', ()=>{ viewMode='roster'; closeNav(); render(); });
   on('nav-manage-staff',        ()=>{ closeNav(); openModal({type:'staff-manager'}); });
-  on('nav-import-staff',        ()=>{ closeNav(); openModal({type:'staff-import', step:'pick'}); });
-  on('nav-import-prior-exp',    ()=>{ closeNav(); openModal({type:'prior-exp-import', step:'pick'}); });
+  on('nav-import-data',         ()=>{ closeNav(); openModal({type:'import-picker'}); });
   on('nav-manage-supervisors',  ()=>{ closeNav(); openModal({type:'supervisor-manager'}); });
   on('nav-org-diagram',         ()=>{ closeNav(); openModal({type:'org-diagram'}); });
   on('nav-manage-blocks',       ()=>{ closeNav(); openModal({type:'blocks-manager'}); });
@@ -17225,6 +17253,16 @@ function attachHandlers(){
   // --- ready for a new path (100% area coverage list) ---
   if(activeModal.type==='ready-for-path'){
     on('modal-close-ready-path', closeModal);
+  }
+
+  // --- import picker: choose which Excel import to run ---
+  if(activeModal.type==='import-picker'){
+    on('modal-close-import-picker', closeModal);
+    document.querySelectorAll('[data-import-pick]').forEach(el=>el.addEventListener('click', ()=>{
+      const pick = el.dataset.importPick;
+      if(pick==='staff') openModal({type:'staff-import', step:'pick'});
+      else if(pick==='prior-exp') openModal({type:'prior-exp-import', step:'pick'});
+    }));
   }
 
   // ── Position request: approve / deny ──
