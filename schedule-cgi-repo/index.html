@@ -16335,12 +16335,12 @@ function attachHandlers(){
         ${ovAreaStats.length?'<div class="ov-chart-legend">🟢 80%+ staffed &nbsp; 🟡 50–79% &nbsp; 🔴 under 50%</div>':''}
       </div>`;
 
-    // Staff-by-position donut. Pie/donut is only the right form for an
-    // at-a-glance part-to-whole read with <=6 segments (more than that and
-    // adjacent slices blur together) — fold any smaller tail into "Other"
-    // rather than let the ring get busy. "No position" gets a neutral gray
-    // rather than a categorical color since it's an absence of a value, not
-    // one more identity to compare.
+    // Staff-by-position donut. Every position gets its own slice and its
+    // own line in the legend — nothing gets folded into "Other" — since a
+    // supervisor reading this wants the exact headcount and percentage for
+    // each position code, not a lumped tail. "No position" gets a neutral
+    // gray rather than a categorical color since it's an absence of a
+    // value, not one more identity to compare.
     const posCountsRaw = {};
     const posActiveStaff = state.staff.filter(s=>s.active!==false);
     posActiveStaff.forEach(s=>{
@@ -16348,19 +16348,14 @@ function attachHandlers(){
       posCountsRaw[label] = (posCountsRaw[label]||0) + 1;
     });
     let posEntries = Object.entries(posCountsRaw).sort((a,b)=>b[1]-a[1]);
-    if(posEntries.length > 6){
-      const head = posEntries.slice(0,5);
-      const tailSum = posEntries.slice(5).reduce((s,[,n])=>s+n,0);
-      posEntries = [...head, ['Other', tailSum]];
-    }
-    const posPalette = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300'];
+    const posPalette = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#7b4fd1','#c0392b','#16a085','#8e44ad','#2c3e50','#d35400'];
     const posTotalStaff = posActiveStaff.length || 1;
     let posCursor = 0;
     const posGradientParts = [];
     const posLegendRows = [];
     posEntries.forEach(([label,count],i)=>{
       const pct = count/posTotalStaff*100;
-      const color = (label==='No position'||label==='Other') ? '#898781' : (posPalette[i]||'#898781');
+      const color = (label==='No position'||label==='Other') ? '#898781' : posPalette[i % posPalette.length];
       posGradientParts.push(`${color} ${posCursor}% ${posCursor+pct}%`);
       posCursor += pct;
       posLegendRows.push(`<div class="ov-donut-legend-row"><span class="ov-donut-swatch" style="background:${color}"></span><span class="ov-donut-legend-label">${escapeHtml(label)}</span><span class="ov-donut-legend-value">${count} (${Math.round(pct)}%)</span></div>`);
@@ -16375,6 +16370,42 @@ function attachHandlers(){
           <div class="ov-donut-legend">${posLegendRows.join('')}</div>
         </div>` : '<div class="empty">No staff to chart.</div>'}
       </div>`;
+
+    // Position utilization by area — a pivot of who's covering what, right
+    // now, so a supervisor can see at a glance where a given position is
+    // concentrated or thin across the board (where to fund/move headcount)
+    // instead of only knowing the shop-wide total from the donut above.
+    // Only positions someone currently holds get a column, so the table
+    // doesn't balloon with unused position codes.
+    const posAreaColumns = state.positions.filter(p=>posActiveStaff.some(s=>s.positionId===p.id));
+    const posAreaHasNone = posActiveStaff.some(s=>!s.positionId);
+    const posAreaRows = groups.flatMap(g=>g.areas).map(a=>{
+      const placedHere = staffInArea(a.id).filter(s=>s.active!==false);
+      if(!placedHere.length) return null;
+      const counts = {};
+      posAreaColumns.forEach(p=>{ counts[p.id] = placedHere.filter(s=>s.positionId===p.id).length; });
+      return { name:a.name, counts, noPosition: placedHere.filter(s=>!s.positionId).length, total: placedHere.length };
+    }).filter(Boolean);
+    const positionAreaTable = (posAreaColumns.length && posAreaRows.length) ? `
+      <div class="ov-chart" style="margin-top:16pt;">
+        <div class="ov-chart-title">Position utilization by area &nbsp;·&nbsp; today</div>
+        <div style="overflow-x:auto;">
+        <table class="report-table">
+          <thead><tr>
+            <th>Area</th>
+            ${posAreaColumns.map(p=>`<th style="width:46px;text-align:center">${escapeHtml(p.name)}</th>`).join('')}
+            ${posAreaHasNone?'<th style="width:60px;text-align:center">No position</th>':''}
+            <th style="width:52px;text-align:center">Total</th>
+          </tr></thead><tbody>
+          ${posAreaRows.map(r=>`<tr>
+            <td><b>${escapeHtml(r.name)}</b></td>
+            ${posAreaColumns.map(p=>`<td style="text-align:center">${r.counts[p.id]||'—'}</td>`).join('')}
+            ${posAreaHasNone?`<td style="text-align:center">${r.noPosition||'—'}</td>`:''}
+            <td style="text-align:center"><b>${r.total}</b></td>
+          </tr>`).join('')}
+        </tbody></table>
+        </div>
+      </div>` : '';
 
     let page0 = `<div class="page page-break">
       <div class="report-header">
@@ -16397,6 +16428,7 @@ function attachHandlers(){
         ${utilizationChart}
         ${positionChart}
       </div>
+      ${positionAreaTable}
     </div>`;
 
     // ─────────────────────────────────────────────────────────────────────
