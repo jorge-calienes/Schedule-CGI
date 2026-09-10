@@ -11208,7 +11208,7 @@ let rosterFilter = '';
 let rosterSort = {col:'name', dir:1};
 // Faceted roster filters, layered on top of the free-text search above.
 // '' / false means "no filter" for that facet.
-let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', needsAttention:false };
+let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', supervisor:'', needsAttention:false };
 let rosterFiltersOpen = false; // whether the "Filters" dropdown panel is expanded
 
 // "Needs attention" = missing a shift or break/lunch time, or hasn't had an
@@ -11235,10 +11235,10 @@ function staffNeedsAttention(s){
 }
 
 function rosterFacetsActive(){
-  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow || rosterFacets.position || rosterFacets.language || rosterFacets.needsAttention;
+  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow || rosterFacets.position || rosterFacets.language || rosterFacets.supervisor || rosterFacets.needsAttention;
 }
 function rosterActiveFacetCount(){
-  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow, rosterFacets.position, rosterFacets.language, rosterFacets.needsAttention].filter(Boolean).length;
+  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow, rosterFacets.position, rosterFacets.language, rosterFacets.supervisor, rosterFacets.needsAttention].filter(Boolean).length;
 }
 
 function rosterRows(){
@@ -11261,6 +11261,7 @@ function rosterRows(){
   if(rosterFacets.flow) rows = rows.filter(s=>(s.flowId||'')===rosterFacets.flow);
   if(rosterFacets.position) rows = rows.filter(s=>(s.positionId||'')===rosterFacets.position);
   if(rosterFacets.language) rows = rows.filter(s=>(s.languageCerts||[]).includes(rosterFacets.language));
+  if(rosterFacets.supervisor) rows = rows.filter(s=>(s.supervisorId||'')===rosterFacets.supervisor);
   if(rosterFacets.needsAttention) rows = rows.filter(staffNeedsAttention);
   if(rosterFacets.lunch){
     const targetMins = parseClockToken(rosterFacets.lunch);
@@ -11345,6 +11346,13 @@ function renderRoster(){
             <select class="roster-filter-select" id="roster-filter-language">
               <option value="">All languages</option>
               ${state.languages.map(l=>`<option value="${l.id}" ${rosterFacets.language===l.id?'selected':''}>${escapeHtml(l.name)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Supervisor</span>
+            <select class="roster-filter-select" id="roster-filter-supervisor">
+              <option value="">All supervisors</option>
+              ${state.supervisors.map(sv=>`<option value="${sv.id}" ${rosterFacets.supervisor===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
             </select>
           </label>
           <label class="rf-field">
@@ -15972,8 +15980,8 @@ function attachHandlers(){
       if(rosterFacets.needsAttention) ensureRosterEvalCacheLoaded();
       render();
     });
-    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', needsAttention:false }; render(); });
-    ['department','shift','lunch','flow','position','language'].forEach(facet=>{
+    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', supervisor:'', needsAttention:false }; render(); });
+    ['department','shift','lunch','flow','position','language','supervisor'].forEach(facet=>{
       const sel = document.getElementById(`roster-filter-${facet}`);
       if(sel) sel.addEventListener('change', ()=>{ rosterFacets[facet] = sel.value; render(); });
     });
