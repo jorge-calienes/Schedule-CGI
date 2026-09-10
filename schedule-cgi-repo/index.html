@@ -8055,6 +8055,25 @@
   :root[data-theme="dark"] .chip-tags,
   :root[data-theme="dark"] .chip-hours,
   :root[data-theme="dark"] .temp-scope-label{color:var(--c-text-2);}
+
+  /* ── App tour (guided onboarding walkthrough) ── */
+  .tour-scrim{position:fixed;inset:0;z-index:998;background:transparent;}
+  .tour-scrim.tour-scrim-dim{background:rgba(0,0,0,.55);}
+  .tour-spotlight{position:fixed;z-index:999;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease;}
+  .tour-tooltip{position:fixed;z-index:1000;width:min(320px,calc(100vw - 32px));background:var(--md-sys-color-surface-container-lowest);color:var(--c-text);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large,16px);box-shadow:var(--shadow-md);padding:16px;transition:top .25s ease,left .25s ease;}
+  .tour-tooltip-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .tour-step-count{font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--md-sys-color-primary);text-transform:uppercase;}
+  .tour-close{background:none;border:none;font-size:16px;color:var(--c-text-2);cursor:pointer;line-height:1;padding:2px;}
+  .tour-tooltip h3{margin:0 0 6px;font-size:16px;font-weight:700;color:var(--c-text);}
+  .tour-tooltip p{margin:0 0 14px;font-size:13.5px;line-height:1.5;color:var(--c-text-2);}
+  .tour-tooltip-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .tour-dots{display:flex;gap:4px;}
+  .tour-dot{width:5px;height:5px;border-radius:50%;background:var(--md-sys-color-outline-variant);}
+  .tour-dot.tour-dot-active{background:var(--md-sys-color-primary);width:14px;border-radius:3px;}
+  .tour-btn{border:none;border-radius:var(--r-sm,8px);padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;}
+  .tour-btn-back{background:transparent;color:var(--c-text-2);}
+  .tour-btn-back:disabled{visibility:hidden;}
+  .tour-btn-next{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary,#fff);}
 </style>
 </head>
 <body>
@@ -10063,6 +10082,7 @@ let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
 let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
+let tourState = null; // {stepIndex} while the app tour is active, else null
 
 // ── Theme ────────────────────────────────────────────────────────────────
 let themeMode = 'light'; // 'light' | 'dark' — persisted in localStorage, applied to <html data-theme>
@@ -10166,8 +10186,10 @@ function render(){
       ${mainContent}
     </div>
     ${activeModal ? renderModal() : ''}
+    ${tourState ? renderTourOverlay() : ''}
   `;
   attachHandlers();
+  if(tourState) positionTourOverlay();
 
   // ── Only play the modal "pop-in" entrance animation when a genuinely new modal opens,
   //    not when the same modal re-renders internally (tab switch, toggle, search, etc.) ──
@@ -10189,6 +10211,153 @@ function render(){
       const bw2 = document.querySelector('.board-wrap');
       if(bw2){ bw2.scrollTop = _boardScroll; bw2.scrollLeft = _boardScrollLeft; }
     });
+  }
+}
+
+// ============ APP TOUR (guided onboarding walkthrough) ============
+// Manual, nav-triggered only (no auto-launch on first login) — so it never
+// intercepts clicks in an automated/testing context, and a supervisor opens
+// it deliberately when they're ready to look at the app with someone new.
+// Each step's `before()` puts the app into the state where its `selector`
+// will actually be on screen; if that selector still isn't found after
+// rendering (wrong role, narrow viewport hiding it, etc.) the step is
+// skipped automatically rather than pointing the spotlight at nothing.
+const TOUR_STEPS = [
+  { title: 'Welcome to Schedule',
+    body: "This is a quick tour of how the board works day to day — placing staff, tracking call-outs, running reports, and everything supervisors use most. It only takes a couple minutes.",
+    selector: null,
+    before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; searchExpanded=false; } },
+  { title: 'The rotation board',
+    body: "Each column is a work area. Tap a staff chip, then tap an open area to move them there — capacity limits are enforced automatically, and fixed areas (like Cashier) keep their assigned people unless you bring in a backup.",
+    selector: '.board-wrap',
+    before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; } },
+  { title: 'Find anyone fast',
+    body: "Search jumps straight to a staff member's chip on the board, wherever they're currently placed.",
+    selector: '#btn-toggle-search',
+    before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; searchExpanded=false; } },
+  { title: 'Rotate Now',
+    body: "When it's time for the next rotation, this suggests placements based on who's covered every area least recently, then records the move to history.",
+    selector: '#btn-rotate',
+    before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; } },
+  { title: 'Mark someone out',
+    body: "Call in sick, running late, or leaving early — log it here. The app suggests the best-fit backup for whatever area they leave open.",
+    selector: '#nav-mark-callout',
+    before(){ activeModal=null; navDrawerOpen=true; viewMode='board'; } },
+  { title: 'Roster',
+    body: "The full staff list with contact info, certifications, languages, and status — filterable, and exportable to Excel for anything you need offline.",
+    selector: '#nav-roster',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Add / manage staff',
+    body: "Create new staff profiles or edit existing ones — home area, shift, certifications, language skills, and their rotation/experience history all live here.",
+    selector: '#nav-manage-staff',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Import from Excel',
+    body: "Bulk-load a new roster, or mark which staff already have experience in which areas from before this system was tracking rotations — both use a downloadable template.",
+    selector: '#nav-import-data',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Evaluations',
+    body: "Submit performance evaluations for your team, and (as a supervisor) review the ones waiting for approval before they count toward staff stats.",
+    selector: '#nav-pending-evals',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Ready for a new path',
+    body: "Once someone has real experience — worked or manually marked — in every rotating area, they show up here as a nudge to talk about what's next for them.",
+    selector: '#nav-ready-for-path',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Team dashboard',
+    body: "A supervisor's-eye view of the whole team's performance trends, at a glance.",
+    selector: '#nav-team-dashboard',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Reports',
+    body: "Build a printable, shareable report — staff performance, scheduled time off, attendance impact by area, and more — with live filters and a preview before you export.",
+    selector: '#nav-attendance-report',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'History & audit log',
+    body: "Every past rotation is here for reference, and the audit log tracks who changed what — useful when something needs a second look.",
+    selector: '#nav-history',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: "You're ready",
+    body: "That's the app. Reopen this tour anytime from the menu — look for \"Take the app tour\" — whenever you want a refresher or need to walk someone else through it.",
+    selector: null,
+    before(){ activeModal=null; navDrawerOpen=false; } },
+];
+
+function startTour(){
+  tourState = { stepIndex: 0 };
+  TOUR_STEPS[0].before();
+  render();
+}
+function endTour(){
+  tourState = null;
+  navDrawerOpen = false;
+  render();
+}
+// Moves to `idx` in whichever direction `dir` indicates, skipping any step
+// whose target element isn't actually on screen after its `before()` runs
+// (e.g. a nav item gated to a role the current account doesn't have).
+function tourGoTo(idx, dir){
+  if(idx < 0 || idx >= TOUR_STEPS.length){ endTour(); return; }
+  const step = TOUR_STEPS[idx];
+  step.before();
+  render();
+  if(step.selector && !document.querySelector(step.selector)){
+    tourGoTo(idx + dir, dir);
+    return;
+  }
+  tourState = { stepIndex: idx };
+  render();
+}
+function renderTourOverlay(){
+  const step = TOUR_STEPS[tourState.stepIndex];
+  const isFirst = tourState.stepIndex === 0;
+  const isLast = tourState.stepIndex === TOUR_STEPS.length - 1;
+  return `
+  <div class="tour-scrim ${step.selector?'':'tour-scrim-dim'}" id="tour-scrim"></div>
+  <div class="tour-spotlight" id="tour-spotlight" style="display:none;"></div>
+  <div class="tour-tooltip" id="tour-tooltip">
+    <div class="tour-tooltip-head">
+      <span class="tour-step-count">Step ${tourState.stepIndex+1} of ${TOUR_STEPS.length}</span>
+      <button class="tour-close" id="tour-skip" aria-label="End tour">✕</button>
+    </div>
+    <h3>${escapeHtml(step.title)}</h3>
+    <p>${escapeHtml(step.body)}</p>
+    <div class="tour-tooltip-foot">
+      <button class="tour-btn tour-btn-back" id="tour-back" ${isFirst?'disabled':''}>Back</button>
+      <div class="tour-dots">${TOUR_STEPS.map((s,i)=>`<span class="tour-dot ${i===tourState.stepIndex?'tour-dot-active':''}"></span>`).join('')}</div>
+      <button class="tour-btn tour-btn-next" id="tour-next">${isLast?'Done':'Next'}</button>
+    </div>
+  </div>`;
+}
+function positionTourOverlay(){
+  if(!tourState) return;
+  const step = TOUR_STEPS[tourState.stepIndex];
+  const spotlight = document.getElementById('tour-spotlight');
+  const tooltip = document.getElementById('tour-tooltip');
+  if(!spotlight || !tooltip) return;
+  const target = step.selector ? document.querySelector(step.selector) : null;
+  if(target){
+    target.scrollIntoView({block:'center', inline:'center'});
+    const r = target.getBoundingClientRect();
+    const pad = 6;
+    spotlight.style.display = 'block';
+    spotlight.style.top = (r.top-pad)+'px';
+    spotlight.style.left = (r.left-pad)+'px';
+    spotlight.style.width = (r.width+pad*2)+'px';
+    spotlight.style.height = (r.height+pad*2)+'px';
+    const tw = tooltip.offsetWidth || 320, th = tooltip.offsetHeight || 160;
+    const spaceBelow = window.innerHeight - r.bottom;
+    let top;
+    if(spaceBelow > th+20) top = r.bottom+16;
+    else if(r.top > th+20) top = r.top - th - 16;
+    else top = Math.max(16, (window.innerHeight-th)/2);
+    const left = Math.min(Math.max(16, r.left), window.innerWidth - tw - 16);
+    tooltip.style.top = top+'px';
+    tooltip.style.left = left+'px';
+    tooltip.style.transform = 'none';
+  } else {
+    spotlight.style.display = 'none';
+    tooltip.style.top = '50%';
+    tooltip.style.left = '50%';
+    tooltip.style.transform = 'translate(-50%,-50%)';
   }
 }
 
@@ -10501,6 +10670,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
       ${leadAreaNames.length ? `<div class="nav-account">Designated area${leadAreaNames.length>1?'s':''}: <b>${escapeHtml(leadAreaNames.join(', '))}</b></div>` : ''}
+      <button class="nav-item" id="nav-app-tour"><span class="nav-item-icon">🎓</span>Take the app tour</button>
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations${evalBadgeCounts.mine>0?`<span class="nav-item-badge">${evalBadgeCounts.mine}</span>`:''}</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
@@ -10513,6 +10683,7 @@ function renderNavDrawer(){
     <nav class="nav-drawer ${isOpen?'open':''}">
       <div class="nav-drawer-header"><span style="color:var(--md-sys-color-tertiary);margin-right:8px;">●</span>Rotation Control</div>
       ${authState.account ? `<div class="nav-account">Signed in as <b>${escapeHtml(authState.account.name)}</b></div>` : ''}
+      <button class="nav-item" id="nav-app-tour"><span class="nav-item-icon">🎓</span>Take the app tour</button>
       <div class="nav-drawer-section">Staff</div>
       <button class="nav-item" id="nav-roster"><span class="nav-item-icon">📋</span>Roster</button>
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
@@ -15337,6 +15508,7 @@ function attachHandlers(){
       const tag = (e.target.tagName||'').toLowerCase();
       const typing = tag==='input' || tag==='textarea' || tag==='select' || e.target.isContentEditable;
       if(e.key==='Escape'){
+        if(tourState){ e.preventDefault(); endTour(); return; }
         if(activeModal){ e.preventDefault(); closeModal(); return; }
         if(swapMode){ e.preventDefault(); swapMode=null; tempMoveScope=null; render(); return; }
         if(selectedStaffId){ e.preventDefault(); selectedStaffId=null; tempMoveScope=null; render(); return; }
@@ -15345,7 +15517,7 @@ function attachHandlers(){
         if(navDrawerOpen){ e.preventDefault(); navDrawerOpen=false; render(); return; }
         return;
       }
-      if(typing || activeModal) return;
+      if(typing || activeModal || tourState) return;
       if(e.key==='/'){
         e.preventDefault();
         searchExpanded = true;
@@ -17082,6 +17254,17 @@ function attachHandlers(){
   });
   on('nav-scrim',     ()=>{ navDrawerOpen=false; render(); });
   const closeNav = () => { navDrawerOpen=false; };
+  on('nav-app-tour', startTour);
+  if(tourState){
+    on('tour-skip', endTour);
+    on('tour-back', ()=>tourGoTo(tourState.stepIndex-1, -1));
+    on('tour-next', ()=>tourGoTo(tourState.stepIndex+1, 1));
+    on('tour-scrim', ()=>{}); // swallow clicks on the dimmed backdrop rather than letting them fall through to the board underneath
+    if(!window.__tourResizeListener){
+      window.__tourResizeListener = true;
+      window.addEventListener('resize', ()=>{ if(tourState) positionTourOverlay(); });
+    }
+  }
   on('nav-roster', ()=>{ viewMode='roster'; closeNav(); render(); });
   on('nav-manage-staff',        ()=>{ closeNav(); openModal({type:'staff-manager'}); });
   on('nav-import-data',         ()=>{ closeNav(); openModal({type:'import-picker'}); });
