@@ -11208,7 +11208,7 @@ let rosterFilter = '';
 let rosterSort = {col:'name', dir:1};
 // Faceted roster filters, layered on top of the free-text search above.
 // '' / false means "no filter" for that facet.
-let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', needsAttention:false };
+let rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', needsAttention:false };
 let rosterFiltersOpen = false; // whether the "Filters" dropdown panel is expanded
 
 // "Needs attention" = missing a shift or break/lunch time, or hasn't had an
@@ -11235,10 +11235,10 @@ function staffNeedsAttention(s){
 }
 
 function rosterFacetsActive(){
-  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow || rosterFacets.needsAttention;
+  return rosterFacets.ags || rosterFacets.lead || rosterFacets.department || rosterFacets.shift || rosterFacets.lunch || rosterFacets.flow || rosterFacets.position || rosterFacets.language || rosterFacets.needsAttention;
 }
 function rosterActiveFacetCount(){
-  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow, rosterFacets.needsAttention].filter(Boolean).length;
+  return [rosterFacets.ags, rosterFacets.lead, rosterFacets.department, rosterFacets.shift, rosterFacets.lunch, rosterFacets.flow, rosterFacets.position, rosterFacets.language, rosterFacets.needsAttention].filter(Boolean).length;
 }
 
 function rosterRows(){
@@ -11259,6 +11259,8 @@ function rosterRows(){
   if(rosterFacets.department) rows = rows.filter(s=>(s.department||'')===rosterFacets.department);
   if(rosterFacets.shift) rows = rows.filter(s=>(s.shiftHours||'')===rosterFacets.shift);
   if(rosterFacets.flow) rows = rows.filter(s=>(s.flowId||'')===rosterFacets.flow);
+  if(rosterFacets.position) rows = rows.filter(s=>(s.positionId||'')===rosterFacets.position);
+  if(rosterFacets.language) rows = rows.filter(s=>(s.languageCerts||[]).includes(rosterFacets.language));
   if(rosterFacets.needsAttention) rows = rows.filter(staffNeedsAttention);
   if(rosterFacets.lunch){
     const targetMins = parseClockToken(rosterFacets.lunch);
@@ -11329,6 +11331,20 @@ function renderRoster(){
             <select class="roster-filter-select" id="roster-filter-shift">
               <option value="">All shifts</option>
               ${state.shifts.map(sh=>`<option value="${escapeHtml(sh.label)}" ${rosterFacets.shift===sh.label?'selected':''}>${escapeHtml(sh.label)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Position</span>
+            <select class="roster-filter-select" id="roster-filter-position">
+              <option value="">All positions</option>
+              ${state.positions.map(p=>`<option value="${p.id}" ${rosterFacets.position===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rf-field">
+            <span class="rf-field-label">Language</span>
+            <select class="roster-filter-select" id="roster-filter-language">
+              <option value="">All languages</option>
+              ${state.languages.map(l=>`<option value="${l.id}" ${rosterFacets.language===l.id?'selected':''}>${escapeHtml(l.name)}</option>`).join('')}
             </select>
           </label>
           <label class="rf-field">
@@ -15956,8 +15972,8 @@ function attachHandlers(){
       if(rosterFacets.needsAttention) ensureRosterEvalCacheLoaded();
       render();
     });
-    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', needsAttention:false }; render(); });
-    ['department','shift','lunch','flow'].forEach(facet=>{
+    on('roster-filter-clear-all', ()=>{ rosterFacets = { ags:false, lead:false, department:'', shift:'', lunch:'', flow:'', position:'', language:'', needsAttention:false }; render(); });
+    ['department','shift','lunch','flow','position','language'].forEach(facet=>{
       const sel = document.getElementById(`roster-filter-${facet}`);
       if(sel) sel.addEventListener('change', ()=>{ rosterFacets[facet] = sel.value; render(); });
     });
