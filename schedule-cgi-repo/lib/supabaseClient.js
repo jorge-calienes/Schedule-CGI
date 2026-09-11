@@ -919,6 +919,68 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
     }));
 }
 
+// One period's own assignment snapshot, looked up by id — what a "Restore
+// to here" click on a rotate_period Audit Log entry (metadata.periodId)
+// needs, without pulling the whole history list just to find one period.
+export async function fetchRotationPeriodSnapshot({ periodId }) {
+  const { data: period, error: periodErr } = await supabase
+    .from('rotation_periods')
+    .select('*')
+    .eq('id', periodId)
+    .single();
+  if (periodErr) throw periodErr;
+
+  const { data: rows, error: rowsErr } = await supabase
+    .from('rotation_period_assignments')
+    .select('staff_id, area_id')
+    .eq('period_id', periodId);
+  if (rowsErr) throw rowsErr;
+
+  const assignments = {};
+  (rows || []).forEach((r) => { assignments[r.staff_id] = r.area_id; });
+
+  return {
+    id: period.id,
+    periodLabel: period.period_label,
+    startDate: period.start_date,
+    weeks: period.weeks,
+    assignments,
+  };
+}
+
+// Point-in-time board restore, reachable from a "Restore to here" on a
+// rotate_period Audit Log entry. `changedStaff` is computed client-side by
+// diffing the target snapshot against the board as it stands right now —
+// so this only ever moves staff whose position actually differs from the
+// target; anyone placed, edited, or otherwise touched since the mistake
+// stays exactly as they are. Also rolls the active rotation window back to
+// what was in effect at that point, per the same reasoning.
+export async function restoreRotationPeriod({ periodId, changedStaff, periodLabel, startDate, weeks, actingAccountId }) {
+  for (const { staffId, areaId } of changedStaff || []) {
+    const { error } = await supabase
+      .from('assignments')
+      .upsert({ staff_id: staffId, area_id: areaId || null, updated_by: actingAccountId, updated_at: new Date().toISOString() });
+    if (error) throw error;
+  }
+
+  const { error: activeErr } = await supabase.from('active_rotation').upsert({
+    id: true,
+    period_label: periodLabel,
+    start_date: startDate,
+    weeks,
+    updated_by: actingAccountId,
+    updated_at: new Date().toISOString(),
+  });
+  if (activeErr) throw activeErr;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'restore_rotation',
+    description: `restored the board to period "${periodLabel}" (${(changedStaff || []).length} staff moved back)`,
+    metadata: { periodId, weeks, movedCount: (changedStaff || []).length },
+  });
+}
+
 // `isManager` decides the row's landing status — a manager's own
 // evaluation is final immediately ('approved'), a team_lead's needs a
 // supervisor to accept it ('pending'). This mirrors the eval_insert/
@@ -1091,6 +1153,8 @@ window.RC = {
   createRotationPeriod,
   deleteRotationPeriod,
   fetchRotationHistory,
+  fetchRotationPeriodSnapshot,
+  restoreRotationPeriod,
   submitEvaluation,
   reviewEvaluation,
   fetchPendingEvaluations,
