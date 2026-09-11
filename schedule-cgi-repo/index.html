@@ -9706,6 +9706,18 @@ function neverWorkedGapAreasFor(staffId){
     .map(r=>r.area);
 }
 
+// The flip side of staffReadyForNewPath() below: active, non-team-lead staff
+// who are MISSING experience in one or more non-fixed areas, for supervisors
+// to plan ahead of any specific rotation (not just the picks offered live in
+// the Rotate Now preview). Sorted by most gaps first, then name.
+function staffWithExperienceGaps(){
+  return state.staff
+    .filter(s=>s.active!==false)
+    .map(s=>({ staff:s, gapAreas: neverWorkedGapAreasFor(s.id) }))
+    .filter(g=>g.gapAreas.length>0)
+    .sort((a,b)=> b.gapAreas.length-a.gapAreas.length || a.staff.name.localeCompare(b.staff.name));
+}
+
 // Active staff who have experience (real rotation history or a marked
 // prior-experience flag) in every rotating area — fixed areas don't count,
 // since those are permanent positions rather than something to rotate
@@ -10798,6 +10810,11 @@ function renderNavDrawer(){
         if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
         const readyCount = staffReadyForNewPath().length;
         return `<button class="nav-item" id="nav-ready-for-path"><span class="nav-item-icon">🏆</span>Ready for a new path${readyCount>0?`<span class="nav-item-badge">${readyCount}</span>`:''}</button>`;
+      })()}
+      ${(()=>{
+        if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
+        const gapsCount = staffWithExperienceGaps().length;
+        return `<button class="nav-item" id="nav-experience-gaps"><span class="nav-item-icon">🧭</span>Experience gaps${gapsCount>0?`<span class="nav-item-badge">${gapsCount}</span>`:''}</button>`;
       })()}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
@@ -11966,6 +11983,7 @@ function renderModal(){
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   else if(m.type==='prior-exp-import') inner = renderPriorExpImportModal(m);
   else if(m.type==='ready-for-path') inner = renderReadyForPathModal(m);
+  else if(m.type==='experience-gaps') inner = renderExperienceGapsModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
@@ -12169,6 +12187,39 @@ function renderReadyForPathModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-ready-path" style="margin-left:auto;">Close</button>
+    </div>
+  </div>`;
+}
+
+// --- Experience gaps: the flip side of "ready for a new path" — active
+// staff missing experience in one or more non-fixed areas, for planning
+// ahead of any specific rotation. Tapping a row opens their full Stats tab,
+// same as the roster/board chips and the "ready for a new path" list. ---
+function renderExperienceGapsModal(m){
+  const gaps = staffWithExperienceGaps();
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h2>🧭 Experience gaps</h2>
+        <p>${gaps.length} staff member${gaps.length===1?'':'s'} ${gaps.length===1?'has':'have'} never worked one or more areas.</p>
+      </div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area.</div>` : `
+      <div class="option-list">
+        ${gaps.map(g=>`
+          <div class="option-card" data-show-stats="${g.staff.id}">
+            <div class="oc-left">
+              <span class="oc-name">${g.staff.isTeamLead?'★ ':''}${escapeHtml(g.staff.name)}</span>
+              <span class="oc-sub">Never worked: ${g.gapAreas.map(a=>escapeHtml(a.name)).join(', ')}</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-experience-gaps" style="margin-left:auto;">Close</button>
     </div>
   </div>`;
 }
@@ -17614,6 +17665,7 @@ function attachHandlers(){
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
+  on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
@@ -17767,6 +17819,11 @@ function attachHandlers(){
   // --- ready for a new path (100% area coverage list) ---
   if(activeModal.type==='ready-for-path'){
     on('modal-close-ready-path', closeModal);
+  }
+
+  // --- experience gaps (never-worked-area list) ---
+  if(activeModal.type==='experience-gaps'){
+    on('modal-close-experience-gaps', closeModal);
   }
 
   // --- import picker: choose which Excel import to run ---
