@@ -9691,6 +9691,21 @@ function staffExperienceBreakdown(staffId){
   return { rows, totalCompletedRotations, currentAreaId, bestFit };
 }
 
+// Non-fixed areas staffId has never worked — no real rotation history and no
+// manually-marked prior-experience flag — excluding wherever they're placed
+// right now. Surfaced at Rotate Now time as optional "new area" alternatives
+// so supervisors can round out someone's experience instead of always
+// repeating the same spots. Team leads are excluded — they don't rotate.
+function neverWorkedGapAreasFor(staffId){
+  const staff = getStaffById(staffId);
+  if(!staff || staff.isTeamLead) return [];
+  const currentAreaId = state.assignments[staffId] || null;
+  const { rows } = staffExperienceBreakdown(staffId);
+  return rows
+    .filter(r=>!r.area.fixed && !r.hasExperience && r.areaId!==currentAreaId)
+    .map(r=>r.area);
+}
+
 // Active staff who have experience (real rotation history or a marked
 // prior-experience flag) in every rotating area — fixed areas don't count,
 // since those are permanent positions rather than something to rotate
@@ -15281,6 +15296,14 @@ function renderRotatePreviewModal(m){
   const advances = suggestions.filter(s=>s.type==='advance');
   const stays    = suggestions.filter(s=>s.type==='stay');
   const completes= suggestions.filter(s=>s.type==='complete');
+  // Optional "try a new area" alternatives — never applied automatically,
+  // only when a supervisor explicitly picks one via gapPicks (staffId ->
+  // areaId), applied alongside the flow suggestions on confirm.
+  const gapPicks = m.gapPicks || {};
+  const gapCandidates = state.staff
+    .filter(s=>s.active!==false)
+    .map(s=>({ staff:s, currentAreaId: state.assignments[s.id]||null, options: neverWorkedGapAreasFor(s.id) }))
+    .filter(g=>g.currentAreaId && g.options.length>0);
   const repeatFlags = state.staff.filter(s=>{
     const a = state.assignments[s.id];
     return a && isRepeatArea(s.id, a);
@@ -15380,7 +15403,26 @@ function renderRotatePreviewModal(m){
         </div>`).join('')}
       </div>` : ''}
 
-      ${suggestions.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
+      ${gapCandidates.length>0?`
+      <div class="rotate-section-head" style="color:#3E8E8B;">🆕 ${gapCandidates.length} could try a new area</div>
+      <div class="rotate-list">
+        ${gapCandidates.map(g=>{
+          const picked = gapPicks[g.staff.id];
+          return `
+          <div class="rotate-row">
+            <div class="rotate-row-main">
+              <span class="rotate-name">${escapeHtml(g.staff.name)}</span>
+              <span class="small-muted">currently ${escapeHtml(getAreaById(g.currentAreaId)?.name||'—')}</span>
+            </div>
+            <div class="small-muted" style="margin:4px 0 6px;">Never worked — tap to try next rotation:</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${g.options.slice(0,4).map(a=>`<button class="btn btn-sm ${picked===a.id?'btn-primary':'btn-light'}" data-gap-staff="${g.staff.id}" data-gap-area="${a.id}">${picked===a.id?'✓ ':''}${escapeHtml(a.name)}</button>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${suggestions.length===0 && gapCandidates.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
       ${repeatFlags.length>0?`<div class="alert-box" style="margin-top:12px;"><b>${repeatFlags.length} repeat placement${repeatFlags.length>1?'s':''}</b> carrying forward: ${repeatFlags.map(s=>escapeHtml(s.name)).join(', ')}.</div>`:''}
     </div>
     <div class="modal-foot">
@@ -19121,6 +19163,16 @@ function attachHandlers(){
       openModal({type:'feedback-modal', suggestion:sug, step:'teamlead', tlRating:0, supRating:0});
     }));
 
+    // "try a new area" pills — optional, per-staff, toggled on/off; only
+    // applied on confirm if the supervisor actually picked one
+    document.querySelectorAll('[data-gap-area]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const staffId = btn.dataset.gapStaff, areaId = btn.dataset.gapArea;
+      const gapPicks = Object.assign({}, activeModal.gapPicks||{});
+      if(gapPicks[staffId]===areaId) delete gapPicks[staffId];
+      else gapPicks[staffId] = areaId;
+      openModal({...activeModal, gapPicks});
+    }));
+
     // live-update the schedule preview (computed end date) as weeks/start-date change
     const periodInputEl = document.getElementById('new-period-input');
     const weeksInputEl  = document.getElementById('rotation-weeks-input');
@@ -19207,6 +19259,23 @@ function attachHandlers(){
           if(s){ s.flowEnrolled = false; compCount++; completedFlowStaffIds.push(s.id); }
         }
       });
+      // "try a new area" picks the supervisor explicitly selected in the
+      // preview — optional, so only staff with a pick get moved
+      let gapCount=0;
+      Object.entries(activeModal.gapPicks||{}).forEach(([staffId, areaId])=>{
+        const staff = getStaffById(staffId);
+        const area = getAreaById(areaId);
+        if(!staff || !area) return;
+        const already = staffInArea(areaId, staffId).length;
+        if(already >= area.capacity) return;
+        const fromArea = getAreaById(state.assignments[staffId]);
+        state.assignments[staffId] = areaId;
+        syncBoardWrite(()=>window.RC.moveStaff({
+          staffId, areaId, actingAccountId: authState.account.id,
+          staffName: staff.name, fromAreaName: fromArea?.name, toAreaName: area.name,
+        }), 'move');
+        gapCount++;
+      });
       // clear pending feedback
       // save supervisor notes for this period
       if(notesVal) state.rotationNotes[state.currentPeriod] = notesVal;
@@ -19244,7 +19313,7 @@ function attachHandlers(){
       saveState();
       closeModal();
       const allSynced = sync.ok && rotationSync.ok;
-      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`;
+      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}`;
       showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
@@ -19995,6 +20064,11 @@ function snapshotStaffForm(){
 
 // ── Streak: how many consecutive rotations at current area ──
 function getRepeatStreak(staffId){
+  // Team leads stay in their own home area by design — that's not a
+  // "streak" worth flagging the way it is for rotating staff (isRepeatArea()
+  // already excludes them from the repeat flag for the same reason).
+  const staff = getStaffById(staffId);
+  if(staff?.isTeamLead) return 0;
   const currentArea = state.assignments[staffId];
   if(!currentArea) return 0;
   const h = historyBeforeActivePeriod();
