@@ -9491,9 +9491,22 @@ function escapeHtml(s){
 function getStaffById(id){ return state.staff.find(s=>s.id===id); }
 function getAreaById(id){ return state.areas.find(a=>a.id===id); }
 
+// state.history only ever grows forward under normal use, so its last
+// entry is normally "the rotation right before the active one" — but
+// "Restore to here" can roll the active period back to an earlier point
+// without touching history, leaving later entries sitting at the end of
+// the array. Filtering to entries that actually precede the active
+// period's start date keeps "last rotation" comparisons (repeat flags,
+// streaks, "was in X") honest after a restore, and is a no-op otherwise.
+function historyBeforeActivePeriod(){
+  if(!state.rotationStartDate) return state.history;
+  return state.history.filter(h=>h.startDate < state.rotationStartDate);
+}
+
 function lastCompletedRotation(){
-  if(state.history.length===0) return null;
-  return state.history[state.history.length-1];
+  const h = historyBeforeActivePeriod();
+  if(h.length===0) return null;
+  return h[h.length-1];
 }
 
 // area a staff member was in during the last completed rotation
@@ -11152,7 +11165,7 @@ function renderChip(s){
     })()}
     ${(()=>{
       if(area&&area.fixed) return ''; // fixed staff don't rotate, no "was in" needed
-      const lastH=(state.history||[]).slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
+      const lastH=historyBeforeActivePeriod().slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
       const la=lastH?getAreaById(lastH.assignments[s.id]):null;
       return la?'<div class="chip-last-area">was '+escapeHtml(la.name)+'</div>':'';
     })()}
@@ -19984,9 +19997,10 @@ function snapshotStaffForm(){
 function getRepeatStreak(staffId){
   const currentArea = state.assignments[staffId];
   if(!currentArea) return 0;
+  const h = historyBeforeActivePeriod();
   let streak = 0;
-  for(let i=state.history.length-1;i>=0;i--){
-    if(state.history[i].assignments[staffId]===currentArea) streak++;
+  for(let i=h.length-1;i>=0;i--){
+    if(h[i].assignments[staffId]===currentArea) streak++;
     else break;
   }
   return streak;
