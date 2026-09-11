@@ -865,6 +865,23 @@ export async function createRotationPeriod({ periodLabel, startDate, endDate, we
   return period;
 }
 
+// Reverts a Rotate Now that was just clicked by mistake — removes the
+// rotation_period row (and its per-staff snapshot rows) createRotationPeriod
+// just inserted. Only ever called within the same session, moments after
+// creation, via the "Undo" banner — never for editing older history.
+export async function deleteRotationPeriod({ periodId, actingAccountId }) {
+  await supabase.from('rotation_period_assignments').delete().eq('period_id', periodId);
+  const { error } = await supabase.from('rotation_periods').delete().eq('id', periodId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'undo_rotate_period',
+    description: 'undid a rotation started moments earlier',
+    metadata: { periodId },
+  });
+}
+
 // Reads rotation_periods + their assignment snapshots back into the shape
 // state.history already uses locally: [{period, assignments, startDate,
 // endDate, weeks}], oldest..newest.
@@ -1072,6 +1089,7 @@ window.RC = {
   updateArea,
   deleteArea,
   createRotationPeriod,
+  deleteRotationPeriod,
   fetchRotationHistory,
   submitEvaluation,
   reviewEvaluation,
