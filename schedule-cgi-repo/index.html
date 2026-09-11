@@ -1508,6 +1508,11 @@
   .callout-banner.partial-coverage .callout-banner-btn{background:#D97706;}
   .callout-banner.all-covered .callout-banner-btn,.all-covered-btn{background:#34C759;}
   .callout-banner.all-covered .callout-banner-btn:hover{background:#2DB34A;}
+  .callout-banner.rotate-undo{background:#EEF3FC;border-bottom-color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-title{color:#1D4A8F;}
+  .callout-banner.rotate-undo .callout-banner-names{color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn{background:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn:hover{background:#254A82;}
   @media(max-width:420px){
     .callout-banner{padding:8px 12px;gap:8px;}
     .callout-banner-icon{font-size:16px;}
@@ -2611,6 +2616,11 @@
   .callout-banner.partial-coverage .callout-banner-btn{background:#D97706;}
   .callout-banner.all-covered .callout-banner-btn,.all-covered-btn{background:#34C759;}
   .callout-banner.all-covered .callout-banner-btn:hover{background:#2DB34A;}
+  .callout-banner.rotate-undo{background:#EEF3FC;border-bottom-color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-title{color:#1D4A8F;}
+  .callout-banner.rotate-undo .callout-banner-names{color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn{background:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn:hover{background:#254A82;}
   @media(max-width:420px){
     .callout-banner{padding:8px 12px;gap:8px;}
     .callout-banner-icon{font-size:16px;}
@@ -3977,6 +3987,11 @@
   .callout-banner.partial-coverage .callout-banner-btn{background:#D97706;}
   .callout-banner.all-covered .callout-banner-btn,.all-covered-btn{background:#34C759;}
   .callout-banner.all-covered .callout-banner-btn:hover{background:#2DB34A;}
+  .callout-banner.rotate-undo{background:#EEF3FC;border-bottom-color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-title{color:#1D4A8F;}
+  .callout-banner.rotate-undo .callout-banner-names{color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn{background:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn:hover{background:#254A82;}
   @media(max-width:420px){
     .callout-banner{padding:8px 12px;gap:8px;}
     .callout-banner-icon{font-size:16px;}
@@ -5113,6 +5128,11 @@
   .callout-banner.partial-coverage .callout-banner-btn{background:#D97706;}
   .callout-banner.all-covered .callout-banner-btn,.all-covered-btn{background:#34C759;}
   .callout-banner.all-covered .callout-banner-btn:hover{background:#2DB34A;}
+  .callout-banner.rotate-undo{background:#EEF3FC;border-bottom-color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-title{color:#1D4A8F;}
+  .callout-banner.rotate-undo .callout-banner-names{color:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn{background:#2F5FA8;}
+  .callout-banner.rotate-undo .callout-banner-btn:hover{background:#254A82;}
   @media(max-width:420px){
     .callout-banner{padding:8px 12px;gap:8px;}
     .callout-banner-icon{font-size:16px;}
@@ -10088,6 +10108,7 @@ let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
 let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
 let tourState = null; // {stepIndex} while the app tour is active, else null
+let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
 
 // ── Theme ────────────────────────────────────────────────────────────────
 let themeMode = 'light'; // 'light' | 'dark' — persisted in localStorage, applied to <html data-theme>
@@ -10170,6 +10191,7 @@ function render(){
     ${renderTopbar()}
     ${isTeamLeadRole() ? '' : renderTabBar()}
     ${renderCalloutBanner()}
+    ${renderUndoRotateBanner()}
     ${swapMode ? `<div class="swap-banner">
       <div class="swap-banner-top">
         <div class="swap-banner-left">
@@ -10885,6 +10907,89 @@ function renderCalloutBanner(){
     </div>
     ${isTeamLeadRole() ? '' : '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>'}
   </div>`;
+}
+
+function shallowObjEqual(a, b){
+  const ak = Object.keys(a), bk = Object.keys(b);
+  if(ak.length !== bk.length) return false;
+  return ak.every(k => a[k] === b[k]);
+}
+
+const UNDO_ROTATE_WINDOW_MS = 120000; // 2 minutes — long enough to spot a mistake, short enough that undoing can't clobber unrelated edits made well after
+function renderUndoRotateBanner(){
+  if(!lastRotationSnapshot || isTeamLeadRole()) return '';
+  const elapsed = Date.now() - lastRotationSnapshot.at;
+  // Someone moved/swapped/called out staff since the rotation — the board
+  // has already diverged from what this snapshot knows how to undo, so
+  // undoing now would silently clobber those newer edits. Drop it rather
+  // than offer a misleading button.
+  if(elapsed > UNDO_ROTATE_WINDOW_MS || !shallowObjEqual(state.assignments, lastRotationSnapshot.afterAssignments)){
+    lastRotationSnapshot = null;
+    return '';
+  }
+  if(!window._undoRotateTimer){
+    window._undoRotateTimer = setTimeout(()=>{ window._undoRotateTimer=null; renderUnlessReportPreviewOpen(); }, UNDO_ROTATE_WINDOW_MS - elapsed);
+  }
+  const secsLeft = Math.max(1, Math.ceil((UNDO_ROTATE_WINDOW_MS - elapsed)/1000));
+  return `<div class="callout-banner rotate-undo">
+    <div class="callout-banner-left">
+      <span class="callout-banner-icon">🔄</span>
+      <div class="callout-banner-text">
+        <span class="callout-banner-title">Rotated to period ${escapeHtml(state.currentPeriod)}</span>
+        <span class="callout-banner-names">Undo available for ${secsLeft}s</span>
+      </div>
+    </div>
+    <button class="callout-banner-btn" id="btn-undo-rotate">↩ Undo</button>
+  </div>`;
+}
+
+// Reverts the Rotate Now that just ran — puts the board, the active period,
+// and coverage/temp-move/callout state back exactly as they were, then
+// mirrors that to Supabase (deletes the rotation_period row it created,
+// restores the previous active-rotation window, and moves back anyone whose
+// area actually changed). Only reachable while renderUndoRotateBanner()'s
+// own staleness check above still holds.
+async function undoLastRotation(){
+  const snap = lastRotationSnapshot;
+  if(!snap) return;
+  lastRotationSnapshot = null;
+  if(window._undoRotateTimer){ clearTimeout(window._undoRotateTimer); window._undoRotateTimer=null; }
+
+  state.assignments = Object.assign({}, snap.prevAssignments);
+  state.callouts = snap.prevCallouts;
+  state.coverage = snap.prevCoverage;
+  state.tempMoves = snap.prevTempMoves;
+  state.pendingFeedback = snap.prevPendingFeedback;
+  state.currentPeriod = snap.prevPeriod;
+  state.rotationStartDate = snap.prevStart;
+  state.rotationWeeks = snap.prevWeeks;
+  snap.completedFlowStaffIds.forEach(id=>{ const s=getStaffById(id); if(s) s.flowEnrolled = true; });
+  // drop the history entry Rotate Now just pushed for the period it closed out
+  state.history = state.history.filter(h => !(h.period===snap.prevPeriod && h.startDate===snap.prevStart));
+  saveState();
+  render();
+  showToast('Rotation undone — syncing…', 'teal');
+
+  const [periodResult, activeResult] = await Promise.all([
+    snap.periodId
+      ? syncCrudWrite(()=>window.RC.deleteRotationPeriod({periodId: snap.periodId, actingAccountId: authState.account.id}))
+      : Promise.resolve({ok:true}),
+    syncCrudWrite(()=>window.RC.setActiveRotation({
+      periodLabel: snap.prevPeriod, startDate: snap.prevStart, weeks: snap.prevWeeks, actingAccountId: authState.account.id,
+    })),
+  ]);
+  Object.keys(snap.afterAssignments).forEach(staffId=>{
+    if(snap.afterAssignments[staffId] === snap.prevAssignments[staffId]) return; // unchanged — nothing to revert server-side
+    const s = getStaffById(staffId);
+    if(!s) return;
+    const toAreaId = snap.prevAssignments[staffId] || null;
+    syncBoardWrite(()=>window.RC.moveStaff({
+      staffId, areaId: toAreaId, actingAccountId: authState.account.id, staffName: s.name,
+      fromAreaName: getAreaById(snap.afterAssignments[staffId])?.name, toAreaName: getAreaById(toAreaId)?.name,
+    }), 'undo rotation');
+  });
+  const allSynced = periodResult.ok && activeResult.ok;
+  showToast(allSynced ? 'Rotation undone ✓' : "Undone here, but the server didn't fully sync — refresh to check", allSynced?'teal':'rust');
 }
 
 function renderSidebar(){
@@ -16160,6 +16265,7 @@ function attachHandlers(){
   });
 
   on('btn-rotate', ()=>openModal({type:'rotate-preview'}));
+  on('btn-undo-rotate', undoLastRotation);
   // ── search — CSS-only filter, no DOM rebuild on each keystroke ──
   const searchEl = document.getElementById('board-search-input');
   if(searchEl){
@@ -18962,6 +19068,15 @@ function attachHandlers(){
       const closingLabel = state.currentPeriod;
       const closingWeeks = Number(state.rotationWeeks)||2;
       const closingSnapshot = Object.assign({}, state.assignments);
+      // Also snapshot everything else Rotate Now is about to overwrite or
+      // clear below (coverage/temp-move maps, callouts, pending feedback) —
+      // captured now, before endAllCoverage()/endAllTempMoves() run, so a
+      // same-session "Undo" can put the board back exactly as it was.
+      const closingCallouts = Object.assign({}, state.callouts);
+      const closingCoverage = JSON.parse(JSON.stringify(state.coverage||{}));
+      const closingTempMoves = JSON.parse(JSON.stringify(state.tempMoves||{}));
+      const closingPendingFeedback = (state.pendingFeedback||[]).slice();
+      const completedFlowStaffIds = [];
 
       const btn = document.getElementById('confirm-rotate-preview-btn');
       if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
@@ -19009,7 +19124,7 @@ function attachHandlers(){
         }
         if(sug.type==='complete'){
           const s = getStaffById(sug.staff.id);
-          if(s){ s.flowEnrolled = false; compCount++; }
+          if(s){ s.flowEnrolled = false; compCount++; completedFlowStaffIds.push(s.id); }
         }
       });
       // clear pending feedback
@@ -19030,6 +19145,22 @@ function attachHandlers(){
       const rotationSync = await syncCrudWrite(()=>window.RC.setActiveRotation({
         periodLabel: newLabel, startDate, weeks, actingAccountId: authState.account.id,
       }));
+      // Everything a same-session "Undo" needs to put the board back exactly
+      // as it was — see renderUndoRotateBanner()/undoLastRotation() below.
+      lastRotationSnapshot = {
+        periodId: sync.ok ? sync.result?.id : null,
+        prevAssignments: closingSnapshot,
+        prevCallouts: closingCallouts,
+        prevCoverage: closingCoverage,
+        prevTempMoves: closingTempMoves,
+        prevPendingFeedback: closingPendingFeedback,
+        prevPeriod: closingLabel,
+        prevStart: prevStart,
+        prevWeeks: closingWeeks,
+        completedFlowStaffIds: completedFlowStaffIds,
+        afterAssignments: Object.assign({}, state.assignments),
+        at: Date.now(),
+      };
       saveState();
       closeModal();
       const allSynced = sync.ok && rotationSync.ok;
