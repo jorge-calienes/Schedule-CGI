@@ -9491,9 +9491,22 @@ function escapeHtml(s){
 function getStaffById(id){ return state.staff.find(s=>s.id===id); }
 function getAreaById(id){ return state.areas.find(a=>a.id===id); }
 
+// state.history only ever grows forward under normal use, so its last
+// entry is normally "the rotation right before the active one" — but
+// "Restore to here" can roll the active period back to an earlier point
+// without touching history, leaving later entries sitting at the end of
+// the array. Filtering to entries that actually precede the active
+// period's start date keeps "last rotation" comparisons (repeat flags,
+// streaks, "was in X") honest after a restore, and is a no-op otherwise.
+function historyBeforeActivePeriod(){
+  if(!state.rotationStartDate) return state.history;
+  return state.history.filter(h=>h.startDate < state.rotationStartDate);
+}
+
 function lastCompletedRotation(){
-  if(state.history.length===0) return null;
-  return state.history[state.history.length-1];
+  const h = historyBeforeActivePeriod();
+  if(h.length===0) return null;
+  return h[h.length-1];
 }
 
 // area a staff member was in during the last completed rotation
@@ -11152,7 +11165,7 @@ function renderChip(s){
     })()}
     ${(()=>{
       if(area&&area.fixed) return ''; // fixed staff don't rotate, no "was in" needed
-      const lastH=(state.history||[]).slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
+      const lastH=historyBeforeActivePeriod().slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
       const la=lastH?getAreaById(lastH.assignments[s.id]):null;
       return la?'<div class="chip-last-area">was '+escapeHtml(la.name)+'</div>':'';
     })()}
@@ -13951,27 +13964,29 @@ function renderAuditLogModal(m){
               <span class="oc-name">${AUDIT_ACTION_ICONS[e.action]||'•'} ${escapeHtml(e.description||e.action)}</span>
               <span class="oc-sub">${escapeHtml(e.accounts?.name||'Unknown')} · ${e.created_at?new Date(e.created_at).toLocaleString():''}</span>
             </div>
-            ${e.action==='rotate_period' && e.metadata?.periodId ? `<button class="btn btn-light btn-sm" data-restore-to-period="${e.metadata.periodId}" title="Move staff back to where they were right before this rotation, and set the active period back to what it was then">↩ Restore to here</button>` : ''}
+            ${e.id && e.created_at && e.action!=='restore_rotation' && e.action!=='undo_rotate_period' ? `<button class="btn btn-light btn-sm" data-restore-to-audit="${e.id}" title="Move staff back to where they were right before this action, and set the active period back to what it was then">↩ Restore to here</button>` : ''}
           </div>`).join('')}
       </div>`:''}
     </div>
   </div>`;
 }
 
-// "Restore to here" from a rotate_period Audit Log entry — confirms exactly
-// which staff will move (diffed against the board as it stands right now,
-// never a blind overwrite) and that the active period will roll back too,
-// before touching anything. See restoreRotationPeriod() in supabaseClient.js.
+// "Restore to here" from any Audit Log entry — reconstructs the board as it
+// stood right before that entry's action (baseline rotation snapshot plus a
+// replay of every move/swap in between, see fetchBoardStateAt() in
+// supabaseClient.js), then confirms exactly which staff will move (diffed
+// against the board as it stands right now, never a blind overwrite) and
+// that the active period will roll back too, before touching anything.
 function renderRestorePeriodConfirmModal(m){
   const friendlyD = d=>{ try{const[y,mo,dd]=d.split('-');const dt=new Date(y,mo-1,dd);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;} };
   return `
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
-      <div><h2>↩ Restore to here</h2>${m.snapshot?`<p>Period "${escapeHtml(m.snapshot.periodLabel)}" — started ${friendlyD(m.snapshot.startDate)}</p>`:''}</div>
+      <div><h2>↩ Restore to here</h2>${m.anchorEntry?`<p>Right before: ${escapeHtml(m.anchorEntry.description||m.anchorEntry.action)} · ${m.anchorEntry.created_at?new Date(m.anchorEntry.created_at).toLocaleString():''}</p>`:''}</div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
-      ${m.loading?`<div class="small-muted">Loading that period's board…</div>`:''}
+      ${m.loading?`<div class="small-muted">Reconstructing the board as it stood then…</div>`:''}
       ${!m.loading && m.error?`<div class="alert-box rust">${escapeHtml(m.error)}</div>`:''}
       ${!m.loading && !m.error ? `
         <div class="small-muted" style="margin-bottom:12px;line-height:1.5;">
@@ -19577,15 +19592,16 @@ function attachHandlers(){
     const dateFilterInput = document.getElementById('audit-date-filter');
     if(dateFilterInput) dateFilterInput.addEventListener('change', ()=>{ openModal({...m, dateFilter:dateFilterInput.value}); });
     on('audit-filters-clear', ()=>{ openModal({...m, actionFilter:'', dateFilter:''}); });
-    document.querySelectorAll('[data-restore-to-period]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      const periodId = btn.dataset.restoreToPeriod;
-      openModal({type:'restore-period-confirm', loading:true, periodId, _returnModal:m});
+    document.querySelectorAll('[data-restore-to-audit]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const auditId = btn.dataset.restoreToAudit;
+      const anchorEntry = (m.entries||[]).find(e=>String(e.id)===auditId);
+      openModal({type:'restore-period-confirm', loading:true, anchorEntry, _returnModal:m});
       try{
-        const snapshot = await window.RC.fetchRotationPeriodSnapshot({periodId});
+        const snapshot = await window.RC.fetchBoardStateAt({beforeTimestamp: anchorEntry.created_at});
         const changedStaff = computeRestoreDiff(snapshot);
-        openModal({type:'restore-period-confirm', loading:false, periodId, snapshot, changedStaff, _returnModal:m});
+        openModal({type:'restore-period-confirm', loading:false, anchorEntry, snapshot, changedStaff, _returnModal:m});
       }catch(e){
-        openModal({type:'restore-period-confirm', loading:false, periodId, error:(e&&e.message)||'Could not load that period.', _returnModal:m});
+        openModal({type:'restore-period-confirm', loading:false, anchorEntry, error:(e&&e.message)||'Could not reconstruct the board at that point.', _returnModal:m});
       }
     }));
   }
@@ -19602,14 +19618,15 @@ function attachHandlers(){
       state.rotationStartDate = m.snapshot.startDate;
       state.rotationWeeks = m.snapshot.weeks;
       saveState();
-      const sync = await syncCrudWrite(()=>window.RC.restoreRotationPeriod({
-        periodId: m.periodId,
+      const restoredFromDescription = m.anchorEntry ? `right before "${m.anchorEntry.description||m.anchorEntry.action}" (${m.anchorEntry.created_at?new Date(m.anchorEntry.created_at).toLocaleString():''})` : undefined;
+      const sync = await syncCrudWrite(()=>window.RC.restoreBoardState({
         changedStaff: changedStaff.map(c=>({staffId:c.staffId, areaId:c.areaId})),
         periodLabel: m.snapshot.periodLabel, startDate: m.snapshot.startDate, weeks: m.snapshot.weeks,
+        restoredFromDescription,
         actingAccountId: authState.account.id,
       }));
       closeModal();
-      showToast(sync.ok ? `Restored to period "${m.snapshot.periodLabel}" ✓` : `Restored here, but the server didn't fully sync: ${(sync.error&&sync.error.message)||'try again'}`, sync.ok?'teal':'rust');
+      showToast(sync.ok ? `Restored ✓` : `Restored here, but the server didn't fully sync: ${(sync.error&&sync.error.message)||'try again'}`, sync.ok?'teal':'rust');
     });
   }
 
@@ -19980,9 +19997,10 @@ function snapshotStaffForm(){
 function getRepeatStreak(staffId){
   const currentArea = state.assignments[staffId];
   if(!currentArea) return 0;
+  const h = historyBeforeActivePeriod();
   let streak = 0;
-  for(let i=state.history.length-1;i>=0;i--){
-    if(state.history[i].assignments[staffId]===currentArea) streak++;
+  for(let i=h.length-1;i>=0;i--){
+    if(h[i].assignments[staffId]===currentArea) streak++;
     else break;
   }
   return streak;

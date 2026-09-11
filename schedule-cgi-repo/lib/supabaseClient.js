@@ -919,43 +919,74 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
     }));
 }
 
-// One period's own assignment snapshot, looked up by id — what a "Restore
-// to here" click on a rotate_period Audit Log entry (metadata.periodId)
-// needs, without pulling the whole history list just to find one period.
-export async function fetchRotationPeriodSnapshot({ periodId }) {
-  const { data: period, error: periodErr } = await supabase
+// Reconstructs the board exactly as it was right before ANY given moment —
+// what a "Restore to here" click on an Audit Log entry needs, whatever kind
+// of entry it is. There's no snapshot taken at every single action, only at
+// each rotation boundary, so this finds the most recent rotation_periods
+// snapshot at or before that moment (the baseline) and replays every
+// assignment-changing event between the baseline and the target moment on
+// top of it — move (metadata.areaId, or .coverAreaId/.returnToAreaId for a
+// coverage/temp-move start or return, all logged as a 'move') and swap
+// (metadata.idA/idB/areaA/areaB). Anything before the very first rotation
+// ever recorded has no baseline to replay from and can't be reconstructed.
+export async function fetchBoardStateAt({ beforeTimestamp }) {
+  const { data: baseline, error: baseErr } = await supabase
     .from('rotation_periods')
     .select('*')
-    .eq('id', periodId)
-    .single();
-  if (periodErr) throw periodErr;
+    .lt('created_at', beforeTimestamp)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (baseErr) throw baseErr;
+  if (!baseline) {
+    throw new Error("Can't restore this far back — no rotation snapshot exists before this point.");
+  }
 
-  const { data: rows, error: rowsErr } = await supabase
+  const { data: snapRows, error: snapErr } = await supabase
     .from('rotation_period_assignments')
     .select('staff_id, area_id')
-    .eq('period_id', periodId);
-  if (rowsErr) throw rowsErr;
+    .eq('period_id', baseline.id);
+  if (snapErr) throw snapErr;
 
   const assignments = {};
-  (rows || []).forEach((r) => { assignments[r.staff_id] = r.area_id; });
+  (snapRows || []).forEach((r) => { assignments[r.staff_id] = r.area_id; });
+
+  const { data: events, error: evErr } = await supabase
+    .from('audit_log')
+    .select('action, staff_id, metadata, created_at')
+    .gt('created_at', baseline.created_at)
+    .lt('created_at', beforeTimestamp)
+    .in('action', ['move', 'swap'])
+    .order('created_at', { ascending: true });
+  if (evErr) throw evErr;
+
+  (events || []).forEach((e) => {
+    const md = e.metadata || {};
+    if (e.action === 'move' && e.staff_id) {
+      const targetArea = 'areaId' in md ? md.areaId : ('coverAreaId' in md ? md.coverAreaId : ('returnToAreaId' in md ? md.returnToAreaId : undefined));
+      if (targetArea !== undefined) assignments[e.staff_id] = targetArea;
+    } else if (e.action === 'swap') {
+      if (md.idA) assignments[md.idA] = md.areaB ?? null;
+      if (md.idB) assignments[md.idB] = md.areaA ?? null;
+    }
+  });
 
   return {
-    id: period.id,
-    periodLabel: period.period_label,
-    startDate: period.start_date,
-    weeks: period.weeks,
+    periodLabel: baseline.period_label,
+    startDate: baseline.start_date,
+    weeks: baseline.weeks,
     assignments,
   };
 }
 
-// Point-in-time board restore, reachable from a "Restore to here" on a
-// rotate_period Audit Log entry. `changedStaff` is computed client-side by
-// diffing the target snapshot against the board as it stands right now —
-// so this only ever moves staff whose position actually differs from the
-// target; anyone placed, edited, or otherwise touched since the mistake
-// stays exactly as they are. Also rolls the active rotation window back to
-// what was in effect at that point, per the same reasoning.
-export async function restoreRotationPeriod({ periodId, changedStaff, periodLabel, startDate, weeks, actingAccountId }) {
+// Point-in-time board restore, reachable from "Restore to here" on any
+// Audit Log entry. `changedStaff` is computed client-side by diffing the
+// reconstructed target state against the board as it stands right now — so
+// this only ever moves staff whose position actually differs from the
+// target; anyone placed, edited, or otherwise touched since stays exactly
+// as they are. Also rolls the active rotation window back to what was in
+// effect at that point, per the same reasoning.
+export async function restoreBoardState({ changedStaff, periodLabel, startDate, weeks, restoredFromDescription, actingAccountId }) {
   for (const { staffId, areaId } of changedStaff || []) {
     const { error } = await supabase
       .from('assignments')
@@ -976,8 +1007,8 @@ export async function restoreRotationPeriod({ periodId, changedStaff, periodLabe
   await supabase.from('audit_log').insert({
     actor_id: actingAccountId,
     action: 'restore_rotation',
-    description: `restored the board to period "${periodLabel}" (${(changedStaff || []).length} staff moved back)`,
-    metadata: { periodId, weeks, movedCount: (changedStaff || []).length },
+    description: `restored the board to ${restoredFromDescription || 'an earlier point'} (${(changedStaff || []).length} staff moved back)`,
+    metadata: { weeks, movedCount: (changedStaff || []).length },
   });
 }
 
@@ -1153,8 +1184,8 @@ window.RC = {
   createRotationPeriod,
   deleteRotationPeriod,
   fetchRotationHistory,
-  fetchRotationPeriodSnapshot,
-  restoreRotationPeriod,
+  fetchBoardStateAt,
+  restoreBoardState,
   submitEvaluation,
   reviewEvaluation,
   fetchPendingEvaluations,
