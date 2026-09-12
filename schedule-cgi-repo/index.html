@@ -11182,6 +11182,14 @@ function renderChip(s){
     </div>`}
     ${s.tags ? `<div class="chip-tags">${escapeHtml(s.tags)}</div>` : ''}
     ${(()=>{
+      const shiftDisplay = s.lateStart
+        ? `<span class="chip-late-tag" title="Late start / partial day">⏰ ${escapeHtml(s.lateStart)}</span> ${escapeHtml(s.shiftHours||'')}`
+        : escapeHtml(s.shiftHours||'');
+      const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
+      const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
+      return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
+    })()}
+    ${(()=>{
       const certs=[];
       if(viewMode!=='supervisors'){
         const sup = getSupervisorById(s.supervisorId);
@@ -11196,14 +11204,6 @@ function renderChip(s){
       if(repeat) certs.push('<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>');
       if(conflicts.length>0) certs.push('<span class="chip-blocked-badge" title="Blocked pairing in this area">🚫 blocked</span>');
       return certs.length?'<div class="chip-certs">'+certs.join('')+'</div>':'';
-    })()}
-    ${(()=>{
-      const shiftDisplay = s.lateStart
-        ? `<span class="chip-late-tag" title="Late start / partial day">⏰ ${escapeHtml(s.lateStart)}</span> ${escapeHtml(s.shiftHours||'')}`
-        : escapeHtml(s.shiftHours||'');
-      const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
-      const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
-      return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
     })()}
     ${trail.length ? `<div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
