@@ -1187,7 +1187,6 @@
     flex-wrap:nowrap;
     gap:4px;
     padding:8px 0 2px;
-    border-top:1px solid var(--c-border,#E5E5EA);
     margin-top:6px;
     animation:cia-pop .15s cubic-bezier(.34,1.2,.64,1);
   }
@@ -11185,7 +11184,14 @@ function renderChip(s){
     ${s.tags ? `<div class="chip-tags">${escapeHtml(s.tags)}</div>` : ''}
     ${(()=>{
       const certs=[];
-      if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA Cert</span>');
+      if(viewMode!=='supervisors'){
+        const sup = getSupervisorById(s.supervisorId);
+        if(sup){
+          const c = sup.color || '#5B5F66';
+          certs.push(`<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`);
+        }
+      }
+      if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA</span>');
       (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
       if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
       if(repeat) certs.push('<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>');
@@ -11199,13 +11205,6 @@ function renderChip(s){
       const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
       const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
       return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
-    })()}
-    ${(()=>{
-      if(viewMode==='supervisors') return '';
-      const sup = getSupervisorById(s.supervisorId);
-      if(!sup) return '';
-      const c = sup.color || '#5B5F66';
-      return `<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`;
     })()}
     ${trail.length ? `<div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
