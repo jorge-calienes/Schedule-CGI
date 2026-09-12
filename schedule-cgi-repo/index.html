@@ -1177,11 +1177,15 @@
   .chip-actions{display:none !important;}
 
 
-  /* ── Chip action popup (··· menu) — works on all breakpoints ── */
+  /* ── Chip action popup (··· menu) — works on all breakpoints ──
+     Edit and Remove were dropped from here: editing is already one tap
+     away via the name (opens the full profile), and unassigning has
+     other paths (drag to the pool, or Move → Unassigned). The remaining
+     5 actions share one row instead of wrapping to two. */
   .chip-cia-popup{
     display:flex;
-    flex-wrap:wrap;
-    gap:6px;
+    flex-wrap:nowrap;
+    gap:4px;
     padding:8px 0 2px;
     border-top:1px solid var(--c-border,#E5E5EA);
     margin-top:6px;
@@ -1190,8 +1194,9 @@
   @keyframes cia-pop{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
 
   .chip-cia-popup .cia-btn{
-    flex:0 0 auto;
-    width:54px;min-height:44px;
+    flex:1 1 0;
+    min-width:0;
+    min-height:44px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:2px;
     padding:4px 2px;
@@ -11221,8 +11226,6 @@ function renderChip(s){
       ${ciaBtn('act-callout', s.id, isOut?'✅':'⚠️', isOut?'In':'Out', isOut?'Mark in':'Call out')}
       ${ciaBtn('act-late-arrival'+(lateEvent?' active':''), s.id, '⏰', 'Late', lateEvent?'Undo late arrival':'Late arrival')}
       ${ciaBtn('act-left-early'+(leftEarlyEvent?' active':''), s.id, '🚪', 'Early', leftEarlyEvent?'Undo left early':'Left early')}
-      ${ciaBtn('act-edit', s.id, '✏️', 'Edit', 'Edit')}
-      ${ciaBtn('danger act-remove', s.id, '🗑', 'Remove', 'Remove')}
     </div>` : ''}
   </div>`;
 }
