@@ -367,6 +367,18 @@ export async function ensureDepartment(name) {
   return data.id;
 }
 
+// Persists "Reorder board layout" — order is a list of department ids in
+// their new display order. Without this the reorder only ever lived in this
+// browser's local state, so it silently reverted to the departments table's
+// original sort_order on the next fresh load (a new device, cleared storage,
+// or just re-fetching the board).
+export async function updateDepartmentOrder({ order }) {
+  for (let i = 0; i < (order || []).length; i++) {
+    const { error } = await supabase.from('departments').update({ sort_order: i }).eq('id', order[i]);
+    if (error) throw error;
+  }
+}
+
 function staffRow({ name, tdisNumber, departmentId, homeAreaId, isTeamLead, isSubcontractor, needsAccommodations, tags, shiftHoursLabel, breakTimesLabel, counterCert, hireDate, supervisorId, positionId, flowId, flowEnrolled }) {
   return {
     name,
@@ -1174,6 +1186,7 @@ window.RC = {
   clearAttendanceEvent,
   setActiveRotation,
   ensureDepartment,
+  updateDepartmentOrder,
   createStaff,
   updateStaff,
   updateStaffBreakTime,

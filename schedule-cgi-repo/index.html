@@ -13236,7 +13236,47 @@ function renderOrgDiagramModal(m){
       </div>
       `}
     </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="btn-org-diagram-download" style="margin-left:auto;">⬇ Download (print to PDF)</button>
+    </div>
   </div>`;
+}
+
+// Standalone printable version of the org diagram — a card per supervisor
+// instead of the nested tree, since a wide horizontal tree is exactly what's
+// hard to read on a phone or a printed page. Downloads as HTML, same as the
+// schedule report: open it and use the browser's own Print → Save as PDF.
+function buildOrgDiagramHTML(){
+  const unassigned = unassignedSupervisorStaff();
+  const memberLine = s => `<div class="org-print-member">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.isSubcontractor?' <span class="org-print-ags">AGS</span>':''}</div>`;
+  const cards = state.supervisors.map(sv=>{
+    const team = staffUnderSupervisor(sv.id);
+    return `
+    <div class="org-print-card">
+      <div class="org-print-head" style="border-color:${sv.color};"><span class="org-print-dot" style="background:${sv.color};"></span>${escapeHtml(sv.name)} <span class="org-print-count">${team.length}</span></div>
+      ${team.length ? team.map(memberLine).join('') : '<div class="org-print-member small-muted">No one assigned</div>'}
+    </div>`;
+  }).join('');
+  const unassignedCard = unassigned.length ? `
+    <div class="org-print-card">
+      <div class="org-print-head" style="border-color:#9CA3AF;"><span class="org-print-dot" style="background:#9CA3AF;"></span>No supervisor <span class="org-print-count">${unassigned.length}</span></div>
+      ${unassigned.map(memberLine).join('')}
+    </div>` : '';
+  const css = `
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:24px;color:#1a1a1a;}
+    h1{font-size:20px;margin:0 0 4px;}
+    p{margin:0 0 20px;color:#555;font-size:13px;}
+    .org-print-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+    .org-print-card{border:1px solid #ddd;border-radius:10px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid;}
+    .org-print-head{font-weight:700;font-size:15px;border-bottom:3px solid #ccc;padding-bottom:8px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+    .org-print-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;}
+    .org-print-count{margin-left:auto;font-weight:400;color:#777;font-size:13px;}
+    .org-print-member{font-size:14px;padding:3px 0;}
+    .org-print-ags{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;}
+    @page{margin:16mm;}
+  `;
+  const body = `<h1>Organization diagram</h1><p>${escapeHtml(state.staff.length+' staff · '+todayLabel())}</p><div class="org-print-grid">${cards}${unassignedCard}</div>`;
+  return { css, body };
 }
 
 // --- 8. Mark callout (pick who's out) ---
@@ -18356,6 +18396,14 @@ function attachHandlers(){
       let rIdx = 0;
       state.departments = state.departments.map(d=>fixedDepts.has(d) ? d : reorderable[rIdx++]);
       saveState();
+      // Without this the new order only ever lived in this browser's local
+      // state and silently reverted on the next fresh load elsewhere.
+      if(state.departmentMeta && state.departmentMeta.length){
+        const idByName = {};
+        state.departmentMeta.forEach(d=>{ idByName[d.name] = d.id; });
+        const order = state.departments.map(name=>idByName[name]).filter(Boolean);
+        if(order.length) syncBoardWrite(()=>window.RC.updateDepartmentOrder({order}), 'reorder departments');
+      }
       openModal({type:'dept-reorder'}); // re-render modal with new order
     }
 
@@ -18834,6 +18882,16 @@ function attachHandlers(){
     document.querySelectorAll('.org-sup-box[data-edit-sup]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'supervisor-manager', editId:el.dataset.editSup});
     }));
+    on('btn-org-diagram-download', ()=>{
+      const {css, body} = buildOrgDiagramHTML();
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Org diagram — '+escapeHtml(todayLabel())+'</title><style>'+css+'</style></head><body>'+body+'</body></html>';
+      const blob = new Blob([html],{type:'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href=url; a.download='org-diagram-'+todayLabel()+'.html'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      showToast('Downloaded — open it and print to PDF','teal');
+    });
   }
 
   // --- confirm rotate modal ---
@@ -20553,6 +20611,9 @@ function on(id, fn){
 function mapSupabaseBoard(board){
   const deptById = {};
   (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
+  const departmentMeta = (board.departments||[])
+    .map(d=>({ id: d.id, name: d.name, sortOrder: d.sort_order||0 }))
+    .sort((a,b)=>a.sortOrder-b.sortOrder);
 
   const areas = (board.areas||[]).map(a=>({
     id: a.id,
@@ -20677,7 +20738,7 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -20725,6 +20786,15 @@ function reconcileStaleTempMoves(){
 function applyMappedBoard(mapped){
   state.areas = mapped.areas;
   state.staff = mapped.staff;
+  // Board column order lives in the real departments table (sort_order) —
+  // read it back here so a reorder actually survives a reload/new device,
+  // instead of only ever living in this browser's local state. An empty
+  // table (fresh project) leaves whatever seedDemoData()/loadState() set
+  // alone rather than wiping it out.
+  if(mapped.departmentMeta && mapped.departmentMeta.length){
+    state.departmentMeta = mapped.departmentMeta;
+    state.departments = mapped.departmentMeta.map(d=>d.name);
+  }
   state.supervisors = mapped.supervisors;
   state.shifts = mapped.shifts;
   state.lunchTimes = mapped.lunchTimes;
