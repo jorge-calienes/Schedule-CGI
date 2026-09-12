@@ -1072,7 +1072,6 @@
 
   @media(min-width:700px){
     .chip-inline-actions{display:flex;}
-    .chip-menu-btn{display:none;}
     .chip-quick-out{margin-left:auto;} /* push quick-out to right side on desktop */
   }
   @media(max-width:699px){
@@ -1167,10 +1166,11 @@
     display:flex;align-items:center;gap:4px;flex-shrink:0;
   }
 
-  @media(min-width:700px){
-    .chip-actions-desktop{display:flex;}
-    .chip-actions-mobile{display:none;}
-  }
+  /* .chip-actions-desktop used to take over at 700px+ (Move/Swap/Out/Late/
+     Early/Edit as six always-visible text buttons); the compact ○ + ···
+     mobile pattern reads with far less clutter, so it's now used at every
+     width and .chip-actions-desktop is unused (left in place below in case
+     it's wanted back, but never shown). */
 
   /* Legacy — suppress */
   .chip-inline-actions{display:none !important;}
@@ -1209,10 +1209,10 @@
     .chip-inline-actions{display:none !important;}
     .chip-menu-btn{display:inline-flex !important;align-items:center;justify-content:center;}
   }
-  /* ── Chip desktop: show inline action row, hide ··· ── */
-  @media(min-width:700px){
-    .chip-menu-btn{display:none !important;}
-  }
+  /* This used to pair with .chip-inline-actions (now dead, forced off
+     above) to show that row instead of the ··· button on desktop. With
+     .chip-inline-actions gone, this was leaving ··· hidden everywhere
+     above 700px with nothing shown in its place. */
 
 
   /* ════════════════════════════════════════════════════
@@ -11194,12 +11194,6 @@ function renderChip(s){
       const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
       const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
       return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
-    })()}
-    ${(()=>{
-      if(area&&area.fixed) return ''; // fixed staff don't rotate, no "was in" needed
-      const lastH=historyBeforeActivePeriod().slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
-      const la=lastH?getAreaById(lastH.assignments[s.id]):null;
-      return la?'<div class="chip-last-area">was '+escapeHtml(la.name)+'</div>':'';
     })()}
     ${(()=>{
       if(viewMode==='supervisors') return '';
