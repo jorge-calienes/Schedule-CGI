@@ -1072,7 +1072,6 @@
 
   @media(min-width:700px){
     .chip-inline-actions{display:flex;}
-    .chip-menu-btn{display:none;}
     .chip-quick-out{margin-left:auto;} /* push quick-out to right side on desktop */
   }
   @media(max-width:699px){
@@ -1088,7 +1087,7 @@
     width:100%;min-width:0;
   }
   .chip-name-wrap{
-    display:flex;align-items:center;gap:5px;
+    display:flex;align-items:center;gap:8px;
     flex:1;min-width:0;
     overflow:hidden;
   }
@@ -1106,7 +1105,7 @@
     white-space:normal;
     word-break:break-word;
     line-height:1.3;
-    flex:1;min-width:0;
+    flex:0 1 auto;min-width:0;
   }
   .chip-name-btn:hover{color:var(--c-accent,#2F5FA8);}
   .chip-tdis-tag{
@@ -1167,31 +1166,36 @@
     display:flex;align-items:center;gap:4px;flex-shrink:0;
   }
 
-  @media(min-width:700px){
-    .chip-actions-desktop{display:flex;}
-    .chip-actions-mobile{display:none;}
-  }
+  /* .chip-actions-desktop used to take over at 700px+ (Move/Swap/Out/Late/
+     Early/Edit as six always-visible text buttons); the compact ○ + ···
+     mobile pattern reads with far less clutter, so it's now used at every
+     width and .chip-actions-desktop is unused (left in place below in case
+     it's wanted back, but never shown). */
 
   /* Legacy — suppress */
   .chip-inline-actions{display:none !important;}
   .chip-actions{display:none !important;}
 
 
-  /* ── Chip action popup (··· menu) — works on all breakpoints ── */
+  /* ── Chip action popup (··· menu) — works on all breakpoints ──
+     Edit and Remove were dropped from here: editing is already one tap
+     away via the name (opens the full profile), and unassigning has
+     other paths (drag to the pool, or Move → Unassigned). The remaining
+     5 actions share one row instead of wrapping to two. */
   .chip-cia-popup{
     display:flex;
-    flex-wrap:wrap;
-    gap:6px;
+    flex-wrap:nowrap;
+    gap:4px;
     padding:8px 0 2px;
-    border-top:1px solid var(--c-border,#E5E5EA);
     margin-top:6px;
     animation:cia-pop .15s cubic-bezier(.34,1.2,.64,1);
   }
   @keyframes cia-pop{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
 
   .chip-cia-popup .cia-btn{
-    flex:0 0 auto;
-    width:54px;min-height:44px;
+    flex:1 1 0;
+    min-width:0;
+    min-height:44px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:2px;
     padding:4px 2px;
@@ -1209,10 +1213,10 @@
     .chip-inline-actions{display:none !important;}
     .chip-menu-btn{display:inline-flex !important;align-items:center;justify-content:center;}
   }
-  /* ── Chip desktop: show inline action row, hide ··· ── */
-  @media(min-width:700px){
-    .chip-menu-btn{display:none !important;}
-  }
+  /* This used to pair with .chip-inline-actions (now dead, forced off
+     above) to show that row instead of the ··· button on desktop. With
+     .chip-inline-actions gone, this was leaving ··· hidden everywhere
+     above 700px with nothing shown in its place. */
 
 
   /* ════════════════════════════════════════════════════
@@ -7449,7 +7453,6 @@
     white-space:nowrap;font-family:var(--mono);
     background:var(--sup-bg,#EEE);color:var(--sup-fg,#555);
     border:1px solid var(--sup-border,#ccc);
-    margin-top:2px;width:fit-content;
   }
   .chip-sup-dot{width:6px;height:6px;border-radius:50%;background:var(--sup-fg,#555);flex:none;}
 
@@ -11180,7 +11183,14 @@ function renderChip(s){
     ${s.tags ? `<div class="chip-tags">${escapeHtml(s.tags)}</div>` : ''}
     ${(()=>{
       const certs=[];
-      if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA Cert</span>');
+      if(viewMode!=='supervisors'){
+        const sup = getSupervisorById(s.supervisorId);
+        if(sup){
+          const c = sup.color || '#5B5F66';
+          certs.push(`<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`);
+        }
+      }
+      if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ CA</span>');
       (s.languageCerts||[]).forEach(lid=>{const l=state.languages.find(x=>x.id===lid);if(l) certs.push('<span class="cert-badge cert-lang">🌐 '+l.name+'</span>');});
       if(s.isSubcontractor) certs.push('<span class="roster-card-ags" title="AGS / Sub-contractor">🏷 AGS</span>');
       if(repeat) certs.push('<span class="chip-repeat-badge" title="Placed in the same area as last rotation">🔁 repeat</span>');
@@ -11194,19 +11204,6 @@ function renderChip(s){
       const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
       const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
       return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
-    })()}
-    ${(()=>{
-      if(area&&area.fixed) return ''; // fixed staff don't rotate, no "was in" needed
-      const lastH=historyBeforeActivePeriod().slice().reverse().find(h=>h.assignments&&h.assignments[s.id]&&h.assignments[s.id]!==state.assignments[s.id]);
-      const la=lastH?getAreaById(lastH.assignments[s.id]):null;
-      return la?'<div class="chip-last-area">was '+escapeHtml(la.name)+'</div>':'';
-    })()}
-    ${(()=>{
-      if(viewMode==='supervisors') return '';
-      const sup = getSupervisorById(s.supervisorId);
-      if(!sup) return '';
-      const c = sup.color || '#5B5F66';
-      return `<span class="chip-sup-badge" style="--sup-bg:${c}1A;--sup-fg:${c};--sup-border:${c}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`;
     })()}
     ${trail.length ? `<div class="chip-trail">
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
@@ -11227,8 +11224,6 @@ function renderChip(s){
       ${ciaBtn('act-callout', s.id, isOut?'✅':'⚠️', isOut?'In':'Out', isOut?'Mark in':'Call out')}
       ${ciaBtn('act-late-arrival'+(lateEvent?' active':''), s.id, '⏰', 'Late', lateEvent?'Undo late arrival':'Late arrival')}
       ${ciaBtn('act-left-early'+(leftEarlyEvent?' active':''), s.id, '🚪', 'Early', leftEarlyEvent?'Undo left early':'Left early')}
-      ${ciaBtn('act-edit', s.id, '✏️', 'Edit', 'Edit')}
-      ${ciaBtn('danger act-remove', s.id, '🗑', 'Remove', 'Remove')}
     </div>` : ''}
   </div>`;
 }
@@ -11292,10 +11287,11 @@ function renderAreaCol(area){
   // exactly backup coverage (an extra body for the day who automatically
   // returns to their own spot after) — not a change to who's fixed there.
   const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && (!area.fixed || tempMoveScope);
-  // areas with a handful of people pack two-per-row on desktop instead of
-  // one long single-file list — cuts how much you scroll to see everyone
-  // in a busy area like Communications or Processing.
-  const multiCol = members.length > 3;
+  // Areas used to pack two cards per row once they had more than 3 people,
+  // to cut scrolling in a busy area — but two narrower cards each carrying
+  // the same full set of badges/hours/history text turned out to be more
+  // cognitive load, not less. Single column, always.
+  const multiCol = false;
   // A team lead can't edit areas (readOnly), but CAN still drag to reorder
   // the board — just as a personal, this-browser-only preference (see
   // personalAreaOrder) rather than the shared order admin/supervisor
