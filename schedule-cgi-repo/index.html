@@ -9691,6 +9691,33 @@ function staffExperienceBreakdown(staffId){
   return { rows, totalCompletedRotations, currentAreaId, bestFit };
 }
 
+// Non-fixed areas staffId has never worked — no real rotation history and no
+// manually-marked prior-experience flag — excluding wherever they're placed
+// right now. Surfaced at Rotate Now time as optional "new area" alternatives
+// so supervisors can round out someone's experience instead of always
+// repeating the same spots. Team leads are excluded — they don't rotate.
+function neverWorkedGapAreasFor(staffId){
+  const staff = getStaffById(staffId);
+  if(!staff || staff.isTeamLead) return [];
+  const currentAreaId = state.assignments[staffId] || null;
+  const { rows } = staffExperienceBreakdown(staffId);
+  return rows
+    .filter(r=>!r.area.fixed && !r.hasExperience && r.areaId!==currentAreaId)
+    .map(r=>r.area);
+}
+
+// The flip side of staffReadyForNewPath() below: active, non-team-lead staff
+// who are MISSING experience in one or more non-fixed areas, for supervisors
+// to plan ahead of any specific rotation (not just the picks offered live in
+// the Rotate Now preview). Sorted by most gaps first, then name.
+function staffWithExperienceGaps(){
+  return state.staff
+    .filter(s=>s.active!==false)
+    .map(s=>({ staff:s, gapAreas: neverWorkedGapAreasFor(s.id) }))
+    .filter(g=>g.gapAreas.length>0)
+    .sort((a,b)=> b.gapAreas.length-a.gapAreas.length || a.staff.name.localeCompare(b.staff.name));
+}
+
 // Active staff who have experience (real rotation history or a marked
 // prior-experience flag) in every rotating area — fixed areas don't count,
 // since those are permanent positions rather than something to rotate
@@ -10783,6 +10810,11 @@ function renderNavDrawer(){
         if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
         const readyCount = staffReadyForNewPath().length;
         return `<button class="nav-item" id="nav-ready-for-path"><span class="nav-item-icon">🏆</span>Ready for a new path${readyCount>0?`<span class="nav-item-badge">${readyCount}</span>`:''}</button>`;
+      })()}
+      ${(()=>{
+        if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
+        const gapsCount = staffWithExperienceGaps().length;
+        return `<button class="nav-item" id="nav-experience-gaps"><span class="nav-item-icon">🧭</span>Experience gaps${gapsCount>0?`<span class="nav-item-badge">${gapsCount}</span>`:''}</button>`;
       })()}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
       <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
@@ -11951,6 +11983,7 @@ function renderModal(){
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   else if(m.type==='prior-exp-import') inner = renderPriorExpImportModal(m);
   else if(m.type==='ready-for-path') inner = renderReadyForPathModal(m);
+  else if(m.type==='experience-gaps') inner = renderExperienceGapsModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
@@ -12154,6 +12187,39 @@ function renderReadyForPathModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-ready-path" style="margin-left:auto;">Close</button>
+    </div>
+  </div>`;
+}
+
+// --- Experience gaps: the flip side of "ready for a new path" — active
+// staff missing experience in one or more non-fixed areas, for planning
+// ahead of any specific rotation. Tapping a row opens their full Stats tab,
+// same as the roster/board chips and the "ready for a new path" list. ---
+function renderExperienceGapsModal(m){
+  const gaps = staffWithExperienceGaps();
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div>
+        <h2>🧭 Experience gaps</h2>
+        <p>${gaps.length} staff member${gaps.length===1?'':'s'} ${gaps.length===1?'has':'have'} never worked one or more areas.</p>
+      </div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area.</div>` : `
+      <div class="option-list">
+        ${gaps.map(g=>`
+          <div class="option-card" data-show-stats="${g.staff.id}">
+            <div class="oc-left">
+              <span class="oc-name">${g.staff.isTeamLead?'★ ':''}${escapeHtml(g.staff.name)}</span>
+              <span class="oc-sub">Never worked: ${g.gapAreas.map(a=>escapeHtml(a.name)).join(', ')}</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-experience-gaps" style="margin-left:auto;">Close</button>
     </div>
   </div>`;
 }
@@ -13170,7 +13236,47 @@ function renderOrgDiagramModal(m){
       </div>
       `}
     </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="btn-org-diagram-download" style="margin-left:auto;">⬇ Download (print to PDF)</button>
+    </div>
   </div>`;
+}
+
+// Standalone printable version of the org diagram — a card per supervisor
+// instead of the nested tree, since a wide horizontal tree is exactly what's
+// hard to read on a phone or a printed page. Downloads as HTML, same as the
+// schedule report: open it and use the browser's own Print → Save as PDF.
+function buildOrgDiagramHTML(){
+  const unassigned = unassignedSupervisorStaff();
+  const memberLine = s => `<div class="org-print-member">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.isSubcontractor?' <span class="org-print-ags">AGS</span>':''}</div>`;
+  const cards = state.supervisors.map(sv=>{
+    const team = staffUnderSupervisor(sv.id);
+    return `
+    <div class="org-print-card">
+      <div class="org-print-head" style="border-color:${sv.color};"><span class="org-print-dot" style="background:${sv.color};"></span>${escapeHtml(sv.name)} <span class="org-print-count">${team.length}</span></div>
+      ${team.length ? team.map(memberLine).join('') : '<div class="org-print-member small-muted">No one assigned</div>'}
+    </div>`;
+  }).join('');
+  const unassignedCard = unassigned.length ? `
+    <div class="org-print-card">
+      <div class="org-print-head" style="border-color:#9CA3AF;"><span class="org-print-dot" style="background:#9CA3AF;"></span>No supervisor <span class="org-print-count">${unassigned.length}</span></div>
+      ${unassigned.map(memberLine).join('')}
+    </div>` : '';
+  const css = `
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:24px;color:#1a1a1a;}
+    h1{font-size:20px;margin:0 0 4px;}
+    p{margin:0 0 20px;color:#555;font-size:13px;}
+    .org-print-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+    .org-print-card{border:1px solid #ddd;border-radius:10px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid;}
+    .org-print-head{font-weight:700;font-size:15px;border-bottom:3px solid #ccc;padding-bottom:8px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+    .org-print-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;}
+    .org-print-count{margin-left:auto;font-weight:400;color:#777;font-size:13px;}
+    .org-print-member{font-size:14px;padding:3px 0;}
+    .org-print-ags{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;}
+    @page{margin:16mm;}
+  `;
+  const body = `<h1>Organization diagram</h1><p>${escapeHtml(state.staff.length+' staff · '+todayLabel())}</p><div class="org-print-grid">${cards}${unassignedCard}</div>`;
+  return { css, body };
 }
 
 // --- 8. Mark callout (pick who's out) ---
@@ -15281,6 +15387,14 @@ function renderRotatePreviewModal(m){
   const advances = suggestions.filter(s=>s.type==='advance');
   const stays    = suggestions.filter(s=>s.type==='stay');
   const completes= suggestions.filter(s=>s.type==='complete');
+  // Optional "try a new area" alternatives — never applied automatically,
+  // only when a supervisor explicitly picks one via gapPicks (staffId ->
+  // areaId), applied alongside the flow suggestions on confirm.
+  const gapPicks = m.gapPicks || {};
+  const gapCandidates = state.staff
+    .filter(s=>s.active!==false)
+    .map(s=>({ staff:s, currentAreaId: state.assignments[s.id]||null, options: neverWorkedGapAreasFor(s.id) }))
+    .filter(g=>g.currentAreaId && g.options.length>0);
   const repeatFlags = state.staff.filter(s=>{
     const a = state.assignments[s.id];
     return a && isRepeatArea(s.id, a);
@@ -15380,7 +15494,26 @@ function renderRotatePreviewModal(m){
         </div>`).join('')}
       </div>` : ''}
 
-      ${suggestions.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
+      ${gapCandidates.length>0?`
+      <div class="rotate-section-head" style="color:#3E8E8B;">🆕 ${gapCandidates.length} could try a new area</div>
+      <div class="rotate-list">
+        ${gapCandidates.map(g=>{
+          const picked = gapPicks[g.staff.id];
+          return `
+          <div class="rotate-row">
+            <div class="rotate-row-main">
+              <span class="rotate-name">${escapeHtml(g.staff.name)}</span>
+              <span class="small-muted">currently ${escapeHtml(getAreaById(g.currentAreaId)?.name||'—')}</span>
+            </div>
+            <div class="small-muted" style="margin:4px 0 6px;">Never worked — tap to try next rotation:</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${g.options.slice(0,4).map(a=>`<button class="btn btn-sm ${picked===a.id?'btn-primary':'btn-light'}" data-gap-staff="${g.staff.id}" data-gap-area="${a.id}">${picked===a.id?'✓ ':''}${escapeHtml(a.name)}</button>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${suggestions.length===0 && gapCandidates.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
       ${repeatFlags.length>0?`<div class="alert-box" style="margin-top:12px;"><b>${repeatFlags.length} repeat placement${repeatFlags.length>1?'s':''}</b> carrying forward: ${repeatFlags.map(s=>escapeHtml(s.name)).join(', ')}.</div>`:''}
     </div>
     <div class="modal-foot">
@@ -17572,6 +17705,7 @@ function attachHandlers(){
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
+  on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
@@ -17725,6 +17859,11 @@ function attachHandlers(){
   // --- ready for a new path (100% area coverage list) ---
   if(activeModal.type==='ready-for-path'){
     on('modal-close-ready-path', closeModal);
+  }
+
+  // --- experience gaps (never-worked-area list) ---
+  if(activeModal.type==='experience-gaps'){
+    on('modal-close-experience-gaps', closeModal);
   }
 
   // --- import picker: choose which Excel import to run ---
@@ -18257,6 +18396,14 @@ function attachHandlers(){
       let rIdx = 0;
       state.departments = state.departments.map(d=>fixedDepts.has(d) ? d : reorderable[rIdx++]);
       saveState();
+      // Without this the new order only ever lived in this browser's local
+      // state and silently reverted on the next fresh load elsewhere.
+      if(state.departmentMeta && state.departmentMeta.length){
+        const idByName = {};
+        state.departmentMeta.forEach(d=>{ idByName[d.name] = d.id; });
+        const order = state.departments.map(name=>idByName[name]).filter(Boolean);
+        if(order.length) syncBoardWrite(()=>window.RC.updateDepartmentOrder({order}), 'reorder departments');
+      }
       openModal({type:'dept-reorder'}); // re-render modal with new order
     }
 
@@ -18735,6 +18882,16 @@ function attachHandlers(){
     document.querySelectorAll('.org-sup-box[data-edit-sup]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'supervisor-manager', editId:el.dataset.editSup});
     }));
+    on('btn-org-diagram-download', ()=>{
+      const {css, body} = buildOrgDiagramHTML();
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Org diagram — '+escapeHtml(todayLabel())+'</title><style>'+css+'</style></head><body>'+body+'</body></html>';
+      const blob = new Blob([html],{type:'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href=url; a.download='org-diagram-'+todayLabel()+'.html'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      showToast('Downloaded — open it and print to PDF','teal');
+    });
   }
 
   // --- confirm rotate modal ---
@@ -19121,6 +19278,16 @@ function attachHandlers(){
       openModal({type:'feedback-modal', suggestion:sug, step:'teamlead', tlRating:0, supRating:0});
     }));
 
+    // "try a new area" pills — optional, per-staff, toggled on/off; only
+    // applied on confirm if the supervisor actually picked one
+    document.querySelectorAll('[data-gap-area]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const staffId = btn.dataset.gapStaff, areaId = btn.dataset.gapArea;
+      const gapPicks = Object.assign({}, activeModal.gapPicks||{});
+      if(gapPicks[staffId]===areaId) delete gapPicks[staffId];
+      else gapPicks[staffId] = areaId;
+      openModal({...activeModal, gapPicks});
+    }));
+
     // live-update the schedule preview (computed end date) as weeks/start-date change
     const periodInputEl = document.getElementById('new-period-input');
     const weeksInputEl  = document.getElementById('rotation-weeks-input');
@@ -19207,6 +19374,23 @@ function attachHandlers(){
           if(s){ s.flowEnrolled = false; compCount++; completedFlowStaffIds.push(s.id); }
         }
       });
+      // "try a new area" picks the supervisor explicitly selected in the
+      // preview — optional, so only staff with a pick get moved
+      let gapCount=0;
+      Object.entries(activeModal.gapPicks||{}).forEach(([staffId, areaId])=>{
+        const staff = getStaffById(staffId);
+        const area = getAreaById(areaId);
+        if(!staff || !area) return;
+        const already = staffInArea(areaId, staffId).length;
+        if(already >= area.capacity) return;
+        const fromArea = getAreaById(state.assignments[staffId]);
+        state.assignments[staffId] = areaId;
+        syncBoardWrite(()=>window.RC.moveStaff({
+          staffId, areaId, actingAccountId: authState.account.id,
+          staffName: staff.name, fromAreaName: fromArea?.name, toAreaName: area.name,
+        }), 'move');
+        gapCount++;
+      });
       // clear pending feedback
       // save supervisor notes for this period
       if(notesVal) state.rotationNotes[state.currentPeriod] = notesVal;
@@ -19244,7 +19428,7 @@ function attachHandlers(){
       saveState();
       closeModal();
       const allSynced = sync.ok && rotationSync.ok;
-      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}`;
+      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}`;
       showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
@@ -19995,6 +20179,11 @@ function snapshotStaffForm(){
 
 // ── Streak: how many consecutive rotations at current area ──
 function getRepeatStreak(staffId){
+  // Team leads stay in their own home area by design — that's not a
+  // "streak" worth flagging the way it is for rotating staff (isRepeatArea()
+  // already excludes them from the repeat flag for the same reason).
+  const staff = getStaffById(staffId);
+  if(staff?.isTeamLead) return 0;
   const currentArea = state.assignments[staffId];
   if(!currentArea) return 0;
   const h = historyBeforeActivePeriod();
@@ -20422,6 +20611,9 @@ function on(id, fn){
 function mapSupabaseBoard(board){
   const deptById = {};
   (board.departments||[]).forEach(d=>{ deptById[d.id] = d.name; });
+  const departmentMeta = (board.departments||[])
+    .map(d=>({ id: d.id, name: d.name, sortOrder: d.sort_order||0 }))
+    .sort((a,b)=>a.sortOrder-b.sortOrder);
 
   const areas = (board.areas||[]).map(a=>({
     id: a.id,
@@ -20546,7 +20738,7 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves };
+  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -20594,6 +20786,15 @@ function reconcileStaleTempMoves(){
 function applyMappedBoard(mapped){
   state.areas = mapped.areas;
   state.staff = mapped.staff;
+  // Board column order lives in the real departments table (sort_order) —
+  // read it back here so a reorder actually survives a reload/new device,
+  // instead of only ever living in this browser's local state. An empty
+  // table (fresh project) leaves whatever seedDemoData()/loadState() set
+  // alone rather than wiping it out.
+  if(mapped.departmentMeta && mapped.departmentMeta.length){
+    state.departmentMeta = mapped.departmentMeta;
+    state.departments = mapped.departmentMeta.map(d=>d.name);
+  }
   state.supervisors = mapped.supervisors;
   state.shifts = mapped.shifts;
   state.lunchTimes = mapped.lunchTimes;
