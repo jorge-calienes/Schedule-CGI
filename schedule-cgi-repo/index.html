@@ -11292,10 +11292,11 @@ function renderAreaCol(area){
   // exactly backup coverage (an extra body for the day who automatically
   // returns to their own spot after) — not a change to who's fixed there.
   const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && (!area.fixed || tempMoveScope);
-  // areas with a handful of people pack two-per-row on desktop instead of
-  // one long single-file list — cuts how much you scroll to see everyone
-  // in a busy area like Communications or Processing.
-  const multiCol = members.length > 3;
+  // Areas used to pack two cards per row once they had more than 3 people,
+  // to cut scrolling in a busy area — but two narrower cards each carrying
+  // the same full set of badges/hours/history text turned out to be more
+  // cognitive load, not less. Single column, always.
+  const multiCol = false;
   // A team lead can't edit areas (readOnly), but CAN still drag to reorder
   // the board — just as a personal, this-browser-only preference (see
   // personalAreaOrder) rather than the shared order admin/supervisor
