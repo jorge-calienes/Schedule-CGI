@@ -12559,71 +12559,73 @@ function renderStaffManagerModal(m){
     // on-demand when this tab is opened — see the fetch trigger in the
     // 'staff-manager' event-wiring block below. Shown above the rotation
     // stats since it's not gated on rotation history existing at all.
-    const evalSection = (() => {
+    // Split into two independently-placeable sections — "Latest evaluation"
+    // (headline card + awaiting banner + older-history list) and "Evaluation
+    // trend" (the chart alone) — so the Stats tab's overall section order
+    // (set by the return statement below) can interleave them with
+    // Best fit / Proficiency / Rotation history rather than keeping all
+    // evaluation content bundled together.
+    const { evalLatestSection, evalTrendSection } = (() => {
       const hist = m.evalHistory;
       const err = m.evalHistoryError;
-      let body;
       if(err){
-        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>';
+        return { evalLatestSection: '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>', evalTrendSection: '' };
       } else if(hist===undefined || m._evalHistoryLoading){
-        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>';
+        return { evalLatestSection: '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>', evalTrendSection: '' };
       } else if(hist.length===0){
-        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
-      } else {
-        // Only approved evaluations move the averages/latest recommendation —
-        // a team_lead's still-pending/needs-revision submission is listed
-        // below but doesn't count until a supervisor accepts it.
-        const approved = hist.filter(r=>r.status==='approved');
-        const awaiting = hist.filter(r=>r.status==='pending'||r.status==='needs_revision');
-        const summary = approved.length ? (()=>{
-          const latest = approved[0];
-          const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
-          const badgeClass = latest.recommendation==='stay' ? 'success' : latest.recommendation==='advance' ? 'accent' : 'warn';
-          const evaluatorName = (latest.evaluator&&latest.evaluator.name) || 'Unknown';
-          const dateStr = latest.created_at ? new Date(latest.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
-          return '<div class="pm-fit-header">'+
-              '<p class="pm-section-label pm-section-label-tight" style="margin:0;">Latest evaluation</p>'+
-              '<span class="pm-badge '+badgeClass+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
-            '</div>'+
-            '<div class="pm-card">'+
-              '<div class="pm-eval-scores"><span>Productivity <b>'+latest.productivity+'</b></span><span>Performance <b>'+latest.performance+'</b></span><span>Reliability <b>'+latest.reliability+'</b></span></div>'+
-              (latest.note ? '<p class="pm-eval-note">'+escapeHtml(latest.note)+'</p>' : '')+
-              '<p class="pm-eval-byline">By '+escapeHtml(evaluatorName)+(dateStr?' · '+escapeHtml(dateStr):'')+'</p>'+
-            '</div>';
-        })() : '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
-        const awaitingBanner = awaiting.length
-          ? '<div class="small-muted" style="margin-bottom:10px;">⏳ '+awaiting.length+' evaluation'+(awaiting.length===1?'':'s')+' awaiting supervisor review</div>'
-          : '';
-        const trendChart = renderEvalTrendChart(approved);
-        const olderHistory = hist.length>1 ? (
-          '<p class="pm-section-label" style="margin-top:20px;">All evaluations</p>'+
-          '<div class="eval-history-list">'+
-          hist.slice(0,8).map(r=>{
-            const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
-            const areaName = r.area&&r.area.name;
-            const periodLabel = r.period&&r.period.period_label;
-            const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
-            const statusBadge = r.status==='approved'
-              ? (()=>{ const rm=EVAL_RECOMMENDATION_META[r.recommendation]; return '<span class="eval-rec-badge small" style="background:'+(rm?.color||'#999')+'">'+(rm?.label||r.recommendation)+'</span>'; })()
-              : r.status==='needs_revision'
-                ? '<span class="eval-rec-badge small" style="background:'+EVAL_RECOMMENDATION_META.training.color+'">Needs revision</span>'
-                : '<span class="eval-rec-badge small" style="background:#8B6F47;">Pending review</span>';
-            return '<div class="eval-history-row">'+
-              '<div class="eval-history-row-head">'+
-                '<span class="eval-history-date">'+escapeHtml(dateStr)+(periodLabel?' · '+escapeHtml(periodLabel):'')+'</span>'+
-                statusBadge+
-              '</div>'+
-              '<div class="eval-history-scores">P '+r.productivity+' · Pf '+r.performance+' · R '+r.reliability+(areaName?' · '+escapeHtml(areaName):'')+'</div>'+
-              '<div class="eval-history-evaluator">by '+escapeHtml(evaluatorName)+'</div>'+
-              (r.note ? '<div class="eval-history-note">'+escapeHtml(r.note)+'</div>' : '')+
-              (r.review_note ? '<div class="eval-history-note" style="font-style:normal;"><b>Review note:</b> '+escapeHtml(r.review_note)+'</div>' : '')+
-            '</div>';
-          }).join('')+
-          '</div>'
-        ) : '';
-        body = summary + awaitingBanner + trendChart + olderHistory;
+        return { evalLatestSection: '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>', evalTrendSection: '' };
       }
-      return body;
+      // Only approved evaluations move the averages/latest recommendation —
+      // a team_lead's still-pending/needs-revision submission is listed
+      // below but doesn't count until a supervisor accepts it.
+      const approved = hist.filter(r=>r.status==='approved');
+      const awaiting = hist.filter(r=>r.status==='pending'||r.status==='needs_revision');
+      const summary = approved.length ? (()=>{
+        const latest = approved[0];
+        const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
+        const badgeClass = latest.recommendation==='stay' ? 'success' : latest.recommendation==='advance' ? 'accent' : 'warn';
+        const evaluatorName = (latest.evaluator&&latest.evaluator.name) || 'Unknown';
+        const dateStr = latest.created_at ? new Date(latest.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+        return '<div class="pm-fit-header">'+
+            '<p class="pm-section-label pm-section-label-tight" style="margin:0;">Latest evaluation</p>'+
+            '<span class="pm-badge '+badgeClass+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
+          '</div>'+
+          '<div class="pm-card">'+
+            '<div class="pm-eval-scores"><span>Productivity <b>'+latest.productivity+'</b></span><span>Performance <b>'+latest.performance+'</b></span><span>Reliability <b>'+latest.reliability+'</b></span></div>'+
+            (latest.note ? '<p class="pm-eval-note">'+escapeHtml(latest.note)+'</p>' : '')+
+            '<p class="pm-eval-byline">By '+escapeHtml(evaluatorName)+(dateStr?' · '+escapeHtml(dateStr):'')+'</p>'+
+          '</div>';
+      })() : '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
+      const awaitingBanner = awaiting.length
+        ? '<div class="small-muted" style="margin-bottom:10px;">⏳ '+awaiting.length+' evaluation'+(awaiting.length===1?'':'s')+' awaiting supervisor review</div>'
+        : '';
+      const olderHistory = hist.length>1 ? (
+        '<p class="pm-section-label" style="margin-top:20px;">All evaluations</p>'+
+        '<div class="eval-history-list">'+
+        hist.slice(0,8).map(r=>{
+          const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
+          const areaName = r.area&&r.area.name;
+          const periodLabel = r.period&&r.period.period_label;
+          const dateStr = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+          const statusBadge = r.status==='approved'
+            ? (()=>{ const rm=EVAL_RECOMMENDATION_META[r.recommendation]; return '<span class="eval-rec-badge small" style="background:'+(rm?.color||'#999')+'">'+(rm?.label||r.recommendation)+'</span>'; })()
+            : r.status==='needs_revision'
+              ? '<span class="eval-rec-badge small" style="background:'+EVAL_RECOMMENDATION_META.training.color+'">Needs revision</span>'
+              : '<span class="eval-rec-badge small" style="background:#8B6F47;">Pending review</span>';
+          return '<div class="eval-history-row">'+
+            '<div class="eval-history-row-head">'+
+              '<span class="eval-history-date">'+escapeHtml(dateStr)+(periodLabel?' · '+escapeHtml(periodLabel):'')+'</span>'+
+              statusBadge+
+            '</div>'+
+            '<div class="eval-history-scores">P '+r.productivity+' · Pf '+r.performance+' · R '+r.reliability+(areaName?' · '+escapeHtml(areaName):'')+'</div>'+
+            '<div class="eval-history-evaluator">by '+escapeHtml(evaluatorName)+'</div>'+
+            (r.note ? '<div class="eval-history-note">'+escapeHtml(r.note)+'</div>' : '')+
+            (r.review_note ? '<div class="eval-history-note" style="font-style:normal;"><b>Review note:</b> '+escapeHtml(r.review_note)+'</div>' : '')+
+          '</div>';
+        }).join('')+
+        '</div>'
+      ) : '';
+      return { evalLatestSection: summary + awaitingBanner + olderHistory, evalTrendSection: renderEvalTrendChart(approved) };
     })();
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
@@ -12635,7 +12637,7 @@ function renderStaffManagerModal(m){
     const avgEvalScore = approvedForAvg.length
       ? approvedForAvg.reduce((sum,r)=>sum+(r.productivity+r.performance+r.reliability)/3,0)/approvedForAvg.length
       : null;
-    if(worked.length===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
+    if(worked.length===0) return evalLatestSection+evalTrendSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
@@ -12645,8 +12647,6 @@ function renderStaffManagerModal(m){
       '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
       '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
       '</div>'+
-
-      evalSection+
 
       // ── Best fit card ──
       (bestFit?(()=>{
@@ -12706,7 +12706,14 @@ function renderStaffManagerModal(m){
         ((state.calloutHistory||{})[editing.id]||[]).slice().reverse().slice(0,8).map(c=>
           '<div class="callout-history-row"><span class="callout-date">'+escapeHtml(c.period||c.date)+'</span>'+(c.reason?'<span class="callout-reason">'+escapeHtml(c.reason)+'</span>':'')+'</div>'
         ).join('')+
-        '</div>' : '')
+        '</div>' : '')+
+
+      // ── Latest evaluation ──
+      '<div style="margin-top:24px;">'+evalLatestSection+'</div>'+
+
+      // ── Evaluation trend ──
+      evalTrendSection
+
     +'<p class="pm-section-label" style="margin-top:24px;">Position change requests</p>'
     +(()=>{
       const reqs=(editing?.positionRequests||[]).slice().reverse().slice(0,5);
