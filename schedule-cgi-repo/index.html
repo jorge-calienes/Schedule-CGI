@@ -5439,10 +5439,10 @@
     display:flex;align-items:center;gap:6px;
   }
   .dept-reorder-areas-btn{
-    margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:0;text-transform:none;
+    margin-left:auto;font-size:12px;font-weight:700;letter-spacing:0;text-transform:none;line-height:1.6;
     background:var(--c-surface,#fff);color:var(--c-text-2,#6E6E73);
     border:1px solid var(--c-border,#E5E5EA);border-radius:99px;
-    padding:3px 9px;cursor:pointer;white-space:nowrap;
+    padding:6px 14px;cursor:pointer;white-space:nowrap;
   }
   .dept-reorder-areas-btn:hover{color:var(--c-accent,#2F5FA8);border-color:var(--c-accent,#2F5FA8);}
 
@@ -7394,6 +7394,31 @@
     color:#fff;font-weight:600;
   }
 
+  /* Same pill look as .lang-cert-chip, kept as its own class (not shared)
+     since prior-experience chips save immediately per tap instead of
+     deferring to the form's Save button — a shared class would also pick
+     up the generic .lang-cert-chip click handler that only flips local
+     state, double-handling the click. */
+  .prior-exp-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:7px 14px;
+    border:1.5px solid var(--c-border,rgba(0,0,0,.09));
+    border-radius:var(--r-pill,999px);
+    font-family:inherit;
+    font-size:14px;font-weight:500;
+    color:var(--c-text-2,#6E6E73);
+    background:var(--c-surface,#fff);
+    cursor:pointer;
+    transition:border-color .15s var(--ease-out),color .15s var(--ease-out),background .15s var(--ease-out);
+    user-select:none;
+  }
+  .prior-exp-chip:hover{border-color:var(--c-accent);color:var(--c-accent);}
+  .prior-exp-chip.checked{
+    background:var(--c-accent,#2F5FA8);
+    border-color:var(--c-accent,#2F5FA8);
+    color:#fff;font-weight:600;
+  }
+
   /* ── View container (all non-board tabs) ── */
   .view-container{
     flex:1;
@@ -9001,7 +9026,7 @@ let state = {
   shifts: [],      // [{id, label, start, end}] editable shift schedule
   lunchTimes: [],  // [{id, label, sort_order}] editable lunch time options
   languages: [],   // [{id, name}] editable language certifications list
-  positions: [],   // [{id, name, sortOrder}] editable job position/title catalog (SA2, SA3, AAA, ...)
+  positions: [],   // [{id, name, sortOrder, rotates}] editable job position/title catalog (SA2, SA3, AAA, ...) — rotates:false marks a single-station position (e.g. Cashier CA1) whose staff are skipped by experience-gap/best-fit nudges
   calloutHistory: {},  // {staffId: [{date, period, reason}]}
   rotationNotes: {},   // {period: string}
   dailyLog: [],         // [{ts, type, staffId, fromArea, toArea, note, period}]
@@ -9565,6 +9590,17 @@ function escapeHtml(s){
 function getStaffById(id){ return state.staff.find(s=>s.id===id); }
 function getAreaById(id){ return state.areas.find(a=>a.id===id); }
 
+// false only when the staff member's assigned position is explicitly marked
+// as not rotating (e.g. a single-station hire like Cashier CA1) — no position,
+// an unknown position, or a position missing the flag all default to true so
+// existing data behaves exactly as before this flag existed.
+function staffRotates(staffId){
+  const staff = getStaffById(staffId);
+  if(!staff || !staff.positionId) return true;
+  const position = state.positions.find(p=>p.id===staff.positionId);
+  return !position || position.rotates !== false;
+}
+
 // state.history only ever grows forward under normal use, so its last
 // entry is normally "the rotation right before the active one" — but
 // "Restore to here" can roll the active period back to an earlier point
@@ -9766,8 +9802,10 @@ function staffExperienceBreakdown(staffId){
   });
 
   // best fit: the most-experienced area that ISN'T where they currently are,
-  // since "best fit to cover" implies somewhere other than their current spot.
-  const bestFit = rows.find(r => r.hasExperience && r.areaId !== currentAreaId) || null;
+  // since "best fit to cover" implies somewhere other than their current spot —
+  // suppressed for staff whose position doesn't rotate, since "best fit to
+  // cover somewhere else" is a cross-training nudge that doesn't apply to them.
+  const bestFit = staffRotates(staffId) ? (rows.find(r => r.hasExperience && r.areaId !== currentAreaId) || null) : null;
 
   return { rows, totalCompletedRotations, currentAreaId, bestFit };
 }
@@ -9776,10 +9814,11 @@ function staffExperienceBreakdown(staffId){
 // manually-marked prior-experience flag — excluding wherever they're placed
 // right now. Surfaced at Rotate Now time as optional "new area" alternatives
 // so supervisors can round out someone's experience instead of always
-// repeating the same spots. Team leads are excluded — they don't rotate.
+// repeating the same spots. Team leads and staff in a non-rotating position
+// (e.g. a single-station hire like Cashier CA1) are excluded — they don't rotate.
 function neverWorkedGapAreasFor(staffId){
   const staff = getStaffById(staffId);
-  if(!staff || staff.isTeamLead) return [];
+  if(!staff || staff.isTeamLead || !staffRotates(staffId)) return [];
   const currentAreaId = state.assignments[staffId] || null;
   const { rows } = staffExperienceBreakdown(staffId);
   return rows
@@ -9808,7 +9847,7 @@ function staffReadyForNewPath(){
   const nonFixedAreaIds = new Set(state.areas.filter(a=>!a.fixed).map(a=>a.id));
   if(!nonFixedAreaIds.size) return [];
   return state.staff.filter(s=>{
-    if(s.active===false) return false;
+    if(s.active===false || !staffRotates(s.id)) return false;
     const { rows } = staffExperienceBreakdown(s.id);
     const workedNonFixed = rows.filter(r=>nonFixedAreaIds.has(r.areaId) && r.hasExperience).length;
     return workedNonFixed === nonFixedAreaIds.size;
@@ -10246,7 +10285,7 @@ let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
-let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
+const openPriorExpStaffIds = new Set(); // staffIds whose "Prior area experience" <details> is expanded — persists across re-renders while checking boxes, scoped per staff (and shared across the two modals that both show this section) so opening it for one person doesn't leave it pre-expanded for the next
 let tourState = null; // {stepIndex} while the app tour is active, else null
 let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
 
@@ -12189,7 +12228,7 @@ function renderStaffStatsModal(m){
       ` : ''}
 
       ${!isTeamLeadRole() ? `
-      <details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:14px;" ${statsPriorExpOpen?'open':''}>
+      <details class="stats-prior-exp-details" id="stats-prior-exp-details" data-staff-id="${s.id}" style="margin-top:14px;" ${openPriorExpStaffIds.has(s.id)?'open':''}>
         <summary class="stats-prior-exp-summary">Prior area experience (before this system)${priorMarkedCount?' — '+priorMarkedCount+' marked':''}</summary>
         <div class="field-hint" style="margin:6px 0 8px;">Check off areas ${escapeHtml(s.name.split(' ')[0])} worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>
         <div class="stats-prior-exp-list">
@@ -12319,15 +12358,19 @@ function renderExperienceGapsModal(m){
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
-      ${gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area.</div>` : `
+      ${gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area they're expected to cover.</div>` : `
       <div class="option-list">
-        ${gaps.map(g=>`
+        ${gaps.map(g=>{
+          const preview = g.gapAreas.slice(0,3).map(a=>escapeHtml(a.name)).join(', ');
+          const extra = g.gapAreas.length>3 ? ` +${g.gapAreas.length-3} more` : '';
+          return `
           <div class="option-card" data-show-stats="${g.staff.id}">
             <div class="oc-left">
               <span class="oc-name">${g.staff.isTeamLead?'★ ':''}${escapeHtml(g.staff.name)}</span>
-              <span class="oc-sub">Never worked: ${g.gapAreas.map(a=>escapeHtml(a.name)).join(', ')}</span>
+              <span class="oc-sub">${g.gapAreas.length} area${g.gapAreas.length===1?'':'s'} never worked: ${preview}${extra}</span>
             </div>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`}
     </div>
     <div class="modal-foot">
@@ -12637,7 +12680,41 @@ function renderStaffManagerModal(m){
     const avgEvalScore = approvedForAvg.length
       ? approvedForAvg.reduce((sum,r)=>sum+(r.productivity+r.performance+r.reliability)/3,0)/approvedForAvg.length
       : null;
-    if(worked.length===0) return evalLatestSection+evalTrendSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
+
+    // Manual "worked this area before this system tracked rotations" flags —
+    // the only way to backfill history for anything that predates the app.
+    // Tappable chips (same component as Language certifications) instead of
+    // a checkbox list, for fast multi-select; an optional note field appears
+    // per chip once it's checked. Persists immediately per chip via
+    // togglePriorExperience(), wired in the 'staff-manager' event block —
+    // unrelated to the staff record's own Save button.
+    const priorExpAreas = state.areas.filter(a=>!a.fixed);
+    const priorExpEntries = state.priorExperience[editing.id]||[];
+    const priorMarkedCount = priorExpEntries.length;
+    const priorExpSection = '<details class="stats-prior-exp-details" id="stats-prior-exp-details" data-staff-id="'+editing.id+'" style="margin-top:0;margin-bottom:20px;" '+(openPriorExpStaffIds.has(editing.id)?'open':'')+'>'+
+      '<summary class="stats-prior-exp-summary">Prior area experience (before this system)'+(priorMarkedCount?' — '+priorMarkedCount+' marked':'')+'</summary>'+
+      '<div class="field-hint" style="margin:6px 0 8px;">Tap any area '+escapeHtml(editing.name.split(' ')[0])+' worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>'+
+      '<div class="lang-cert-grid">'+
+      priorExpAreas.map(area=>{
+        const checked = priorExpEntries.some(e=>e.areaId===area.id);
+        return '<label class="prior-exp-chip'+(checked?' checked':'')+'">'+
+          '<input type="checkbox" class="prior-exp-check" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+
+          escapeHtml(area.name)+
+        '</label>';
+      }).join('')+
+      '</div>'+
+      (priorMarkedCount ? '<div class="pm-stack" style="margin-top:12px;">'+
+        priorExpAreas.filter(area=>priorExpEntries.some(e=>e.areaId===area.id)).map(area=>{
+          const entry = priorExpEntries.find(e=>e.areaId===area.id);
+          return '<div class="field" style="margin:0;">'+
+            '<label style="font-size:12px;">'+escapeHtml(area.name)+' — note</label>'+
+            '<input type="text" class="prior-exp-note" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" placeholder="Optional note" value="'+escapeHtml(entry.note||'')+'"/>'+
+          '</div>';
+        }).join('')+
+      '</div>' : '')+
+      '</details>';
+
+    if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
@@ -12728,6 +12805,11 @@ function renderStaffManagerModal(m){
       </div>`).join('');
     })()
     +(editing?`<button class="btn btn-light btn-sm" id="btn-submit-pos-req" style="width:100%;margin-top:8px;">+ Submit position request</button>`:'')
+
+    // ── Prior area experience — last, since it's an editing tool rather
+    // than a stat, and marking it here already updates Best fit/Proficiency
+    // above on the next render ──
+    +'<div style="margin-top:24px;">'+priorExpSection+'</div>'
     );
   })();
 
@@ -14948,6 +15030,29 @@ async function togglePriorExperience(staffId, areaId, checked, note){
   return sync.ok;
 }
 
+// Wires the "Prior area experience" <details> section shared by both places
+// it's rendered (the read-only staff-stats modal's checkbox list, and the
+// staff-manager editor's chip grid) — same open/checked/note behavior with
+// different markup/selectors, kept as one function so a fix here can't be
+// applied to one modal and forgotten in the other.
+function wirePriorExperienceControls(checkSelector, noteSelector){
+  const priorExpDetails = document.getElementById('stats-prior-exp-details');
+  if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{
+    const id = priorExpDetails.dataset.staffId;
+    if(priorExpDetails.open) openPriorExpStaffIds.add(id); else openPriorExpStaffIds.delete(id);
+  });
+  document.querySelectorAll(checkSelector).forEach(cb=>cb.addEventListener('change', async ()=>{
+    openPriorExpStaffIds.add(cb.dataset.staffId);
+    await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
+    render();
+  }));
+  document.querySelectorAll(noteSelector).forEach(inp=>inp.addEventListener('blur', async ()=>{
+    openPriorExpStaffIds.add(inp.dataset.staffId);
+    await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
+    render();
+  }));
+}
+
 // --- Languages manager (admin) ---
 function renderLanguagesManagerModal(m){
   const isNew = m.editId === '__new__';
@@ -14990,6 +15095,11 @@ function renderPositionsManagerModal(m){
     <div class="modal-body">
       ${editing?`
       <div class="field"><label>Position name</label><input type="text" id="pos-name-input" value="${escapeHtml(editing.name)}" placeholder="e.g. SA4FL"/></div>
+      <div class="field" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="pos-rotates-input" ${editing.rotates===false?'':'checked'} style="width:16px;height:16px;"/>
+        <label style="margin:0;" for="pos-rotates-input">Rotates through other areas</label>
+      </div>
+      <div class="field-hint" style="margin:-10px 0 16px;">Turn off for a single-station hire (e.g. Cashier CA1) — they'll be skipped by Experience gaps, Ready-for-a-new-path, and best-fit cross-training nudges.</div>
       <div style="display:flex;gap:8px;margin-bottom:16px;">
         <button class="btn btn-primary" id="pos-save-btn" style="flex:1;">Save</button>
         ${isNew?'':'<button class="btn btn-danger" id="pos-delete-btn">Delete</button>'}
@@ -15000,7 +15110,7 @@ function renderPositionsManagerModal(m){
       ${state.positions.length===0?'<div class="small-muted">No positions yet.</div>':''}
       ${state.positions.map(p=>`
         <div class="option-card" data-edit-pos="${p.id}">
-          <div class="oc-left"><span class="oc-name">🏷 ${escapeHtml(p.name)}</span></div>
+          <div class="oc-left"><span class="oc-name">🏷 ${escapeHtml(p.name)}</span>${p.rotates===false?'<span class="oc-sub">Single-station — doesn\'t rotate</span>':''}</div>
         </div>`).join('')}
       `}
     </div>
@@ -18095,18 +18205,7 @@ function attachHandlers(){
       await applyLunchChange(lunchSel.dataset.staffId, lunchSel.value);
       render();
     });
-    const priorExpDetails = document.getElementById('stats-prior-exp-details');
-    if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
-    document.querySelectorAll('.stats-prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
-      render();
-    }));
-    document.querySelectorAll('.stats-prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
-      render();
-    }));
+    wirePriorExperienceControls('.stats-prior-exp-check', '.stats-prior-exp-note');
   }
 
   // --- ready for a new path (100% area coverage list) ---
@@ -18926,16 +19025,17 @@ function attachHandlers(){
     on('pos-cancel-btn', ()=>openModal({type:'positions-manager'}));
     on('pos-save-btn', async ()=>{
       const name = document.getElementById('pos-name-input').value.trim();
+      const rotates = !!document.getElementById('pos-rotates-input')?.checked;
       if(!name){ showToast('Enter a position name','rust'); return; }
       if(activeModal.editId==='__new__'){
         const sortOrder = state.positions.length;
-        const sync = await syncCrudWrite(()=>window.RC.createPosition({name, sortOrder}));
-        state.positions.push({id: sync.ok ? sync.result.id : uid('pos'), name, sortOrder});
+        const sync = await syncCrudWrite(()=>window.RC.createPosition({name, sortOrder, rotates}));
+        state.positions.push({id: sync.ok ? sync.result.id : uid('pos'), name, sortOrder, rotates});
         showToast(sync.ok ? 'Position added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const p = state.positions.find(x=>x.id===activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updatePosition({positionId: p.id, name, sortOrder: p?.sortOrder||0}));
-        if(p) p.name = name;
+        const sync = await syncCrudWrite(()=>window.RC.updatePosition({positionId: p.id, name, sortOrder: p?.sortOrder||0, rotates}));
+        if(p){ p.name = name; p.rotates = rotates; }
         showToast(sync.ok ? 'Position updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       }
       saveState(); openModal({type:'positions-manager'});
@@ -18963,6 +19063,7 @@ function attachHandlers(){
         chip.classList.toggle('checked', cb.checked);
       });
     });
+    wirePriorExperienceControls('.prior-exp-check', '.prior-exp-note');
   }
 
   // --- time-off manager modal ---
@@ -21021,7 +21122,7 @@ function mapSupabaseBoard(board){
   const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
-  const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0 })).sort((a,b)=>a.sortOrder-b.sortOrder);
+  const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0, rotates: p.rotates!==false })).sort((a,b)=>a.sortOrder-b.sortOrder);
   const lunchTimes = (board.lunchTimes||[]).map(l=>({ id: l.id, label: l.label, sort_order: l.sort_order }));
   const breakTimes = (board.breakTimes||[]).map(b=>({ id: b.id, label: b.label, sort_order: b.sort_order }));
 
