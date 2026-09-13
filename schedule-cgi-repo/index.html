@@ -7183,6 +7183,8 @@
     --pm-accent-bg: color-mix(in srgb, var(--c-accent,#2F5FA8) 14%, var(--c-surface,#fff));
     --pm-success: var(--c-green,#34C759);
     --pm-success-bg: color-mix(in srgb, var(--c-green,#34C759) 16%, var(--c-surface,#fff));
+    --pm-warn: var(--c-orange,#FF9500);
+    --pm-warn-bg: color-mix(in srgb, var(--c-orange,#FF9500) 16%, var(--c-surface,#fff));
     --pm-danger: var(--c-red,#FF3B30);
     --pm-radius-sm: var(--r-sm,9px);
     --pm-radius-md: var(--r-md,12px);
@@ -7237,6 +7239,7 @@
   .pm-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--pm-radius-sm);white-space:nowrap;}
   .pm-badge.success{background:var(--pm-success-bg);color:var(--pm-success);}
   .pm-badge.accent{background:var(--pm-accent-bg);color:var(--pm-accent);}
+  .pm-badge.warn{background:var(--pm-warn-bg);color:var(--pm-warn);}
   .pm-fit-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
   .pm-fit-name{margin:0;font-size:18px;font-weight:700;color:var(--pm-text-primary);}
   .pm-fit-stats{display:flex;gap:20px;}
@@ -7245,6 +7248,14 @@
   .pm-card-footnote{margin:10px 0 0;font-size:12px;color:var(--pm-text-muted);border-top:1px solid var(--pm-border);padding-top:10px;}
 
   .pm-chart-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:14px 14px 10px;margin-bottom:20px;}
+  .pm-trend-svg{width:100%;height:90px;display:block;overflow:visible;}
+  .pm-trend-gridline{stroke:var(--pm-border);stroke-width:1;stroke-dasharray:3,3;}
+  .pm-trend-line{stroke:var(--pm-accent);stroke-width:2;fill:none;}
+  .pm-trend-dot{fill:var(--pm-accent);}
+  .pm-trend-value{font-size:9px;font-weight:700;fill:var(--pm-text-primary);}
+  .pm-trend-axis-label{font-size:7px;fill:var(--pm-text-muted);}
+  .pm-trend-labels{display:flex;justify-content:space-between;gap:4px;margin-top:2px;font-size:11px;color:var(--pm-text-secondary);text-align:center;line-height:1.4;}
+  .pm-trend-labels b{color:var(--pm-text-primary);font-weight:600;font-size:12px;}
 
   .pm-stack{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
   .pm-stat-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:12px 14px;}
@@ -7417,37 +7428,13 @@
     color:var(--md-sys-color-on-surface-variant);
     margin:var(--md-space-4) 0 var(--md-space-2);
   }
-  .stats-prof-grid{display:flex;flex-direction:column;gap:var(--md-space-2);}
-  .stats-prof-card{
-    background:var(--md-sys-color-surface-container-lowest);
-    border:1px solid var(--md-sys-color-outline-variant);
-    border-radius:var(--md-sys-shape-corner-medium);
-    padding:var(--md-space-3) var(--md-space-4);
-    transition:border-color .15s;
-  }
-  .stats-prof-card.current{border-color:var(--md-sys-color-primary);border-width:2px;}
-  .stats-prof-card-header{display:flex;align-items:center;gap:var(--md-space-2);margin-bottom:var(--md-space-2);}
   .area-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-  .stats-prof-area-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);flex:1;}
-  .stats-prof-rating-row{display:flex;align-items:center;gap:var(--md-space-3);margin-bottom:var(--md-space-1);}
   .prof-stars{display:flex;gap:2px;align-items:center;}
   .prof-star{font-size:18px;line-height:1;}
   .prof-star.filled{color:#F9A825;}
   .prof-star.half{color:#F9A825;opacity:0.5;}
   .prof-star.empty{color:var(--md-sys-color-outline);}
   .prof-stars.unrated{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
-  .stats-prof-badge{
-    font-size:10px;font-weight:700;
-    color:#fff;padding:2px 9px;
-    border-radius:var(--md-sys-shape-corner-full);
-    font-family:var(--mono);
-    white-space:nowrap;
-  }
-  .stats-prof-meta{
-    font-size:var(--md-sys-typescale-body-small-size);
-    color:var(--md-sys-color-on-surface-variant);
-    line-height:1.4;
-  }
 
   /* ── Stats tab ── */
   .stats-overall-bar-wrap{margin-bottom:var(--md-space-4);}
@@ -7477,10 +7464,6 @@
   .stats-prior-exp-note:focus{outline:none;border-color:var(--md-sys-color-primary);}
 
   /* ── Performance evaluations (Stats tab + team dashboard) ── */
-  .eval-summary-grid{display:flex;gap:var(--md-space-4);flex-wrap:wrap;margin-bottom:var(--md-space-2);}
-  .eval-summary-stat{display:flex;flex-direction:column;gap:2px;}
-  .eval-summary-label{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-weight:600;}
-  .eval-summary-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:var(--md-space-3);}
   .eval-rec-badge{font-size:11px;font-weight:700;color:#fff;padding:3px 10px;border-radius:var(--md-sys-shape-corner-full);white-space:nowrap;}
   .eval-rec-badge.small{font-size:9.5px;padding:2px 8px;}
   .eval-history-list{display:flex;flex-direction:column;gap:var(--md-space-2);}
@@ -7511,18 +7494,6 @@
   .rec-opt.sel .rec-opt-dot{border-color:#2F5FA8;background:#2F5FA8;}
   .rec-opt-t{font-weight:700;font-size:13.5px;}
   .rec-opt-d{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
-
-  /* ── Evaluation trend chart (staff performance profile) ── card-wrapped
-     and token-colored to match the eval-history-row cards it sits above,
-     instead of floating bars in a hardcoded blue that didn't adapt to
-     dark mode. Bars are width-capped and centered so 1-2 periods don't
-     stretch into one giant block (flex:1 used to do exactly that). */
-  .trend-chart-card{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-3);margin-bottom:var(--md-space-3);}
-  .trend-chart{height:110px;display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:16px 4px 0;border-bottom:1.5px solid var(--md-sys-color-outline-variant);}
-  .trend-bar{flex:0 1 44px;min-width:0;background:linear-gradient(to top,var(--md-sys-color-primary),var(--md-sys-color-primary-container));border-radius:5px 5px 0 0;position:relative;cursor:default;}
-  .trend-bar-v{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);}
-  .trend-labels{display:flex;justify-content:center;gap:10px;margin-top:6px;}
-  .trend-labels span{flex:0 1 44px;text-align:center;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);}
 
   /* ── Team dashboard ── */
   .team-dash-summary{display:flex;gap:var(--md-space-5);flex-wrap:wrap;margin-bottom:var(--md-space-4);padding-bottom:var(--md-space-4);border-bottom:1px solid var(--md-sys-color-outline-variant);}
@@ -12508,7 +12479,6 @@ function renderStaffManagerModal(m){
     </div>`;
 
   const tagsSwitchOn = m.swTags !== undefined ? m.swTags : !!(editing && editing.tags);
-  const lateStartSwitchOn = m.swLateStart !== undefined ? m.swLateStart : !!(editing && editing.lateStart);
   // Profile field values: prefer whatever was snapshotted onto the modal
   // when the user switched tabs (m.xxx) over the saved staff record, same
   // fallback the Rotation tab and the save handler already use. Without
@@ -12521,8 +12491,6 @@ function renderStaffManagerModal(m){
   const shiftVal       = m.shiftHours !== undefined ? m.shiftHours : (editing ? editing.shiftHours  : '');
   const lunchRaw        = m.lunchVal  !== undefined ? '/'+m.lunchVal : (editing ? editing.breakTimes : null);
   const breakRaw        = m.breakVal  !== undefined ? m.breakVal+'/' : (editing ? editing.breakTimes : null);
-  const hireDateVal    = m.hireDate  !== undefined ? m.hireDate  : (editing ? editing.hireDate||''  : '');
-  const lateStartVal   = m.lateStart !== undefined ? m.lateStart : (editing ? editing.lateStart||'' : '');
   const tagsVal        = m.tags      !== undefined ? m.tags      : (editing ? editing.tags||''      : '');
   const supervisorIdVal = m.supervisorId !== undefined ? m.supervisorId : (editing ? editing.supervisorId : null);
   const positionIdVal   = m.positionId   !== undefined ? m.positionId   : (editing ? editing.positionId   : null);
@@ -12549,16 +12517,6 @@ function renderStaffManagerModal(m){
     </div>
 
     <p class="pm-section-label">Details</p>
-    <div class="pm-list">
-      <div class="field" style="padding:12px 14px;border-bottom:1px solid var(--pm-border);margin:0;">
-        <label style="font-size:12px;color:var(--pm-text-secondary);">Hire date <span class="field-hint">(for seniority)</span></label>
-        <input type="date" id="staff-hiredate-input" value="${escapeHtml(hireDateVal)}" style="max-width:180px;margin-top:4px;"/>
-      </div>
-      ${pmToggle('sw-late-start', lateStartSwitchOn, '⏰', 'accent', 'Late start / partial day', 'Starts later than usual today')}
-    </div>
-    <div class="sw-reveal ${lateStartSwitchOn?'open':''}" id="late-start-reveal-wrap"><div class="field" style="margin-top:-8px;margin-bottom:16px;">
-      <input type="time" id="staff-latestart-input" value="${escapeHtml(lateStartVal)}" style="max-width:140px;"/>
-    </div></div>
     <div class="pm-list">
       ${pmToggle('sw-tags', tagsSwitchOn, '🏷', 'accent', 'Role tags', 'Optional label shown on chip')}
       ${pmToggle('sw-subcontractor', m.swSubcontractor !== undefined ? m.swSubcontractor : !!(editing&&editing.isSubcontractor), '🏢', 'success', 'Agency staff', 'Marks as sub-contracted')}
@@ -12597,9 +12555,6 @@ function renderStaffManagerModal(m){
   const statsTab = (() => {
     if(!editing) return '<div class="small-muted">Save first to see stats.</div>';
 
-    // star display helper: filled/empty stars for 1-5 rating
-    const stars = renderProficiencyStars;
-
     // ── Performance evaluations (Phase 2 mockup screen 4) ── fetched
     // on-demand when this tab is opened — see the fetch trigger in the
     // 'staff-manager' event-wiring block below. Shown above the rotation
@@ -12609,36 +12564,39 @@ function renderStaffManagerModal(m){
       const err = m.evalHistoryError;
       let body;
       if(err){
-        body = '<div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>';
+        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">Could not load evaluations — '+escapeHtml(err)+'</div>';
       } else if(hist===undefined || m._evalHistoryLoading){
-        body = '<div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>';
+        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">Loading evaluation history…</div>';
       } else if(hist.length===0){
-        body = '<div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
+        body = '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p><div class="small-muted" style="padding:8px 0;">No evaluations recorded yet.</div>';
       } else {
         // Only approved evaluations move the averages/latest recommendation —
         // a team_lead's still-pending/needs-revision submission is listed
         // below but doesn't count until a supervisor accepts it.
         const approved = hist.filter(r=>r.status==='approved');
         const awaiting = hist.filter(r=>r.status==='pending'||r.status==='needs_revision');
-        const avg = key => approved.length ? approved.reduce((sum,r)=>sum+r[key],0)/approved.length : 0;
         const summary = approved.length ? (()=>{
           const latest = approved[0];
           const recMeta = EVAL_RECOMMENDATION_META[latest.recommendation];
-          return '<div class="eval-summary-grid">'+
-              '<div class="eval-summary-stat"><span class="eval-summary-label">Productivity</span>'+stars(avg('productivity'))+'</div>'+
-              '<div class="eval-summary-stat"><span class="eval-summary-label">Performance</span>'+stars(avg('performance'))+'</div>'+
-              '<div class="eval-summary-stat"><span class="eval-summary-label">Reliability</span>'+stars(avg('reliability'))+'</div>'+
+          const badgeClass = latest.recommendation==='stay' ? 'success' : latest.recommendation==='advance' ? 'accent' : 'warn';
+          const evaluatorName = (latest.evaluator&&latest.evaluator.name) || 'Unknown';
+          const dateStr = latest.created_at ? new Date(latest.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+          return '<div class="pm-fit-header">'+
+              '<p class="pm-section-label pm-section-label-tight" style="margin:0;">Latest evaluation</p>'+
+              '<span class="pm-badge '+badgeClass+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
             '</div>'+
-            '<div class="eval-summary-meta">'+
-              '<span class="eval-rec-badge" style="background:'+(recMeta?.color||'#999')+'">'+(recMeta?.label||latest.recommendation)+'</span>'+
-              '<span class="small-muted"> · latest recommendation · '+approved.length+' approved evaluation'+(approved.length===1?'':'s')+'</span>'+
+            '<div class="pm-card">'+
+              '<div class="pm-eval-scores"><span>Productivity <b>'+latest.productivity+'</b></span><span>Performance <b>'+latest.performance+'</b></span><span>Reliability <b>'+latest.reliability+'</b></span></div>'+
+              (latest.note ? '<p class="pm-eval-note">'+escapeHtml(latest.note)+'</p>' : '')+
+              '<p class="pm-eval-byline">By '+escapeHtml(evaluatorName)+(dateStr?' · '+escapeHtml(dateStr):'')+'</p>'+
             '</div>';
-        })() : '<div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
+        })() : '<p class="pm-section-label pm-section-label-tight">Latest evaluation</p><div class="small-muted" style="padding:4px 0 12px;">No approved evaluations yet.</div>';
         const awaitingBanner = awaiting.length
           ? '<div class="small-muted" style="margin-bottom:10px;">⏳ '+awaiting.length+' evaluation'+(awaiting.length===1?'':'s')+' awaiting supervisor review</div>'
           : '';
         const trendChart = renderEvalTrendChart(approved);
-        body = summary + awaitingBanner + trendChart +
+        const olderHistory = hist.length>1 ? (
+          '<p class="pm-section-label" style="margin-top:20px;">All evaluations</p>'+
           '<div class="eval-history-list">'+
           hist.slice(0,8).map(r=>{
             const evaluatorName = (r.evaluator&&r.evaluator.name) || 'Unknown';
@@ -12661,9 +12619,11 @@ function renderStaffManagerModal(m){
               (r.review_note ? '<div class="eval-history-note" style="font-style:normal;"><b>Review note:</b> '+escapeHtml(r.review_note)+'</div>' : '')+
             '</div>';
           }).join('')+
-          '</div>';
+          '</div>'
+        ) : '';
+        body = summary + awaitingBanner + trendChart + olderHistory;
       }
-      return '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p>'+body;
+      return body;
     })();
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
@@ -12689,37 +12649,37 @@ function renderStaffManagerModal(m){
       evalSection+
 
       // ── Best fit card ──
-      (bestFit?
-        '<p class="pm-section-label">Best fit</p>'+
-        '<div class="pm-card"><div class="pm-fit-header"><p class="pm-fit-name">'+escapeHtml(bestFit.area.name)+'</p><span class="pm-badge success">Top ranked</span></div>'+
-        '<p class="small-muted" style="margin:0;">'+(bestFit.timesWorked>0
-          ? bestFit.timesWorked+'× experience · '+(bestFit.periodsAgo===0?'last rotation':bestFit.periodsAgo+' rotations ago')
-          : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):''))+'</p></div>':'')+
+      (bestFit?(()=>{
+        const bestFitRating = getAreaRating(editing.id, bestFit.areaId);
+        return '<p class="pm-section-label">Best fit</p>'+
+        '<div class="pm-card">'+
+          '<div class="pm-fit-header"><p class="pm-fit-name">'+escapeHtml(bestFit.area.name)+'</p><span class="pm-badge success">Top ranked</span></div>'+
+          '<div class="pm-fit-stats">'+
+            '<div><p class="pm-fit-stat-value">'+bestFit.timesWorked+'</p><p class="pm-fit-stat-label">rotation'+(bestFit.timesWorked===1?'':'s')+'</p></div>'+
+            (bestFitRating>0?'<div><p class="pm-fit-stat-value">'+bestFitRating.toFixed(1)+'</p><p class="pm-fit-stat-label">avg score</p></div>':'')+
+          '</div>'+
+          '<p class="pm-card-footnote">'+(bestFit.timesWorked>0
+            ? 'Ranked by rotations worked and average proficiency rating · '+(bestFit.periodsAgo===0?'last rotation':bestFit.periodsAgo+' rotations ago')
+            : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):''))+'</p>'+
+        '</div>';
+      })():'')+
 
       // ── Worked areas with proficiency ──
       '<p class="pm-section-label">Proficiency by area</p>'+
-      '<div class="stats-prof-grid">'+
+      '<div class="pm-stack">'+
       worked.map(r=>{
         const rating  = getAreaRating(editing.id, r.areaId);
-        const lvl     = getProficiencyLevel(rating);
-        const history = getAreaRatingHistory(editing.id, r.areaId);
-        const lastRated = history.length ? history[history.length-1] : null;
         const isCurrent = r.areaId === currentAreaId;
-        return '<div class="stats-prof-card'+(isCurrent?' current':'')+'">'+
-          '<div class="stats-prof-card-header">'+
-          '<span class="area-dot" style="background:'+r.area.color+'"></span>'+
-          '<span class="stats-prof-area-name">'+escapeHtml(r.area.name)+'</span>'+
-          (isCurrent?'<span class="stats-current-tag">now</span>':'')+
+        const ratingLabel = rating ? rating.toFixed(1)+' avg' : 'Not yet rated';
+        const workedLabel = r.timesWorked>0
+          ? r.timesWorked+'× worked'+(r.periodsAgo===0?' · last rotation':' · '+r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since')
+          : 'Marked as prior experience'+(r.manualNote?': '+escapeHtml(r.manualNote):'');
+        return '<div class="pm-stat-card'+(isCurrent?' current':'')+'">'+
+          '<div class="pm-stat-card-header">'+
+          '<p class="pm-stat-title"><span class="area-dot" style="background:'+r.area.color+'"></span>'+escapeHtml(r.area.name)+'</p>'+
+          (isCurrent?'<span class="pm-badge accent">Current</span>':'')+
           '</div>'+
-          '<div class="stats-prof-rating-row">'+
-          stars(rating)+
-          (rating?'<span class="stats-prof-badge" style="background:'+lvl.color+'">'+lvl.label+'</span>':'')+'</div>'+
-          '<div class="stats-prof-meta">'+
-          (r.timesWorked>0
-            ? r.timesWorked+'× worked'+(r.periodsAgo===0?' · last rotation':' · '+r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since')
-            : 'Marked as prior experience'+(r.manualNote?': '+escapeHtml(r.manualNote):''))+
-          (lastRated?' · rated '+lastRated.period:' · not yet rated')+
-          '</div>'+
+          '<p class="pm-stat-meta">'+ratingLabel+' · '+workedLabel+'</p>'+
           '</div>';
       }).join('')+
       '</div>'+
@@ -15446,32 +15406,43 @@ const EVAL_RECOMMENDATION_META = {
 // and shows the last 6 periods oldest-to-newest. Evaluations with no
 // period_id (submitted outside a formal rotation) aren't plottable on a
 // period timeline, so they're excluded here — they still show in the
-// history list above.
+// history list above — an SVG line chart, one point per approved evaluation
+// (oldest→newest, last 6 shown), x-axis labeled with the area worked plus
+// a short date underneath. A dashed gridline marks the 5.0 scale ceiling.
 function renderEvalTrendChart(approvedRows){
-  const byPeriod = {};
-  approvedRows.forEach(r=>{
-    if(!r.period_id) return;
-    if(!byPeriod[r.period_id]) byPeriod[r.period_id] = { label: (r.period&&r.period.period_label)||'?', scores: [], earliest: r.created_at };
-    byPeriod[r.period_id].scores.push((r.productivity+r.performance+r.reliability)/3);
-    if(r.created_at < byPeriod[r.period_id].earliest) byPeriod[r.period_id].earliest = r.created_at;
-  });
-  const periods = Object.values(byPeriod)
-    .map(p=>({ label: p.label, combined: p.scores.reduce((a,b)=>a+b,0)/p.scores.length, earliest: p.earliest }))
-    .sort((a,b)=> a.earliest < b.earliest ? -1 : (a.earliest > b.earliest ? 1 : 0))
-    .slice(-6);
-  if(periods.length===0) return '';
-  const shortLabel = label => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(label);
-    if(!m) return label;
-    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return months[Number(m[2])-1]+' '+Number(m[3]);
+  const shortDate = iso => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : (d.getMonth()+1)+'-'+String(d.getDate()).padStart(2,'0');
   };
-  return '<div class="stats-prof-section-label" style="margin-top:0;">Trend over time</div>'+
-    '<div class="small-muted" style="margin-bottom:6px;">Combined score, last '+periods.length+' rotation period'+(periods.length===1?'':'s')+'</div>'+
-    '<div class="trend-chart-card"><div class="trend-chart">'+
-      periods.map(p=>'<div class="trend-bar" style="height:'+Math.max(6,Math.round(p.combined/5*100))+'%;" title="'+escapeHtml(shortLabel(p.label))+': '+p.combined.toFixed(1)+' / 5"><span class="trend-bar-v">'+p.combined.toFixed(1)+'</span></div>').join('')+
-    '</div>'+
-    '<div class="trend-labels">'+periods.map(p=>'<span>'+escapeHtml(shortLabel(p.label))+'</span>').join('')+'</div></div>';
+  const pts = approvedRows.slice()
+    .filter(r=>r.created_at)
+    .sort((a,b)=> a.created_at < b.created_at ? -1 : (a.created_at > b.created_at ? 1 : 0))
+    .slice(-6)
+    .map(r=>({
+      score: (r.productivity+r.performance+r.reliability)/3,
+      areaName: (r.area&&r.area.name) || '—',
+      dateLabel: shortDate(r.created_at),
+    }));
+  if(pts.length===0) return '';
+  const W=300, yTop=18, yBottom=78, xPad=16;
+  const xFor = i => pts.length>1 ? xPad + i*(W-2*xPad)/(pts.length-1) : W/2;
+  const yFor = s => yBottom - Math.max(0,Math.min(1,s/5))*(yBottom-yTop);
+  const coords = pts.map((p,i)=>({...p, x:xFor(i), y:yFor(p.score)}));
+  const linePath = coords.map((c,i)=>(i===0?'M':'L')+c.x.toFixed(1)+' '+c.y.toFixed(1)).join(' ');
+  const dots = coords.map(c=>
+    '<circle cx="'+c.x.toFixed(1)+'" cy="'+c.y.toFixed(1)+'" r="3.5" class="pm-trend-dot"/>'+
+    '<text x="'+c.x.toFixed(1)+'" y="'+(c.y<28?(c.y+16):(c.y-8)).toFixed(1)+'" text-anchor="middle" class="pm-trend-value">'+c.score.toFixed(1)+'</text>'
+  ).join('');
+  return '<p class="pm-section-label" style="margin-top:0;">Evaluation trend</p>'+
+    '<div class="pm-chart-card">'+
+    '<svg viewBox="0 0 '+W+' 90" class="pm-trend-svg" preserveAspectRatio="none">'+
+      '<line x1="'+xPad+'" y1="'+yTop+'" x2="'+(W-xPad)+'" y2="'+yTop+'" class="pm-trend-gridline"/>'+
+      '<text x="'+xPad+'" y="'+(yTop-6)+'" class="pm-trend-axis-label">5.0</text>'+
+      (coords.length>1?'<path d="'+linePath+'" class="pm-trend-line"/>':'')+
+      dots+
+    '</svg>'+
+    '<div class="pm-trend-labels">'+coords.map(c=>'<span><b>'+escapeHtml(c.areaName)+'</b>'+(c.dateLabel?'<br>'+escapeHtml(c.dateLabel):'')+'</span>').join('')+'</div>'+
+    '</div>';
 }
 
 // Groups raw evaluation rows (as returned by fetchTeamPerformanceOverview)
@@ -18283,29 +18254,22 @@ function attachHandlers(){
       });
     });
 
-    // switches that reveal/hide a field below them — now toggle a CSS max-height/opacity
+    // Role-tags switch reveals a field below it — toggles a CSS max-height/opacity
     // reveal wrapper directly (no re-render at all), so both the switch AND the field glide smoothly
-    const revealWrapFor = { 'sw-tags':'tags-reveal-wrap', 'sw-late-start':'late-start-reveal-wrap' };
-    ['sw-tags','sw-late-start'].forEach(id=>{
-      const btn = document.getElementById(id);
+    (()=>{
+      const btn = document.getElementById('sw-tags');
       if(!btn) return;
       btn.addEventListener('click',()=>{
         const nowOn = !btn.classList.contains('on');
         btn.classList.toggle('on', nowOn);
         btn.setAttribute('aria-checked', String(nowOn));
-        const wrap = document.getElementById(revealWrapFor[id]);
+        const wrap = document.getElementById('tags-reveal-wrap');
         if(wrap) wrap.classList.toggle('open', nowOn);
-        const key = {
-          'sw-tags':       'swTags',
-          'sw-late-start': 'swLateStart',
-        }[id];
         const snap = snapshotStaffForm();
         const definedSnap = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
-        Object.assign(activeModal, definedSnap, {[key]: nowOn,
-          swTags: id==='sw-tags' ? nowOn : (activeModal.swTags !== undefined ? activeModal.swTags : undefined),
-        });
+        Object.assign(activeModal, definedSnap, { swTags: nowOn });
       });
-    });
+    })();
 
     // Language certifications row — a plain tap-to-expand row (no on/off
     // switch, just a chevron; langSwitchOn only ever controlled whether
