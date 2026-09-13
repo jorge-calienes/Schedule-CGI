@@ -642,13 +642,13 @@ export async function deleteLanguage({ languageId }) {
   if (error) throw error;
 }
 
-export async function createPosition({ name, sortOrder }) {
-  const { data, error } = await supabase.from('positions').insert({ name, sort_order: sortOrder || 0 }).select().single();
+export async function createPosition({ name, sortOrder, rotates }) {
+  const { data, error } = await supabase.from('positions').insert({ name, sort_order: sortOrder || 0, rotates: rotates !== false }).select().single();
   if (error) throw error;
   return data;
 }
-export async function updatePosition({ positionId, name, sortOrder }) {
-  const { error } = await supabase.from('positions').update({ name, sort_order: sortOrder || 0 }).eq('id', positionId);
+export async function updatePosition({ positionId, name, sortOrder, rotates }) {
+  const { error } = await supabase.from('positions').update({ name, sort_order: sortOrder || 0, rotates: rotates !== false }).eq('id', positionId);
   if (error) throw error;
 }
 export async function deletePosition({ positionId }) {
