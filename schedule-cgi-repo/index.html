@@ -7394,6 +7394,31 @@
     color:#fff;font-weight:600;
   }
 
+  /* Same pill look as .lang-cert-chip, kept as its own class (not shared)
+     since prior-experience chips save immediately per tap instead of
+     deferring to the form's Save button — a shared class would also pick
+     up the generic .lang-cert-chip click handler that only flips local
+     state, double-handling the click. */
+  .prior-exp-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:7px 14px;
+    border:1.5px solid var(--c-border,rgba(0,0,0,.09));
+    border-radius:var(--r-pill,999px);
+    font-family:inherit;
+    font-size:14px;font-weight:500;
+    color:var(--c-text-2,#6E6E73);
+    background:var(--c-surface,#fff);
+    cursor:pointer;
+    transition:border-color .15s var(--ease-out),color .15s var(--ease-out),background .15s var(--ease-out);
+    user-select:none;
+  }
+  .prior-exp-chip:hover{border-color:var(--c-accent);color:var(--c-accent);}
+  .prior-exp-chip.checked{
+    background:var(--c-accent,#2F5FA8);
+    border-color:var(--c-accent,#2F5FA8);
+    color:#fff;font-weight:600;
+  }
+
   /* ── View container (all non-board tabs) ── */
   .view-container{
     flex:1;
@@ -12656,28 +12681,38 @@ function renderStaffManagerModal(m){
       ? approvedForAvg.reduce((sum,r)=>sum+(r.productivity+r.performance+r.reliability)/3,0)/approvedForAvg.length
       : null;
 
-    // Manual "worked this area before this system tracked rotations" checklist
-    // — the only way to backfill history for anything that predates the app.
-    // Reuses the same markup/classes and togglePriorExperience() call as the
-    // team-lead-facing staff-stats modal, just placed in this tabbed editor's
-    // Stats tab instead, wired in the 'staff-manager' event-handling block.
-    const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
+    // Manual "worked this area before this system tracked rotations" flags —
+    // the only way to backfill history for anything that predates the app.
+    // Tappable chips (same component as Language certifications) instead of
+    // a checkbox list, for fast multi-select; an optional note field appears
+    // per chip once it's checked. Persists immediately per chip via
+    // togglePriorExperience(), wired in the 'staff-manager' event block —
+    // unrelated to the staff record's own Save button.
+    const priorExpAreas = state.areas.filter(a=>!a.fixed);
+    const priorExpEntries = state.priorExperience[editing.id]||[];
+    const priorMarkedCount = priorExpEntries.length;
     const priorExpSection = '<details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:0;margin-bottom:20px;" '+(statsPriorExpOpen?'open':'')+'>'+
       '<summary class="stats-prior-exp-summary">Prior area experience (before this system)'+(priorMarkedCount?' — '+priorMarkedCount+' marked':'')+'</summary>'+
-      '<div class="field-hint" style="margin:6px 0 8px;">Check off areas '+escapeHtml(editing.name.split(' ')[0])+' worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>'+
-      '<div class="stats-prior-exp-list">'+
-      state.areas.filter(a=>!a.fixed).map(area=>{
-        const entry = (state.priorExperience[editing.id]||[]).find(e=>e.areaId===area.id);
-        return '<div class="stats-prior-exp-row">'+
-          '<label class="stats-prior-exp-check-wrap">'+
-            '<input type="checkbox" class="stats-prior-exp-check" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" '+(entry?'checked':'')+'/>'+
-            '<span class="area-swatch" style="background:'+area.color+'"></span>'+
-            '<span class="stats-prior-exp-name">'+escapeHtml(area.name)+'</span>'+
-          '</label>'+
-          (entry?'<input type="text" class="stats-prior-exp-note" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" placeholder="Optional note" value="'+escapeHtml(entry.note||'')+'"/>':'')+
-        '</div>';
+      '<div class="field-hint" style="margin:6px 0 8px;">Tap any area '+escapeHtml(editing.name.split(' ')[0])+' worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>'+
+      '<div class="lang-cert-grid">'+
+      priorExpAreas.map(area=>{
+        const checked = priorExpEntries.some(e=>e.areaId===area.id);
+        return '<label class="prior-exp-chip'+(checked?' checked':'')+'">'+
+          '<input type="checkbox" class="prior-exp-check" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+
+          escapeHtml(area.name)+
+        '</label>';
       }).join('')+
-      '</div></details>';
+      '</div>'+
+      (priorMarkedCount ? '<div class="pm-stack" style="margin-top:12px;">'+
+        priorExpAreas.filter(area=>priorExpEntries.some(e=>e.areaId===area.id)).map(area=>{
+          const entry = priorExpEntries.find(e=>e.areaId===area.id);
+          return '<div class="field" style="margin:0;">'+
+            '<label style="font-size:12px;">'+escapeHtml(area.name)+' — note</label>'+
+            '<input type="text" class="prior-exp-note" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" placeholder="Optional note" value="'+escapeHtml(entry.note||'')+'"/>'+
+          '</div>';
+        }).join('')+
+      '</div>' : '')+
+      '</details>';
 
     if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
@@ -12689,8 +12724,6 @@ function renderStaffManagerModal(m){
       '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
       '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
       '</div>'+
-
-      priorExpSection+
 
       // ── Best fit card ──
       (bestFit?(()=>{
@@ -12772,6 +12805,11 @@ function renderStaffManagerModal(m){
       </div>`).join('');
     })()
     +(editing?`<button class="btn btn-light btn-sm" id="btn-submit-pos-req" style="width:100%;margin-top:8px;">+ Submit position request</button>`:'')
+
+    // ── Prior area experience — last, since it's an editing tool rather
+    // than a stat, and marking it here already updates Best fit/Proficiency
+    // above on the next render ──
+    +'<div style="margin-top:24px;">'+priorExpSection+'</div>'
     );
   })();
 
@@ -19015,12 +19053,12 @@ function attachHandlers(){
     });
     const priorExpDetails = document.getElementById('stats-prior-exp-details');
     if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
-    document.querySelectorAll('.stats-prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
+    document.querySelectorAll('.prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
       statsPriorExpOpen = true;
       await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
       render();
     }));
-    document.querySelectorAll('.stats-prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
+    document.querySelectorAll('.prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
       statsPriorExpOpen = true;
       await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
       render();
