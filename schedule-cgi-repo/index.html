@@ -10285,7 +10285,7 @@ let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
-let statsPriorExpOpen = false; // keeps the "Prior area experience" <details> expanded across re-renders while checking boxes
+const openPriorExpStaffIds = new Set(); // staffIds whose "Prior area experience" <details> is expanded — persists across re-renders while checking boxes, scoped per staff (and shared across the two modals that both show this section) so opening it for one person doesn't leave it pre-expanded for the next
 let tourState = null; // {stepIndex} while the app tour is active, else null
 let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
 
@@ -12228,7 +12228,7 @@ function renderStaffStatsModal(m){
       ` : ''}
 
       ${!isTeamLeadRole() ? `
-      <details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:14px;" ${statsPriorExpOpen?'open':''}>
+      <details class="stats-prior-exp-details" id="stats-prior-exp-details" data-staff-id="${s.id}" style="margin-top:14px;" ${openPriorExpStaffIds.has(s.id)?'open':''}>
         <summary class="stats-prior-exp-summary">Prior area experience (before this system)${priorMarkedCount?' — '+priorMarkedCount+' marked':''}</summary>
         <div class="field-hint" style="margin:6px 0 8px;">Check off areas ${escapeHtml(s.name.split(' ')[0])} worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>
         <div class="stats-prior-exp-list">
@@ -12691,7 +12691,7 @@ function renderStaffManagerModal(m){
     const priorExpAreas = state.areas.filter(a=>!a.fixed);
     const priorExpEntries = state.priorExperience[editing.id]||[];
     const priorMarkedCount = priorExpEntries.length;
-    const priorExpSection = '<details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:0;margin-bottom:20px;" '+(statsPriorExpOpen?'open':'')+'>'+
+    const priorExpSection = '<details class="stats-prior-exp-details" id="stats-prior-exp-details" data-staff-id="'+editing.id+'" style="margin-top:0;margin-bottom:20px;" '+(openPriorExpStaffIds.has(editing.id)?'open':'')+'>'+
       '<summary class="stats-prior-exp-summary">Prior area experience (before this system)'+(priorMarkedCount?' — '+priorMarkedCount+' marked':'')+'</summary>'+
       '<div class="field-hint" style="margin:6px 0 8px;">Tap any area '+escapeHtml(editing.name.split(' ')[0])+' worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>'+
       '<div class="lang-cert-grid">'+
@@ -15028,6 +15028,29 @@ async function togglePriorExperience(staffId, areaId, checked, note){
     showToast(`Not saved to the database: ${sync.error?.message||'try again'}`, 'rust');
   }
   return sync.ok;
+}
+
+// Wires the "Prior area experience" <details> section shared by both places
+// it's rendered (the read-only staff-stats modal's checkbox list, and the
+// staff-manager editor's chip grid) — same open/checked/note behavior with
+// different markup/selectors, kept as one function so a fix here can't be
+// applied to one modal and forgotten in the other.
+function wirePriorExperienceControls(checkSelector, noteSelector){
+  const priorExpDetails = document.getElementById('stats-prior-exp-details');
+  if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{
+    const id = priorExpDetails.dataset.staffId;
+    if(priorExpDetails.open) openPriorExpStaffIds.add(id); else openPriorExpStaffIds.delete(id);
+  });
+  document.querySelectorAll(checkSelector).forEach(cb=>cb.addEventListener('change', async ()=>{
+    openPriorExpStaffIds.add(cb.dataset.staffId);
+    await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
+    render();
+  }));
+  document.querySelectorAll(noteSelector).forEach(inp=>inp.addEventListener('blur', async ()=>{
+    openPriorExpStaffIds.add(inp.dataset.staffId);
+    await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
+    render();
+  }));
 }
 
 // --- Languages manager (admin) ---
@@ -18182,18 +18205,7 @@ function attachHandlers(){
       await applyLunchChange(lunchSel.dataset.staffId, lunchSel.value);
       render();
     });
-    const priorExpDetails = document.getElementById('stats-prior-exp-details');
-    if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
-    document.querySelectorAll('.stats-prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
-      render();
-    }));
-    document.querySelectorAll('.stats-prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
-      render();
-    }));
+    wirePriorExperienceControls('.stats-prior-exp-check', '.stats-prior-exp-note');
   }
 
   // --- ready for a new path (100% area coverage list) ---
@@ -19051,18 +19063,7 @@ function attachHandlers(){
         chip.classList.toggle('checked', cb.checked);
       });
     });
-    const priorExpDetails = document.getElementById('stats-prior-exp-details');
-    if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
-    document.querySelectorAll('.prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
-      render();
-    }));
-    document.querySelectorAll('.prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
-      statsPriorExpOpen = true;
-      await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
-      render();
-    }));
+    wirePriorExperienceControls('.prior-exp-check', '.prior-exp-note');
   }
 
   // --- time-off manager modal ---
