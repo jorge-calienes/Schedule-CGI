@@ -12655,7 +12655,31 @@ function renderStaffManagerModal(m){
     const avgEvalScore = approvedForAvg.length
       ? approvedForAvg.reduce((sum,r)=>sum+(r.productivity+r.performance+r.reliability)/3,0)/approvedForAvg.length
       : null;
-    if(worked.length===0) return evalLatestSection+evalTrendSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
+
+    // Manual "worked this area before this system tracked rotations" checklist
+    // — the only way to backfill history for anything that predates the app.
+    // Reuses the same markup/classes and togglePriorExperience() call as the
+    // team-lead-facing staff-stats modal, just placed in this tabbed editor's
+    // Stats tab instead, wired in the 'staff-manager' event-handling block.
+    const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
+    const priorExpSection = '<details class="stats-prior-exp-details" id="stats-prior-exp-details" style="margin-top:0;margin-bottom:20px;" '+(statsPriorExpOpen?'open':'')+'>'+
+      '<summary class="stats-prior-exp-summary">Prior area experience (before this system)'+(priorMarkedCount?' — '+priorMarkedCount+' marked':'')+'</summary>'+
+      '<div class="field-hint" style="margin:6px 0 8px;">Check off areas '+escapeHtml(editing.name.split(' ')[0])+' worked before rotations started being tracked here — counts toward "best fit" suggestions just like real history.</div>'+
+      '<div class="stats-prior-exp-list">'+
+      state.areas.filter(a=>!a.fixed).map(area=>{
+        const entry = (state.priorExperience[editing.id]||[]).find(e=>e.areaId===area.id);
+        return '<div class="stats-prior-exp-row">'+
+          '<label class="stats-prior-exp-check-wrap">'+
+            '<input type="checkbox" class="stats-prior-exp-check" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" '+(entry?'checked':'')+'/>'+
+            '<span class="area-swatch" style="background:'+area.color+'"></span>'+
+            '<span class="stats-prior-exp-name">'+escapeHtml(area.name)+'</span>'+
+          '</label>'+
+          (entry?'<input type="text" class="stats-prior-exp-note" data-staff-id="'+editing.id+'" data-area-id="'+area.id+'" placeholder="Optional note" value="'+escapeHtml(entry.note||'')+'"/>':'')+
+        '</div>';
+      }).join('')+
+      '</div></details>';
+
+    if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
@@ -12665,6 +12689,8 @@ function renderStaffManagerModal(m){
       '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
       '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
       '</div>'+
+
+      priorExpSection+
 
       // ── Best fit card ──
       (bestFit?(()=>{
@@ -18987,6 +19013,18 @@ function attachHandlers(){
         chip.classList.toggle('checked', cb.checked);
       });
     });
+    const priorExpDetails = document.getElementById('stats-prior-exp-details');
+    if(priorExpDetails) priorExpDetails.addEventListener('toggle', ()=>{ statsPriorExpOpen = priorExpDetails.open; });
+    document.querySelectorAll('.stats-prior-exp-check').forEach(cb=>cb.addEventListener('change', async ()=>{
+      statsPriorExpOpen = true;
+      await togglePriorExperience(cb.dataset.staffId, cb.dataset.areaId, cb.checked);
+      render();
+    }));
+    document.querySelectorAll('.stats-prior-exp-note').forEach(inp=>inp.addEventListener('blur', async ()=>{
+      statsPriorExpOpen = true;
+      await togglePriorExperience(inp.dataset.staffId, inp.dataset.areaId, true, inp.value.trim());
+      render();
+    }));
   }
 
   // --- time-off manager modal ---
