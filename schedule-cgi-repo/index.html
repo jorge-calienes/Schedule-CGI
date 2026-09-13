@@ -6708,6 +6708,7 @@
   .chip-blocked-badge{background:#fee2e2;color:#dc2626;}
   /* chip dot-menu */
   .chip{position:relative;}
+  .chip.chip-drop-target{box-shadow:0 0 0 2px var(--c-accent,#2F5FA8);}
   .chip:has(.chip-action-menu){z-index:100;overflow:visible;}
   .chip-actions{
     display:flex;align-items:center;justify-content:space-between;
@@ -8932,6 +8933,7 @@ let state = {
   tempMoves: {},       // {staffId: {returnToAreaId, date}} a move/swap marked "just for today" — snaps back on the next day's load, same mechanic as coverage but not tied to covering an absence
   timeOff: {},         // {staffId: [{id, label, startDate, endDate}]}
   areaOrder: {},       // {department: [areaId,...]} user-defined area column order
+  staffOrder: {},      // {areaId: [staffId,...]} user-defined staff display order within an area
   rotationWeeks: 2,     // default length (in weeks) of a rotation period
   rotationStartDate: null, // ISO date the CURRENT in-progress period actually starts on
   loaded:false,
@@ -9523,7 +9525,14 @@ function blockPartnersOf(staffId){
 // who is currently (live) in a given area, excluding one staff id optionally
 function staffInArea(areaId, excludeId){
   // Returns ALL assigned staff (including called-out) — used for chip rendering
-  return state.staff.filter(s => state.assignments[s.id]===areaId && s.id!==excludeId);
+  const list = state.staff.filter(s => state.assignments[s.id]===areaId && s.id!==excludeId);
+  const so = (state.staffOrder||{})[areaId];
+  if(so && so.length){
+    const inOrder = so.map(id=>list.find(s=>s.id===id)).filter(Boolean);
+    const rest    = list.filter(s=>!so.includes(s.id));
+    return [...inOrder, ...rest];
+  }
+  return list;
 }
 function activeInArea(areaId, excludeId){
   // Returns only physically present staff (excludes callouts) — used for capacity checks
@@ -15989,6 +15998,12 @@ function attachHandlers(){
         if(!state.areaOrder) state.areaOrder = {};
         state.areaOrder[dept] = ao;
         saveState();
+        // Without this the reorder only ever lived in this browser's local
+        // state and silently reverted to the areas table's original
+        // sort_order on the next fresh load (a new device, cleared storage,
+        // or just re-fetching the board) — see updateDepartmentOrder for
+        // the same fix applied to departments.
+        syncBoardWrite(()=>window.RC.updateAreaOrder({order: ao}), 'reorder areas');
       }
       render();
     });
@@ -16002,7 +16017,54 @@ function attachHandlers(){
       chip.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
-    chip.addEventListener('dragend', ()=>{ chip.classList.remove('dragging'); boardInteractionInProgress = false; });
+    chip.addEventListener('dragend', ()=>{
+      chip.classList.remove('dragging');
+      boardInteractionInProgress = false;
+      document.querySelectorAll('.chip-drop-target').forEach(c=>c.classList.remove('chip-drop-target'));
+    });
+  });
+
+  // ── Chip drag-to-reorder within the same area ──────────────────────────
+  // Dropping a chip directly onto another chip in the SAME area reorders
+  // them in place; dropping onto a chip in a DIFFERENT area falls through
+  // to the normal move/swap flow (attemptPlace), same as dropping on empty
+  // area space. stopPropagation keeps the area-level [data-dropzone] drop
+  // handler below from also firing for this same event.
+  document.querySelectorAll('.chip[data-staff-id]').forEach(chipEl=>{
+    chipEl.addEventListener('dragover', e=>{
+      if(!dragStaffId || dragStaffId===chipEl.dataset.staffId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chipEl.classList.add('chip-drop-target');
+    });
+    chipEl.addEventListener('dragleave', ()=>{ chipEl.classList.remove('chip-drop-target'); });
+    chipEl.addEventListener('drop', e=>{
+      if(!dragStaffId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chipEl.classList.remove('chip-drop-target');
+      const targetStaffId = chipEl.dataset.staffId;
+      if(targetStaffId===dragStaffId){ dragStaffId=null; return; }
+      const sourceAreaId = state.assignments[dragStaffId];
+      const targetAreaId = state.assignments[targetStaffId];
+      if(sourceAreaId && sourceAreaId===targetAreaId){
+        const members = staffInArea(targetAreaId).map(s=>s.id);
+        const from = members.indexOf(dragStaffId);
+        const to   = members.indexOf(targetStaffId);
+        if(from>=0 && to>=0){
+          members.splice(from, 1);
+          members.splice(to, 0, dragStaffId);
+          if(!state.staffOrder) state.staffOrder = {};
+          state.staffOrder[targetAreaId] = members;
+          saveState();
+          syncBoardWrite(()=>window.RC.updateAssignmentOrder({order: members}), 'reorder staff');
+          render();
+        }
+      } else {
+        attemptPlace(dragStaffId, targetAreaId, false);
+      }
+      dragStaffId = null;
+    });
   });
 
   document.querySelectorAll('[data-dropzone]').forEach(zone=>{
@@ -20636,6 +20698,16 @@ function mapSupabaseBoard(board){
     assignments[row.staff_id] = row.area_id || null;
   });
 
+  // Per-area staff display order, from assignments.sort_order (already
+  // fetched sorted by loadBoard()) — used as an overlay by staffInArea() the
+  // same way state.areaOrder overlays the column order.
+  const staffOrder = {};
+  (board.assignments||[]).forEach(row=>{
+    if(!row.area_id) return;
+    if(!staffOrder[row.area_id]) staffOrder[row.area_id] = [];
+    staffOrder[row.area_id].push(row.staff_id);
+  });
+
   // board.staff only ever contains active=true rows (loadBoard()'s query
   // filters that server-side) — a callout row left behind for someone who
   // was since archived would otherwise become a "ghost" entry that
@@ -20717,7 +20789,7 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta };
+  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -20785,6 +20857,7 @@ function applyMappedBoard(mapped){
   state.positions = mapped.positions;
   state.rotationFlows = mapped.rotationFlows;
   state.assignments = mapped.assignments;
+  state.staffOrder = mapped.staffOrder || {};
   state.callouts = mapped.callouts;
   state.timeOff = mapped.timeOff;
   state.blocks = mapped.blocks;
