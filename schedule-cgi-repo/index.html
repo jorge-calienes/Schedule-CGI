@@ -1190,6 +1190,8 @@
     margin-top:6px;
     animation:cia-pop .15s cubic-bezier(.34,1.2,.64,1);
   }
+  .chip-cia-popup.chip-cia-popup-row2{padding-top:0;margin-top:0;}
+  .chip-cia-popup .cia-btn:disabled{opacity:.35;cursor:default;}
   @keyframes cia-pop{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
 
   .chip-cia-popup .cia-btn{
@@ -5436,6 +5438,13 @@
     border-left:3px solid var(--dept-accent,var(--c-border));
     display:flex;align-items:center;gap:6px;
   }
+  .dept-reorder-areas-btn{
+    margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:0;text-transform:none;
+    background:var(--c-surface,#fff);color:var(--c-text-2,#6E6E73);
+    border:1px solid var(--c-border,#E5E5EA);border-radius:99px;
+    padding:3px 9px;cursor:pointer;white-space:nowrap;
+  }
+  .dept-reorder-areas-btn:hover{color:var(--c-accent,#2F5FA8);border-color:var(--c-accent,#2F5FA8);}
 
   /* ── Tab bar: Apple-style ── */
   .tab-bar{
@@ -11225,6 +11234,20 @@ function renderChip(s){
       ${ciaBtn('act-late-arrival'+(lateEvent?' active':''), s.id, '⏰', 'Late', lateEvent?'Undo late arrival':'Late arrival')}
       ${ciaBtn('act-left-early'+(leftEarlyEvent?' active':''), s.id, '🚪', 'Early', leftEarlyEvent?'Undo left early':'Left early')}
     </div>` : ''}
+    ${(()=>{
+      // Reordering within an area is normally done by dragging, but drag
+      // doesn't work on a touch screen — these are the only way to do it
+      // on mobile, so they show whenever the area has more than one person,
+      // not only when a drag would otherwise be available.
+      if(readOnly || chipMenuOpen!==s.id || !areaId) return '';
+      const areaMembers = staffInArea(areaId);
+      if(areaMembers.length<2) return '';
+      const pos = areaMembers.findIndex(m=>m.id===s.id);
+      return `<div class="chip-cia-popup chip-cia-popup-row2">
+        <button class="cia-btn" data-move-staff="${s.id}" data-move-staff-dir="-1" ${pos<=0?'disabled':''} title="Move up in this area"><span class="cia-btn-icon">⬆</span><span class="cia-btn-label">Move up</span></button>
+        <button class="cia-btn" data-move-staff="${s.id}" data-move-staff-dir="1" ${pos<0||pos>=areaMembers.length-1?'disabled':''} title="Move down in this area"><span class="cia-btn-icon">⬇</span><span class="cia-btn-label">Move down</span></button>
+      </div>`;
+    })()}
   </div>`;
 }
 
@@ -11247,19 +11270,23 @@ function renderBoard(){
   return `
   <div class="board-wrap">
     <div class="dept-board">
-      ${groups.map(g=>`
+      ${groups.map(g=>{
+        const reorderableCount = g.areas.filter(a=>!a.fixed).length;
+        return `
         <div class="dept-group">
           <div class="dept-label" style="--dept-accent:${
             g.department==='Agency'?'#2F5FA8':
             g.department==='Communications'?'#5E9A3A':
             g.department==='Courier / Processing / QC'?'#D97706':
             g.department==='Fixed Positions'?'#7C3AED':'#9CA3AF'
-          }">${escapeHtml(g.department)}</div>
+          }">${escapeHtml(g.department)}
+            ${reorderableCount>1?`<button class="dept-reorder-areas-btn" data-reorder-areas="${encodeURIComponent(g.department)}" title="Reorder areas in this department">⇅ Reorder</button>`:''}
+          </div>
           <div class="board">
             ${g.areas.map(a=>renderAreaCol(a)).join('')}
           </div>
         </div>
-      `).join('')}
+      `;}).join('')}
       ${isTeamLeadRole() ? '' : `
       <div class="dept-group">
         <div class="dept-label">&nbsp;</div>
@@ -11969,6 +11996,7 @@ function renderModal(){
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
   else if(m.type==='mark-callout') inner = renderMarkCalloutModal(m);
   else if(m.type==='dept-reorder') inner = renderDeptReorderModal(m);
+  else if(m.type==='area-reorder') inner = renderAreaReorderModal(m);
   else if(m.type==='time-management') inner = renderTimeManagementModal(m);
   else if(m.type==='languages-manager') inner = renderLanguagesManagerModal(m);
   else if(m.type==='positions-manager') inner = renderPositionsManagerModal(m);
@@ -14505,6 +14533,42 @@ function renderPendingEvalsModal(m){
 }
 
 // --- Department order (board layout) ---
+// Reorder areas within one department — same drag+arrow UI as
+// renderDeptReorderModal, since dragging a column doesn't work on a touch
+// screen: the arrow buttons are the only way to reorder areas on mobile.
+function renderAreaReorderModal(m){
+  const dept = m.department;
+  const isLead = isTeamLeadRole();
+  const areas = state.areas.filter(a=>a.department===dept && !a.fixed);
+  const existing = isLead ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
+  const ordered = existing ? existing.map(id=>areas.find(a=>a.id===id)).filter(Boolean).concat(areas.filter(a=>!existing.includes(a.id))) : areas;
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Reorder areas</h2><p>${escapeHtml(dept)} — drag rows or use ↑↓ to change the order.${isLead?' Just for you.':''}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="area-order-list">
+        ${ordered.map((area, i) => `
+          <div class="dept-order-row" draggable="true" data-area-idx="${i}" data-area-id="${area.id}">
+            <span class="dept-order-handle" title="Drag to reorder">⠿</span>
+            <div class="dept-order-info">
+              <span class="dept-order-name"><span class="dept-order-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}</span>
+            </div>
+            <div class="dept-order-arrows">
+              <button class="dept-arrow-btn" data-move-area="${i}" data-dir="-1" ${i===0?'disabled':''}>↑</button>
+              <button class="dept-arrow-btn" data-move-area="${i}" data-dir="1" ${i===ordered.length-1?'disabled':''}>↓</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-dept">Done</button>
+    </div>
+  </div>`;
+}
+
 function renderDeptReorderModal(m){
   // only show non-fixed departments (fixed areas have their own panel)
   const fixedDepts = new Set(state.areas.filter(a=>a.fixed).map(a=>a.department));
@@ -16147,6 +16211,27 @@ function attachHandlers(){
     chipMenuOpen = chipMenuOpen===sid ? null : sid;
     render();
   }));
+
+  // Move up/down within an area — the touch-friendly alternative to
+  // dragging a chip onto another chip (drag doesn't work on a touch screen).
+  document.querySelectorAll('[data-move-staff]').forEach(btn=>btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    if(btn.disabled) return;
+    const sid = btn.dataset.moveStaff;
+    const dir = parseInt(btn.dataset.moveStaffDir, 10);
+    const areaId = state.assignments[sid];
+    if(!areaId) return;
+    const members = staffInArea(areaId).map(m=>m.id);
+    const from = members.indexOf(sid);
+    const to   = from + dir;
+    if(from<0 || to<0 || to>=members.length) return;
+    [members[from], members[to]] = [members[to], members[from]];
+    if(!state.staffOrder) state.staffOrder = {};
+    state.staffOrder[areaId] = members;
+    saveState();
+    syncBoardWrite(()=>window.RC.updateAssignmentOrder({order: members}), 'reorder staff');
+    render();
+  }));
   // close chip menu when clicking anywhere outside — use mousedown to beat click
   if(!window.__chipMenuOutside){
     window.__chipMenuOutside = true;
@@ -17743,6 +17828,9 @@ function attachHandlers(){
   on('nav-mark-callout',        ()=>{ closeNav(); openModal({type:'mark-callout'}); });
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
+  document.querySelectorAll('[data-reorder-areas]').forEach(btn=>btn.addEventListener('click', ()=>{
+    openModal({type:'area-reorder', department: decodeURIComponent(btn.dataset.reorderAreas)});
+  }));
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
@@ -18482,6 +18570,65 @@ function attachHandlers(){
         let cur = dragDeptIdx;
         for(let i=0; i<steps; i++){ moveDept(cur, dir); cur += dir; }
         dragDeptIdx = null;
+      });
+    });
+  }
+
+  // --- area reorder modal (arrow buttons are the only way to do this on a
+  // touch screen — dragging a column doesn't work there) ---
+  if(activeModal.type==='area-reorder'){
+    const dept = activeModal.department;
+    const isLead = isTeamLeadRole();
+    on('modal-close-dept', closeModal);
+
+    function moveArea(idx, delta){
+      const areas = state.areas.filter(a=>a.department===dept && !a.fixed);
+      const existing = isLead ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
+      const ao = (existing ? existing.filter(id=>areas.some(a=>a.id===id)).concat(areas.filter(a=>!existing.includes(a.id)).map(a=>a.id)) : areas.map(a=>a.id));
+      const newIdx = idx + delta;
+      if(newIdx < 0 || newIdx >= ao.length) return;
+      [ao[idx], ao[newIdx]] = [ao[newIdx], ao[idx]];
+      if(isLead){
+        setPersonalAreaOrder(dept, ao);
+      } else {
+        if(!state.areaOrder) state.areaOrder = {};
+        state.areaOrder[dept] = ao;
+        saveState();
+        syncBoardWrite(()=>window.RC.updateAreaOrder({order: ao}), 'reorder areas');
+      }
+      openModal({type:'area-reorder', department:dept}); // re-render modal with new order
+    }
+
+    // arrow buttons
+    document.querySelectorAll('[data-move-area]').forEach(btn=>btn.addEventListener('click', ()=>{
+      moveArea(parseInt(btn.dataset.moveArea,10), parseInt(btn.dataset.dir,10));
+    }));
+
+    // drag-to-reorder
+    let dragAreaIdx = null;
+    document.querySelectorAll('#area-order-list .dept-order-row').forEach(row=>{
+      row.addEventListener('dragstart', ()=>{
+        dragAreaIdx = parseInt(row.dataset.areaIdx, 10);
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', ()=>{ row.classList.remove('dragging'); });
+      row.addEventListener('dragover', e=>{
+        e.preventDefault();
+        document.querySelectorAll('#area-order-list .dept-order-row').forEach(r=>r.classList.remove('drag-over'));
+        row.classList.add('drag-over');
+      });
+      row.addEventListener('dragleave', ()=>row.classList.remove('drag-over'));
+      row.addEventListener('drop', e=>{
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        const targetIdx = parseInt(row.dataset.areaIdx, 10);
+        if(dragAreaIdx === null || dragAreaIdx === targetIdx) return;
+        const delta = targetIdx - dragAreaIdx;
+        const steps = Math.abs(delta);
+        const dir = Math.sign(delta);
+        let cur = dragAreaIdx;
+        for(let i=0; i<steps; i++){ moveArea(cur, dir); cur += dir; }
+        dragAreaIdx = null;
       });
     });
   }
