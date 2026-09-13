@@ -12739,7 +12739,7 @@ function renderStaffManagerModal(m){
       <div class="pm-header-group">
         <div class="pm-avatar">${editing?escapeHtml(initialsOf(editing.name)):'+'}</div>
         <div><h2>${editing?escapeHtml(editing.name):'Add staff'}</h2>
-        <p>${editing?(editing.department||'')+(editing.tags?' · '+editing.tags:''):'Fill in the details, then save.'}</p></div>
+        <p>${editing?escapeHtml([state.positions.find(p=>p.id===editing.positionId)?.name, editing.tdisNumber].filter(Boolean).join(' · ')||editing.department||''):'Fill in the details, then save.'}</p></div>
       </div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
