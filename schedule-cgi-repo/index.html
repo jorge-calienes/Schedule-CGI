@@ -7167,6 +7167,104 @@
   .act-return-coverage{background:var(--md-sys-color-tertiary);color:#fff;border:none;border-radius:var(--md-sys-shape-corner-full);padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;}
 
 
+  /* ═══ STAFF MODAL: profile/rotation/stats redesign (pm-*) ═══════════
+     Scoped entirely under .pm-scope so it can't leak into any other
+     modal. Every color token aliases the app's existing --c-* variables
+     (already dark-mode aware) instead of hardcoding new ones, so this
+     follows the same light/dark theme as everywhere else. */
+  .pm-scope{
+    --pm-surface: var(--c-surface,#fff);
+    --pm-surface-alt: var(--c-surface-2,#F2F2F7);
+    --pm-border: var(--c-border,rgba(60,60,67,.18));
+    --pm-text-primary: var(--c-text,#1C1C1E);
+    --pm-text-secondary: var(--c-text-2,#636366);
+    --pm-text-muted: var(--c-text-3,#AEAEB2);
+    --pm-accent: var(--c-accent,#2F5FA8);
+    --pm-accent-bg: color-mix(in srgb, var(--c-accent,#2F5FA8) 14%, var(--c-surface,#fff));
+    --pm-success: var(--c-green,#34C759);
+    --pm-success-bg: color-mix(in srgb, var(--c-green,#34C759) 16%, var(--c-surface,#fff));
+    --pm-danger: var(--c-red,#FF3B30);
+    --pm-radius-sm: var(--r-sm,9px);
+    --pm-radius-md: var(--r-md,12px);
+    --pm-gap: var(--sp-3,12px);
+  }
+
+  .pm-header-group{display:flex;align-items:center;gap:12px;min-width:0;}
+  .pm-avatar{
+    width:48px;height:48px;border-radius:50%;flex-shrink:0;
+    background:var(--pm-accent-bg);color:var(--pm-accent);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:16px;
+  }
+  .pm-section-label{margin:0 0 8px;font-size:var(--text-xs,11px);color:var(--pm-text-muted);text-transform:uppercase;letter-spacing:.06em;}
+  .pm-section-label.pm-section-label-tight{margin-top:0;}
+  .pm-section-label + .pm-section-label{margin-top:24px;}
+
+  .pm-list{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);overflow:hidden;margin-bottom:20px;}
+  .pm-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--pm-border);}
+  .pm-row:last-child{border-bottom:none;}
+  .pm-row-label{color:var(--pm-text-secondary);flex-shrink:0;}
+  .pm-row-input{border:none;background:transparent;text-align:right;font-weight:600;font-size:14px;color:var(--pm-text-primary);padding:0;width:60%;font-family:inherit;}
+  .pm-row-input:focus{outline:none;color:var(--pm-accent);}
+
+  /* Picker row — a real <select> overlays the value+chevron so native
+     mobile picker UI still works; the select's own text is never shown
+     (avoids relying on text-align-last, which Safari doesn't support). */
+  .pm-row-picker-wrap{position:relative;display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--pm-text-primary);}
+  .pm-row-picker-value{white-space:nowrap;}
+  .pm-row-picker-chevron{color:var(--pm-text-muted);flex-shrink:0;}
+  .pm-picker-select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;cursor:pointer;font-size:16px;}
+
+  .pm-toggle-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--pm-border);}
+  .pm-toggle-row:last-child{border-bottom:none;}
+  .pm-icon-badge{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
+  .pm-icon-badge.accent{background:var(--pm-accent-bg);color:var(--pm-accent);}
+  .pm-icon-badge.success{background:var(--pm-success-bg);color:var(--pm-success);}
+  .pm-toggle-text{flex:1;min-width:0;}
+  .pm-toggle-title{margin:0;font-weight:600;color:var(--pm-text-primary);}
+  .pm-toggle-sub{margin:1px 0 0;font-size:12px;color:var(--pm-text-secondary);}
+  .pm-toggle-chevron{color:var(--pm-text-muted);flex-shrink:0;cursor:pointer;}
+
+  .pm-select{width:100%;background:var(--pm-surface-alt);border:none;border-radius:var(--pm-radius-sm);padding:10px 12px;font:inherit;font-weight:600;color:var(--pm-text-primary);}
+
+  .pm-metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--pm-gap);margin-bottom:var(--pm-gap);}
+  .pm-metric-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-sm);padding:16px;}
+  .pm-metric-label{margin:0 0 4px;font-size:13px;color:var(--pm-text-secondary);}
+  .pm-metric-value{margin:0;font-size:24px;font-weight:700;color:var(--pm-text-primary);}
+  .pm-metric-hint{margin:4px 0 0;font-size:12px;color:var(--pm-text-muted);}
+
+  .pm-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:14px;margin-bottom:20px;}
+  .pm-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--pm-radius-sm);white-space:nowrap;}
+  .pm-badge.success{background:var(--pm-success-bg);color:var(--pm-success);}
+  .pm-badge.accent{background:var(--pm-accent-bg);color:var(--pm-accent);}
+  .pm-fit-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
+  .pm-fit-name{margin:0;font-size:18px;font-weight:700;color:var(--pm-text-primary);}
+  .pm-fit-stats{display:flex;gap:20px;}
+  .pm-fit-stat-value{margin:0;font-size:20px;font-weight:700;color:var(--pm-text-primary);}
+  .pm-fit-stat-label{margin:2px 0 0;font-size:11px;color:var(--pm-text-secondary);}
+  .pm-card-footnote{margin:10px 0 0;font-size:12px;color:var(--pm-text-muted);border-top:1px solid var(--pm-border);padding-top:10px;}
+
+  .pm-chart-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:14px 14px 10px;margin-bottom:20px;}
+
+  .pm-stack{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+  .pm-stat-card{background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:12px 14px;}
+  .pm-stat-card.current{box-shadow:inset 0 0 0 1.5px var(--pm-accent);}
+  .pm-stat-card-header{display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .pm-stat-title{margin:0;font-weight:600;color:var(--pm-text-primary);display:flex;align-items:center;gap:6px;}
+  .pm-stat-meta{margin:6px 0 0;font-size:12px;color:var(--pm-text-secondary);}
+
+  .pm-eval-scores{display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;}
+  .pm-eval-scores span{font-size:12px;color:var(--pm-text-secondary);}
+  .pm-eval-scores b{color:var(--pm-text-primary);font-weight:700;}
+  .pm-eval-note{margin:0;font-size:13px;color:var(--pm-text-secondary);line-height:1.5;border-top:1px solid var(--pm-border);padding-top:10px;}
+  .pm-eval-byline{margin:8px 0 0;font-size:11px;color:var(--pm-text-muted);}
+
+  .pm-footer{display:flex;gap:10px;padding:16px 20px 20px;flex-wrap:wrap;}
+  .pm-btn{font:inherit;font-weight:700;border-radius:var(--pm-radius-sm);padding:12px 16px;border:none;cursor:pointer;}
+  .pm-btn-primary{flex:1;background:var(--pm-text-primary);color:var(--pm-surface);min-width:140px;}
+  .pm-btn-ghost{background:none;color:var(--pm-danger);}
+  .pm-btn-light{background:var(--pm-surface-alt);color:var(--pm-text-primary);}
+
   /* ═══ STAFF MODAL: TABS, SWITCHES, GRID ═══════════════════════════ */
 
   /* Staff modal tab bar */
@@ -10054,6 +10152,25 @@ function renderBreakOptions(breakTimesRaw){
   }).join('');
 }
 
+// Display label for the currently-selected lunch/break option — used by
+// the profile modal's picker rows, which show the value as plain text
+// (the underlying <select> is invisible) instead of relying on the
+// select's own rendered text.
+function currentLunchLabel(breakTimesRaw){
+  const savedLunchRaw = breakTimesRaw ? breakTimesRaw.split('/')[1] : null;
+  const savedLunchMins = savedLunchRaw ? parseClockToken(savedLunchRaw) : null;
+  if(savedLunchMins==null) return null;
+  const match = sortTimesAscending(state.lunchTimes).find(lt=>parseClockToken(lt.label)===savedLunchMins);
+  return match ? match.label : null;
+}
+function currentBreakLabel(breakTimesRaw){
+  const savedBreakRaw = breakTimesRaw ? breakTimesRaw.split('/')[0] : null;
+  const savedBreakMins = savedBreakRaw ? parseClockToken(savedBreakRaw) : null;
+  if(savedBreakMins==null) return null;
+  const match = sortTimesAscending(state.breakTimes).find(bt=>parseClockToken(bt.label)===savedBreakMins);
+  return match ? match.label : null;
+}
+
 function formatMinutesAsClock(mins){
   if(mins==null) return '';
   let h = Math.floor(mins/60);
@@ -12369,9 +12486,26 @@ function renderStaffManagerModal(m){
   const hasLangCert = editing && (editing.languageCerts||[]).length > 0;
   const langSwitchOn = m.langSwitchOn !== undefined ? m.langSwitchOn : hasLangCert;
 
-  const sw = (id, checked, label, sub='') =>
-    `<div class="sw-row"><div class="sw-label-group"><span class="sw-label">${label}</span>${sub?`<span class="sw-sublabel">${sub}</span>`:''}</div>`+
-    `<button class="sw-track ${checked?'on':''}" id="${id}" role="switch" aria-checked="${checked}" type="button"><span class="sw-thumb"></span></button></div>`;
+  const pmToggle = (id, checked, icon, iconClass, title, sub='') =>
+    `<div class="pm-toggle-row">
+      <div class="pm-icon-badge ${iconClass}">${icon}</div>
+      <div class="pm-toggle-text"><p class="pm-toggle-title">${escapeHtml(title)}</p>${sub?`<p class="pm-toggle-sub">${escapeHtml(sub)}</p>`:''}</div>
+      <button class="sw-track ${checked?'on':''}" id="${id}" role="switch" aria-checked="${checked}" type="button"><span class="sw-thumb"></span></button>
+    </div>`;
+  const PM_CHEVRON = `<svg class="pm-row-picker-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
+  // A real <select> overlays an invisible full-size hitbox over the
+  // visible value+chevron text, so native mobile picker UI still opens on
+  // tap — the select's own rendered text is never shown (avoids relying on
+  // text-align-last, which Safari doesn't support).
+  const pmPicker = (label, id, displayText, optionsHtml) =>
+    `<div class="pm-row">
+      <span class="pm-row-label">${escapeHtml(label)}</span>
+      <span class="pm-row-picker-wrap">
+        <span class="pm-row-picker-value" id="${id}-display">${escapeHtml(displayText)}</span>
+        ${PM_CHEVRON}
+        <select class="pm-picker-select" id="${id}" data-picker-display="${id}-display">${optionsHtml}</select>
+      </span>
+    </div>`;
 
   const tagsSwitchOn = m.swTags !== undefined ? m.swTags : !!(editing && editing.tags);
   const lateStartSwitchOn = m.swLateStart !== undefined ? m.swLateStart : !!(editing && editing.lateStart);
@@ -12386,82 +12520,79 @@ function renderStaffManagerModal(m){
   const tdisVal        = m.tdisNumber !== undefined ? m.tdisNumber : (editing ? editing.tdisNumber||'' : '');
   const shiftVal       = m.shiftHours !== undefined ? m.shiftHours : (editing ? editing.shiftHours  : '');
   const lunchRaw        = m.lunchVal  !== undefined ? '/'+m.lunchVal : (editing ? editing.breakTimes : null);
+  const breakRaw        = m.breakVal  !== undefined ? m.breakVal+'/' : (editing ? editing.breakTimes : null);
   const hireDateVal    = m.hireDate  !== undefined ? m.hireDate  : (editing ? editing.hireDate||''  : '');
   const lateStartVal   = m.lateStart !== undefined ? m.lateStart : (editing ? editing.lateStart||'' : '');
   const tagsVal        = m.tags      !== undefined ? m.tags      : (editing ? editing.tags||''      : '');
+  const supervisorIdVal = m.supervisorId !== undefined ? m.supervisorId : (editing ? editing.supervisorId : null);
+  const positionIdVal   = m.positionId   !== undefined ? m.positionId   : (editing ? editing.positionId   : null);
+  const lunchDisplay  = m.lunchVal !== undefined ? m.lunchVal : (currentLunchLabel(editing?.breakTimes) || '— Select —');
+  const breakDisplay  = m.breakVal !== undefined ? m.breakVal : (currentBreakLabel(editing?.breakTimes) || '— Select —');
   const profileTab = `
-    <div class="sm-grid-2">
-      <div class="field"><label>Name</label><input type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}"/></div>
-      <div class="field">
-        <label>TDIS # <span class="field-hint">(3-char ID)</span></label>
-        <input type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/>
-        <div class="field-error" id="staff-tdis-error"></div>
-      </div>
+    <div class="pm-list">
+      <div class="pm-row"><span class="pm-row-label">Name</span><input class="pm-row-input" type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}"/></div>
+      <div class="pm-row"><span class="pm-row-label">TDIS #</span><input class="pm-row-input" type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/></div>
     </div>
-    <div class="sm-grid-2">
-      <div class="field"><label>Shift</label>
-        <select id="staff-hours-input"><option value="">— Select —</option>
-          ${state.shifts.map(sh=>'<option value="'+escapeHtml(sh.label)+'" '+((shiftVal&&(shiftVal===sh.label||shiftVal.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':'')+'>'+escapeHtml(sh.label)+'</option>').join('')}
-        </select>
-      </div>
-      <div class="field"><label>Lunch</label>
-        <select id="staff-lunch-input"><option value="">— Select —</option>
-          ${renderLunchOptions(lunchRaw)}
-        </select>
-      </div>
+    <div class="field-error" id="staff-tdis-error" style="margin:-14px 0 14px;"></div>
+
+    <div class="pm-list">
+      ${pmPicker('Position', 'staff-position-input', positionIdVal ? (state.positions.find(p=>p.id===positionIdVal)?.name||'—') : '—',
+        '<option value="">—</option>'+state.positions.map(p=>`<option value="${p.id}" ${positionIdVal===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join(''))}
+      ${pmPicker('Supervisor', 'staff-supervisor-input', supervisorIdVal ? (state.supervisors.find(sv=>sv.id===supervisorIdVal)?.name||'—') : '—',
+        '<option value="">—</option>'+state.supervisors.map(sv=>`<option value="${sv.id}" ${supervisorIdVal===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join(''))}
+      ${pmPicker('Shift', 'staff-hours-input', shiftVal || '— Select —',
+        '<option value="">— Select —</option>'+state.shifts.map(sh=>`<option value="${escapeHtml(sh.label)}" ${(shiftVal&&(shiftVal===sh.label||shiftVal.replace(/\s*[-–]\s*/g,' – ')===sh.label))?'selected':''}>${escapeHtml(sh.label)}</option>`).join(''))}
+      ${pmPicker('Lunch', 'staff-lunch-input', lunchDisplay,
+        '<option value="">— Select —</option>'+renderLunchOptions(lunchRaw))}
+      ${pmPicker('Break', 'staff-break-input', breakDisplay,
+        '<option value="">— Select —</option>'+renderBreakOptions(breakRaw))}
     </div>
-    <div class="sm-grid-2">
-      <div class="field"><label>Supervisor</label>
-        <select id="staff-supervisor-input"><option value="">—</option>
-          ${state.supervisors.map(sv=>'<option value="'+sv.id+'" '+((m.supervisorId!==undefined ? m.supervisorId===sv.id : editing&&editing.supervisorId===sv.id)?'selected':'')+'>'+escapeHtml(sv.name)+'</option>').join('')}
-        </select>
+
+    <p class="pm-section-label">Details</p>
+    <div class="pm-list">
+      <div class="field" style="padding:12px 14px;border-bottom:1px solid var(--pm-border);margin:0;">
+        <label style="font-size:12px;color:var(--pm-text-secondary);">Hire date <span class="field-hint">(for seniority)</span></label>
+        <input type="date" id="staff-hiredate-input" value="${escapeHtml(hireDateVal)}" style="max-width:180px;margin-top:4px;"/>
       </div>
-      <div class="field"><label>Position <span class="field-hint">(job title)</span></label>
-        <select id="staff-position-input"><option value="">—</option>
-          ${state.positions.map(p=>'<option value="'+p.id+'" '+((m.positionId!==undefined ? m.positionId===p.id : editing&&editing.positionId===p.id)?'selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')}
-        </select>
-      </div>
+      ${pmToggle('sw-late-start', lateStartSwitchOn, '⏰', 'accent', 'Late start / partial day', 'Starts later than usual today')}
     </div>
-    <div class="field">
-      <label>Hire date <span class="field-hint">(for seniority)</span></label>
-      <input type="date" id="staff-hiredate-input" value="${escapeHtml(hireDateVal)}" style="max-width:180px;"/>
-    </div>
-    <div class="sw-group" style="margin-bottom:0;">
-      ${sw('sw-late-start', lateStartSwitchOn, '⏰ Late start / partial day', 'Starts later than usual today')}
-    </div>
-    <div class="sw-reveal ${lateStartSwitchOn?'open':''}" id="late-start-reveal-wrap"><div class="field" style="margin-top:12px;">
+    <div class="sw-reveal ${lateStartSwitchOn?'open':''}" id="late-start-reveal-wrap"><div class="field" style="margin-top:-8px;margin-bottom:16px;">
       <input type="time" id="staff-latestart-input" value="${escapeHtml(lateStartVal)}" style="max-width:140px;"/>
     </div></div>
-    <div class="sw-group" style="margin-bottom:0;">
-      ${sw('sw-tags', tagsSwitchOn, 'Role / tags', 'Optional label shown on chip')}
-      ${sw('sw-subcontractor', m.swSubcontractor !== undefined ? m.swSubcontractor : !!(editing&&editing.isSubcontractor), '🏷 AGS (Sub-contractor)', 'Marks this person as agency / sub-contracted staff')}
+    <div class="pm-list">
+      ${pmToggle('sw-tags', tagsSwitchOn, '🏷', 'accent', 'Role tags', 'Optional label shown on chip')}
+      ${pmToggle('sw-subcontractor', m.swSubcontractor !== undefined ? m.swSubcontractor : !!(editing&&editing.isSubcontractor), '🏢', 'success', 'Agency staff', 'Marks as sub-contracted')}
     </div>
-    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:12px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${escapeHtml(tagsVal)}"/></div></div>`;
+    <div class="sw-reveal ${tagsSwitchOn?'open':''}" id="tags-reveal-wrap"><div class="field" style="margin-top:-8px;"><input type="text" id="staff-tags-input" placeholder="e.g. Escort, Backup, Bilingual" value="${escapeHtml(tagsVal)}"/></div></div>`;
 
   const rotationTab = `
-    <div class="field"><label>Rotation flow</label>
-      <select id="staff-flow-input"><option value="">No flow / rotates freely</option>
-        ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+((m.flowId!==undefined ? m.flowId===f.id : editing&&editing.flowId===f.id)?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
-      </select>
+    <p class="pm-section-label pm-section-label-tight">Rotation flow</p>
+    <select class="pm-select" id="staff-flow-input" style="margin-bottom:20px;"><option value="">No flow / rotates freely</option>
+      ${state.rotationFlows.map(f=>'<option value="'+f.id+'" '+((m.flowId!==undefined ? m.flowId===f.id : editing&&editing.flowId===f.id)?'selected':'')+'>'+escapeHtml(f.name)+'</option>').join('')}
+    </select>
+
+    <p class="pm-section-label">Attributes</p>
+    <div class="pm-list">
+      ${pmToggle('sw-team-lead',    m.swTeamLead    !== undefined ? m.swTeamLead    : !!(editing&&editing.isTeamLead),           '⭐', 'accent',  'Team lead',                       'Locked to their area, supervises it')}
+      ${pmToggle('sw-accom',        m.swAccom       !== undefined ? m.swAccom       : !!(editing&&editing.needsAccommodations),   '♿', 'accent',  'Needs accommodations',            'Visible to supervisors only')}
+      ${pmToggle('sw-counter-cert',m.swCounterCert !== undefined ? m.swCounterCert : !!(editing&&editing.counterCert),           '✅', 'success', 'Counter Acceptance certified',    'Required to work that station')}
+      <div class="pm-toggle-row" style="cursor:pointer;" id="sw-lang-row">
+        <div class="pm-icon-badge accent">🌐</div>
+        <div class="pm-toggle-text"><p class="pm-toggle-title">Language certifications</p><p class="pm-toggle-sub">Tap to pick languages</p></div>
+        <svg class="pm-toggle-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
     </div>
-    <div class="sw-group">
-      ${sw('sw-team-lead',   m.swTeamLead    !== undefined ? m.swTeamLead    : !!(editing&&editing.isTeamLead),           '★ Team Lead',                     'Locked to their area, supervises it')}
-      ${sw('sw-accom',       m.swAccom       !== undefined ? m.swAccom       : !!(editing&&editing.needsAccommodations),   '♿ Needs accommodations',           'Shown on board & profile to supervisors only — hidden in shared reports by default')}
-      ${sw('sw-counter-cert',m.swCounterCert !== undefined ? m.swCounterCert : !!(editing&&editing.counterCert),           '✅ Counter Acceptance certified',   'Required to work that station')}
-      ${sw('sw-lang',        langSwitchOn,                                                                                 '🌐 Language certifications',        'Tap to pick languages')}
-    </div>
-    <div class="field" style="margin-top:var(--md-space-3);">
-      <label>Scheduled time off</label>
-      ${((state.timeOff||{})[editing?.id]||[]).length===0
-        ? '<div class="small-muted" style="margin-bottom:8px;">No upcoming time off scheduled.</div>'
-        : '<div class="time-off-list">'+((state.timeOff||{})[editing?.id]||[]).slice(-3).map(r=>'<div class="time-off-row"><span class="time-off-dates">'+escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate)+'</span>'+(r.label?'<span class="time-off-note">'+escapeHtml(r.label)+'</span>':'')+'</div>').join('')+'</div>'
-      }
-      ${editing ? `<button class="btn btn-light btn-sm" id="btn-open-time-off" style="width:100%;">📅 Manage time off</button>` : ''}
-    </div>
-    <div class="sw-reveal ${langSwitchOn?'open':''}" id="lang-reveal-wrap"><div class="lang-cert-grid" id="lang-cert-section">${state.languages.map(lang=>{
+    <div class="sw-reveal ${langSwitchOn?'open':''}" id="lang-reveal-wrap" style="margin-bottom:20px;"><div class="lang-cert-grid" id="lang-cert-section">${state.languages.map(lang=>{
         const checked = editing&&editing.languageCerts&&editing.languageCerts.includes(lang.id);
         return '<label class="lang-cert-chip '+(checked?'checked':'')+'"><input type="checkbox" class="staff-lang-cert" data-lang-id="'+lang.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+escapeHtml(lang.name)+'</label>';
-      }).join('')}</div></div>`;
+      }).join('')}</div></div>
+
+    <p class="pm-section-label">Scheduled time off</p>
+    ${((state.timeOff||{})[editing?.id]||[]).length===0
+      ? '<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">No upcoming time off scheduled</span></div>'
+      : '<div class="pm-list">'+((state.timeOff||{})[editing?.id]||[]).slice(-3).map(r=>'<div class="pm-row"><span class="time-off-dates">'+escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate)+'</span>'+(r.label?'<span class="time-off-note small-muted">'+escapeHtml(r.label)+'</span>':'')+'</div>').join('')+'</div>'
+    }
+    ${editing ? `<button class="pm-btn pm-btn-light" id="btn-open-time-off" style="width:100%;">📅 Manage time off</button>` : ''}`;
 
   const statsTab = (() => {
     if(!editing) return '<div class="small-muted">Save first to see stats.</div>';
@@ -12532,33 +12663,41 @@ function renderStaffManagerModal(m){
           }).join('')+
           '</div>';
       }
-      return '<div class="stats-prof-section-label" style="margin-top:0;">Performance evaluations</div>'+body;
+      return '<p class="pm-section-label pm-section-label-tight">Performance evaluations</p>'+body;
     })();
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
     const worked = rows.filter(r=>r.hasExperience);
+    // New headline metric (Avg evaluation) — same approved-evaluation
+    // average already computed for the stars summary above, just also
+    // surfaced as a single number up top.
+    const approvedForAvg = (m.evalHistory||[]).filter(r=>r.status==='approved');
+    const avgEvalScore = approvedForAvg.length
+      ? approvedForAvg.reduce((sum,r)=>sum+(r.productivity+r.performance+r.reliability)/3,0)/approvedForAvg.length
+      : null;
     if(worked.length===0) return evalSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience from their profile.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
 
     return (
-      evalSection+
-      // ── Overall progress ──
-      '<div class="stats-overall-bar-wrap">'+
-      '<div class="stats-overall-label"><span>Areas covered</span><span class="stats-overall-pct">'+pct+'%</span></div>'+
-      '<div class="stats-overall-track"><div class="stats-overall-fill" style="width:'+pct+'%"></div></div>'+
-      '<div class="small-muted" style="margin-top:4px;">'+worked.length+' of '+total+' rotation areas</div></div>'+
+      // ── Headline metrics ──
+      '<div class="pm-metric-grid">'+
+      '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
+      '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
+      '</div>'+
 
-      // ── Best fit banner ──
+      evalSection+
+
+      // ── Best fit card ──
       (bestFit?
-        '<div class="stats-bestfit-banner" style="margin:12px 0;"><span class="stats-bestfit-icon">🎯</span><div>'+
-        '<div class="stats-bestfit-title">Best fit: <b>'+escapeHtml(bestFit.area.name)+'</b></div>'+
-        '<div class="stats-bestfit-sub">'+(bestFit.timesWorked>0
+        '<p class="pm-section-label">Best fit</p>'+
+        '<div class="pm-card"><div class="pm-fit-header"><p class="pm-fit-name">'+escapeHtml(bestFit.area.name)+'</p><span class="pm-badge success">Top ranked</span></div>'+
+        '<p class="small-muted" style="margin:0;">'+(bestFit.timesWorked>0
           ? bestFit.timesWorked+'× experience · '+(bestFit.periodsAgo===0?'last rotation':bestFit.periodsAgo+' rotations ago')
-          : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):''))+'</div></div></div>':'')+
+          : 'Marked as prior experience'+(bestFit.manualNote?': '+escapeHtml(bestFit.manualNote):''))+'</p></div>':'')+
 
       // ── Worked areas with proficiency ──
-      '<div class="stats-prof-section-label">Proficiency by area</div>'+
+      '<p class="pm-section-label">Proficiency by area</p>'+
       '<div class="stats-prof-grid">'+
       worked.map(r=>{
         const rating  = getAreaRating(editing.id, r.areaId);
@@ -12587,7 +12726,7 @@ function renderStaffManagerModal(m){
 
       // ── Rotation history timeline ──
       (state.history.length>0 ?
-        '<div class="stats-prof-section-label" style="margin-top:var(--md-space-5);">Rotation history</div>'+
+        '<p class="pm-section-label" style="margin-top:24px;">Rotation history</p>'+
         '<div class="timeline-row">'+
         state.history.slice(-12).reverse().map(h=>{
           const aId = h.assignments[editing.id];
@@ -12602,13 +12741,13 @@ function renderStaffManagerModal(m){
 
       // ── Call-out history ──
       ((((state.calloutHistory||{})[editing.id]||[]).length>0) ?
-        '<div class="stats-prof-section-label" style="margin-top:var(--md-space-5);">Call-out history</div>'+
+        '<p class="pm-section-label" style="margin-top:24px;">Call-out history</p>'+
         '<div class="callout-history-list">'+
         ((state.calloutHistory||{})[editing.id]||[]).slice().reverse().slice(0,8).map(c=>
           '<div class="callout-history-row"><span class="callout-date">'+escapeHtml(c.period||c.date)+'</span>'+(c.reason?'<span class="callout-reason">'+escapeHtml(c.reason)+'</span>':'')+'</div>'
         ).join('')+
         '</div>' : '')
-    +`<div class="modal-section-head" style="margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--c-text-2);padding-top:12px;border-top:1px solid var(--c-border);">Position Change Requests</div>`
+    +'<p class="pm-section-label" style="margin-top:24px;">Position change requests</p>'
     +(()=>{
       const reqs=(editing?.positionRequests||[]).slice().reverse().slice(0,5);
       if(!reqs.length) return '<div class="small-muted" style="margin:6px 0;">No requests submitted.</div>';
@@ -12626,11 +12765,15 @@ function renderStaffManagerModal(m){
   })();
 
   const tabs=[{id:'profile',icon:'👤',label:'Profile'},{id:'rotation',icon:'🔄',label:'Rotation'},{id:'stats',icon:'📊',label:'Stats'}];
+  const initialsOf = name => (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
   return `
-  <div class="modal">
+  <div class="modal pm-scope">
     <div class="modal-head">
-      <div><h2>${editing?escapeHtml(editing.name):'Add staff'}</h2>
-      <p>${editing?(editing.department||'')+(editing.tags?' · '+editing.tags:''):'Fill in the details, then save.'}</p></div>
+      <div class="pm-header-group">
+        <div class="pm-avatar">${editing?escapeHtml(initialsOf(editing.name)):'+'}</div>
+        <div><h2>${editing?escapeHtml(editing.name):'Add staff'}</h2>
+        <p>${editing?(editing.department||'')+(editing.tags?' · '+editing.tags:''):'Fill in the details, then save.'}</p></div>
+      </div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="sm-tab-bar">
@@ -12641,11 +12784,11 @@ function renderStaffManagerModal(m){
         ${tab==='profile'?profileTab:tab==='rotation'?rotationTab:statsTab}
       </div>
     </div>
-    <div class="modal-foot">
+    <div class="modal-foot pm-footer">
       ${tab!=='stats'
-        ?`<button class="btn btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
-          ${editing?'<button class="btn btn-danger btn-sm" id="staff-delete-btn">Remove</button>':''}`
-        :`${editing?'<button class="btn btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="btn btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`}
+        ?`<button class="pm-btn pm-btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
+          ${editing?'<button class="pm-btn pm-btn-ghost" id="staff-delete-btn">Remove</button>':''}`
+        :`${editing?'<button class="pm-btn pm-btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="pm-btn pm-btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`}
     </div>
     ${tab==='profile'&&!editing?`
     <div style="border-top:1px solid var(--line);padding:16px;">
@@ -18094,6 +18237,16 @@ function attachHandlers(){
       if(err) err.textContent = '';
     });
 
+    // ── picker rows (Position/Supervisor/Shift/Lunch/Break): the visible
+    // value text is a separate span since the real <select> is invisible
+    // (only there to capture the tap and open the native picker) — keep
+    // that span in sync on change. Only needed between full re-renders;
+    // any render() call regenerates the correct text from state anyway.
+    document.querySelectorAll('.pm-picker-select').forEach(sel=>sel.addEventListener('change', ()=>{
+      const display = document.getElementById(sel.dataset.pickerDisplay);
+      if(display) display.textContent = sel.options[sel.selectedIndex]?.textContent || '—';
+    }));
+
     // ── tab switching: snapshot current field values into activeModal before switching ──
     document.querySelectorAll('[data-staff-tab]').forEach(btn=>btn.addEventListener('click',()=>{
       const snap = snapshotStaffForm();
@@ -18132,8 +18285,8 @@ function attachHandlers(){
 
     // switches that reveal/hide a field below them — now toggle a CSS max-height/opacity
     // reveal wrapper directly (no re-render at all), so both the switch AND the field glide smoothly
-    const revealWrapFor = { 'sw-tags':'tags-reveal-wrap', 'sw-lang':'lang-reveal-wrap', 'sw-late-start':'late-start-reveal-wrap' };
-    ['sw-tags','sw-lang','sw-late-start'].forEach(id=>{
+    const revealWrapFor = { 'sw-tags':'tags-reveal-wrap', 'sw-late-start':'late-start-reveal-wrap' };
+    ['sw-tags','sw-late-start'].forEach(id=>{
       const btn = document.getElementById(id);
       if(!btn) return;
       btn.addEventListener('click',()=>{
@@ -18144,16 +18297,26 @@ function attachHandlers(){
         if(wrap) wrap.classList.toggle('open', nowOn);
         const key = {
           'sw-tags':       'swTags',
-          'sw-lang':       'swLang',
           'sw-late-start': 'swLateStart',
         }[id];
         const snap = snapshotStaffForm();
         const definedSnap = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
         Object.assign(activeModal, definedSnap, {[key]: nowOn,
-          langSwitchOn: id==='sw-lang' ? nowOn : activeModal.langSwitchOn,
           swTags: id==='sw-tags' ? nowOn : (activeModal.swTags !== undefined ? activeModal.swTags : undefined),
         });
       });
+    });
+
+    // Language certifications row — a plain tap-to-expand row (no on/off
+    // switch, just a chevron; langSwitchOn only ever controlled whether
+    // the checkbox grid below is shown, it isn't a real saved field).
+    on('sw-lang-row', ()=>{
+      const wrap = document.getElementById('lang-reveal-wrap');
+      const nowOpen = wrap ? !wrap.classList.contains('open') : true;
+      if(wrap) wrap.classList.toggle('open', nowOpen);
+      const snap = snapshotStaffForm();
+      const definedSnap = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+      Object.assign(activeModal, definedSnap, {langSwitchOn: nowOpen});
     });
 
     // ── language cert chip toggles ──
@@ -18198,6 +18361,7 @@ function attachHandlers(){
       const shiftHours   = snap.shiftHours  ?? activeModal.shiftHours  ?? editing?.shiftHours  ?? '';
       const hireDate     = snap.hireDate    ?? activeModal.hireDate    ?? editing?.hireDate    ?? '';
       const lunchVal     = snap.lunchVal    ?? activeModal.lunchVal    ?? '';
+      const breakVal     = snap.breakVal    ?? activeModal.breakVal    ?? '';
       const supervisorId = snap.supervisorId!==undefined ? snap.supervisorId : (activeModal.supervisorId!==undefined ? activeModal.supervisorId : editing?.supervisorId ?? null);
       const positionId   = snap.positionId  !==undefined ? snap.positionId   : (activeModal.positionId  !==undefined ? activeModal.positionId   : editing?.positionId   ?? null);
       const flowId       = snap.flowId      !== undefined ? snap.flowId      : (activeModal.flowId      !== undefined ? activeModal.flowId      : editing?.flowId      ?? null);
@@ -18229,10 +18393,12 @@ function attachHandlers(){
       }
       if(tdisErrEl) tdisErrEl.textContent = '';
 
+      // Break time defaults to "shift start + 3h" unless the Break picker
+      // (Profile tab) was explicitly set to something else.
       const selectedShift=state.shifts.find(s=>s.label===shiftHours);
       let breakStart='10:00';
       if(selectedShift){ const [h,m]=selectedShift.start.split(':').map(Number); breakStart=`${h+3}:${String(m).padStart(2,'0')}`; }
-      const breakTimes=lunchVal?`${breakStart} / ${lunchVal}`:'';
+      const breakTimes=(breakVal||lunchVal)?`${breakVal||breakStart} / ${lunchVal}`:'';
 
       const saveBtn = document.getElementById('staff-save-btn');
       if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
@@ -20345,6 +20511,7 @@ function snapshotStaffForm(){
       hireDate:      v('staff-hiredate-input'),
       lateStart:     v('staff-latestart-input'),
     lunchVal:      v('staff-lunch-input'),
+    breakVal:      v('staff-break-input'),
     supervisorId:  v('staff-supervisor-input'),
     positionId:    v('staff-position-input'),
     flowId:        v('staff-flow-input'),
@@ -20352,7 +20519,6 @@ function snapshotStaffForm(){
     swTeamLead:    sw('sw-team-lead'),
     swAccom:       sw('sw-accom'),
     swCounterCert: sw('sw-counter-cert'),
-    swLang:        sw('sw-lang'),
     swSubcontractor: sw('sw-subcontractor'),
     swLateStart: sw('sw-late-start'),
     // undefined when the checkboxes aren't in the current tab's DOM at all
