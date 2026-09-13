@@ -172,7 +172,7 @@ export async function loadBoard() {
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
-    supabase.from('assignments').select('*'),
+    supabase.from('assignments').select('*').order('sort_order'),
     supabase.from('departments').select('*').order('sort_order'),
     supabase.from('callouts').select('*'),
     supabase.from('supervisors').select('*').order('name'),
@@ -375,6 +375,26 @@ export async function ensureDepartment(name) {
 export async function updateDepartmentOrder({ order }) {
   for (let i = 0; i < (order || []).length; i++) {
     const { error } = await supabase.from('departments').update({ sort_order: i }).eq('id', order[i]);
+    if (error) throw error;
+  }
+}
+
+// Persists dragging an area column into a new position within its
+// department — order is a list of area ids in their new display order.
+// Mirrors updateDepartmentOrder; without this the area reorder only ever
+// lived in this browser's local state and reverted on the next fresh load.
+export async function updateAreaOrder({ order }) {
+  for (let i = 0; i < (order || []).length; i++) {
+    const { error } = await supabase.from('areas').update({ sort_order: i }).eq('id', order[i]);
+    if (error) throw error;
+  }
+}
+
+// Persists dragging a staff chip into a new position within the same area —
+// order is a list of staff ids in their new display order for that area.
+export async function updateAssignmentOrder({ order }) {
+  for (let i = 0; i < (order || []).length; i++) {
+    const { error } = await supabase.from('assignments').update({ sort_order: i }).eq('staff_id', order[i]);
     if (error) throw error;
   }
 }
@@ -1187,6 +1207,8 @@ window.RC = {
   setActiveRotation,
   ensureDepartment,
   updateDepartmentOrder,
+  updateAreaOrder,
+  updateAssignmentOrder,
   createStaff,
   updateStaff,
   updateStaffBreakTime,
