@@ -9706,6 +9706,15 @@ function getManualPriorExperienceNote(staffId, areaId){
   return entry ? entry.note : '';
 }
 
+// Rotations credited toward a rotation-flow stage's requirement: real tracked
+// history plus one credit if the area is marked as prior experience — so
+// backfilling a stage that predates the app (or that a supervisor otherwise
+// wants to count as already satisfied) actually advances the staff member's
+// flow instead of only showing up in "best fit"/"experience gaps".
+function flowStageCreditedRotations(staffId, areaId){
+  return timesWorkedArea(staffId, areaId) + (hasManualPriorExperience(staffId, areaId) ? 1 : 0);
+}
+
 // full per-area experience breakdown for one staff member, across every completed rotation
 // plus their current live placement (if any). Sorted by times worked (most experienced first),
 // then by most recent. Areas never worked are omitted entirely (only areas with real history show).
@@ -9987,7 +9996,7 @@ function getStaffFlowProgress(staffId){
   const flow = getFlowById(s.flowId);
   if(!flow) return null;
   const stageProgress = flow.stages.map(stage=>{
-    const worked = timesWorkedArea(staffId, stage.areaId);
+    const worked = flowStageCreditedRotations(staffId, stage.areaId);
     return { stage, worked, satisfied: worked >= stage.requiredRotations };
   });
   const currentStageIdx = stageProgress.findIndex(sp=>!sp.satisfied);
@@ -10097,6 +10106,34 @@ function computeFlowAdvancement(){
   const order = {advance:0, stay:1, complete:2};
   suggestions.sort((a,b)=>order[a.type]-order[b.type]);
   return suggestions;
+}
+
+// Simulates applying a batch of flow-advancement suggestions against a
+// working copy of current assignments/occupancy, in the same order they'll
+// actually be applied on confirm — so the Rotation preview can show exactly
+// which advances will succeed and which will be skipped for lack of room,
+// instead of a supervisor only finding out after confirming. Returns the
+// suggestions annotated with `willApply` (advance-type only; other types
+// pass through unannotated since they don't move anyone into a fixed slot).
+// The real apply handler (confirm-rotate-preview-btn) uses this same
+// function so the preview and what actually happens can never drift apart.
+function simulateFlowAdvancement(suggestions){
+  const occupancy = {};
+  state.areas.forEach(a=>{ occupancy[a.id] = 0; });
+  Object.values(state.assignments).forEach(areaId=>{ if(areaId && occupancy[areaId]!==undefined) occupancy[areaId]++; });
+  const workingArea = Object.assign({}, state.assignments);
+  return suggestions.map(sug=>{
+    if(sug.type!=='advance' || !sug.toAreaId) return sug;
+    const area = getAreaById(sug.toAreaId);
+    const willApply = !area || occupancy[sug.toAreaId] < area.capacity;
+    if(willApply && area){
+      const oldAreaId = workingArea[sug.staff.id];
+      if(oldAreaId && occupancy[oldAreaId]!==undefined) occupancy[oldAreaId]--;
+      occupancy[sug.toAreaId]++;
+      workingArea[sug.staff.id] = sug.toAreaId;
+    }
+    return Object.assign({}, sug, { willApply });
+  });
 }
 
 // ============ BREAK / LUNCH TIME PARSING ============
@@ -15669,10 +15706,11 @@ function renderRotatePreviewModal(m){
   const weeks     = m.weeks!==undefined ? m.weeks : (Number(state.rotationWeeks)||2);
   const startDate = m.startDate || nextPeriodLabel();
   const endDate   = addBusinessWeeksToDateStr(startDate, weeks);
-  const suggestions = computeFlowAdvancement();
+  const suggestions = simulateFlowAdvancement(computeFlowAdvancement());
   const advances = suggestions.filter(s=>s.type==='advance');
   const stays    = suggestions.filter(s=>s.type==='stay');
   const completes= suggestions.filter(s=>s.type==='complete');
+  const capacityBlocked = advances.filter(s=>s.willApply===false);
   // Optional "try a new area" alternatives — never applied automatically,
   // only when a supervisor explicitly picks one via gapPicks (staffId ->
   // areaId), applied alongside the flow suggestions on confirm.
@@ -15738,11 +15776,12 @@ function renderRotatePreviewModal(m){
                 <span class="rotate-to" style="color:${s.toArea?s.toArea.color:'inherit'}">${s.toArea?escapeHtml(s.toArea.name):'Free'}</span>
               </span>
               ${stageTrace?`<span class="flow-stage-badge" title="${escapeHtml(s.flow.name)}">${stageTrace}</span>`:''}
+              ${s.willApply===false?`<span class="proficiency-mini-badge" style="background:#C0392B;" title="${s.toArea?escapeHtml(s.toArea.name):''} is full — this advance won't happen this period">⚠ Full</span>`:''}
               ${rating?`<span class="proficiency-mini-badge" style="background:${lvl.color};">${rating} ${lvl.label}</span>`:'<span class="proficiency-mini-badge unrated">Not rated</span>'}
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-              <span class="small-muted">${statusIcon} ${statusLabel}</span>
-              ${!status||status==='pending'?`<button class="btn btn-sm btn-primary" data-open-feedback="${s.staff.id}">Rate now</button>`:''}
+              <span class="small-muted">${s.willApply===false?`⚠ ${s.toArea?escapeHtml(s.toArea.name):'Target area'} is at capacity — will stay put until there's room`:`${statusIcon} ${statusLabel}`}</span>
+              ${(!status||status==='pending')&&s.willApply!==false?`<button class="btn btn-sm btn-primary" data-open-feedback="${s.staff.id}">Rate now</button>`:''}
             </div>
           </div>`;
         }).join('')}
@@ -15800,6 +15839,7 @@ function renderRotatePreviewModal(m){
       </div>` : ''}
 
       ${suggestions.length===0 && gapCandidates.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
+      ${capacityBlocked.length>0?`<div class="alert-box rust" style="margin-top:12px;"><b>⚠ ${capacityBlocked.length} advance${capacityBlocked.length>1?'s':''} can't happen this period</b> — target area at capacity: ${capacityBlocked.map(s=>escapeHtml(s.staff.name)+' → '+escapeHtml(s.toArea?.name||'?')).join(', ')}. They'll stay put; re-run Rotate Now once there's room, or move someone else out first.</div>`:''}
       ${repeatFlags.length>0?`<div class="alert-box" style="margin-top:12px;"><b>${repeatFlags.length} repeat placement${repeatFlags.length>1?'s':''}</b> carrying forward: ${repeatFlags.map(s=>escapeHtml(s.name)).join(', ')}.</div>`:''}
     </div>
     <div class="modal-foot">
@@ -19766,13 +19806,17 @@ function attachHandlers(){
         endDate: todayLabel(),
         weeks: closingWeeks,
       });
-      const suggestions = computeFlowAdvancement();
-      let advCount=0, compCount=0, blockedCount=0;
+      // simulateFlowAdvancement() decides capacity the exact same way the
+      // Rotation preview just showed — so nothing here can skip a move (or
+      // apply one) that the supervisor wasn't already told about.
+      const suggestions = simulateFlowAdvancement(computeFlowAdvancement());
+      let advCount=0, compCount=0, blockedCount=0, capBlockedCount=0;
       suggestions.forEach(sug=>{
         if(sug.type==='advance' && sug.toAreaId){
           const pf = sug.pendingFeedback;
           // skip if explicitly blocked
           if(pf && pf.status==='blocked'){ blockedCount++; return; }
+          if(sug.willApply===false){ capBlockedCount++; return; }
           // save proficiency rating if feedback was collected
           if(pf && (pf.status==='approved'||pf.status==='override')){
             saveAreaRating(sug.staff.id, sug.fromAreaId, {
@@ -19784,16 +19828,13 @@ function attachHandlers(){
             });
           }
           const area = getAreaById(sug.toAreaId);
-          const already = staffInArea(sug.toAreaId, sug.staff.id).length;
-          if(!area || already < area.capacity){
-            const fromArea = getAreaById(sug.fromAreaId);
-            state.assignments[sug.staff.id] = sug.toAreaId;
-            syncBoardWrite(()=>window.RC.moveStaff({
-              staffId: sug.staff.id, areaId: sug.toAreaId, actingAccountId: authState.account.id,
-              staffName: sug.staff.name, fromAreaName: fromArea?.name, toAreaName: area.name,
-            }), 'move');
-            advCount++;
-          }
+          const fromArea = getAreaById(sug.fromAreaId);
+          state.assignments[sug.staff.id] = sug.toAreaId;
+          syncBoardWrite(()=>window.RC.moveStaff({
+            staffId: sug.staff.id, areaId: sug.toAreaId, actingAccountId: authState.account.id,
+            staffName: sug.staff.name, fromAreaName: fromArea?.name, toAreaName: area.name,
+          }), 'move');
+          advCount++;
         }
         if(sug.type==='complete'){
           const s = getStaffById(sug.staff.id);
@@ -19854,7 +19895,7 @@ function attachHandlers(){
       saveState();
       closeModal();
       const allSynced = sync.ok && rotationSync.ok;
-      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}`;
+      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${capBlockedCount?` · ${capBlockedCount} stuck (capacity)`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}`;
       showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
