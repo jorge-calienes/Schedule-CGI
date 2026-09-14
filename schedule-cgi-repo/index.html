@@ -10340,7 +10340,7 @@ applyTheme();
 let evalBadgeCounts = { mine: 0, pending: 0 }; // {mine: team lead's own actionable queue, pending: supervisor's review queue}
 function navBadgeCount(){
   if(isTeamLeadRole()) return evalBadgeCounts.mine;
-  if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending;
+  if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending + reassignBadgeCounts.pending;
   return 0;
 }
 // A background data refresh (badge counts, board/history reloads) calls
@@ -10364,6 +10364,58 @@ async function refreshEvalBadgeCounts(){
     } else if(authState.account.role==='admin' || authState.account.role==='supervisor'){
       const items = await window.RC.fetchPendingEvaluations();
       evalBadgeCounts.pending = (items||[]).length;
+    }
+    renderUnlessReportPreviewOpen();
+  }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
+}
+
+// ── Reassignment requests — same "lazy fetch, advisory count" shape as
+//    evalBadgeCounts above, plus a diff-driven in-app banner: comparing
+//    each fetch against what we saw last time turns "something changed"
+//    (the only signal the realtime channel gives us — see
+//    subscribeToBoardChanges in lib/supabaseClient.js) into "specifically
+//    THIS new request appeared" / "THIS one of mine got decided", so a
+//    supervisor or team lead sees it without opening any queue. ──
+let reassignBadgeCounts = { mine: 0, pending: 0 };
+let myReassignRequests = []; // team lead's own requests — feeds the "⏳ Requested" tag in the coverage dashboard
+let knownPendingReassignIds = null; // null = not yet fetched once; don't banner on the very first load
+let knownMyReassignStatuses = null; // {requestId: status}, same reasoning
+async function refreshReassignBadgeCounts(){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  try{
+    if(isTeamLeadRole()){
+      const items = await window.RC.myReassignmentRequests(authState.account.id);
+      myReassignRequests = items||[];
+      reassignBadgeCounts.mine = myReassignRequests.filter(i=>i.status==='pending').length;
+      if(knownMyReassignStatuses){
+        myReassignRequests.forEach(r=>{
+          const prev = knownMyReassignStatuses[r.id];
+          if(prev==='pending' && (r.status==='approved'||r.status==='denied')){
+            showToast(
+              r.status==='approved'
+                ? `✅ Your request for ${r.candidate?.name||'a candidate'} to cover ${r.area?.name||'an area'} was approved`
+                : `Your request for ${r.candidate?.name||'a candidate'} to cover ${r.area?.name||'an area'} was denied${r.review_note?': '+r.review_note:''}`,
+              r.status==='approved'?'teal':'rust'
+            );
+          }
+        });
+      }
+      knownMyReassignStatuses = {};
+      myReassignRequests.forEach(r=>{ knownMyReassignStatuses[r.id] = r.status; });
+    } else if(authState.account.role==='admin' || authState.account.role==='supervisor'){
+      const items = await window.RC.fetchPendingReassignments();
+      reassignBadgeCounts.pending = (items||[]).length;
+      const nowIds = new Set((items||[]).map(i=>i.id));
+      if(knownPendingReassignIds){
+        const newOnes = (items||[]).filter(i=>!knownPendingReassignIds.has(i.id));
+        if(newOnes.length===1){
+          const r = newOnes[0];
+          showToast(`🙋 ${r.requester?.name||'A team lead'} requested ${r.candidate?.name||'a candidate'} cover ${r.area?.name||'an area'}`, 'teal');
+        } else if(newOnes.length>1){
+          showToast(`🙋 ${newOnes.length} new reassignment requests need review`, 'teal');
+        }
+      }
+      knownPendingReassignIds = nowIds;
     }
     renderUnlessReportPreviewOpen();
   }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
@@ -10982,6 +11034,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-reassigns"><span class="nav-item-icon">🙋</span>Review reassignments${reassignBadgeCounts.pending>0?`<span class="nav-item-badge">${reassignBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(()=>{
         if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
         const readyCount = staffReadyForNewPath().length;
@@ -11077,6 +11130,12 @@ function renderCalloutBanner(){
   const allCovered  = uncovered.length === 0;  // everyone with an area has coverage
   const names       = outIds.slice(0,2).map(id=>getStaffById(id)?.name?.split(' ')[0]||'?').join(', ');
   const extra       = outIds.length > 2 ? ' +' + (outIds.length-2) + ' more' : '';
+  // A team lead only gets the action button when at least one of the
+  // uncovered gaps is in an area they're actually responsible for — the
+  // banner text above stays board-wide (same as ever), but there's no
+  // point offering them a dashboard they can't act in.
+  const leadAreaIds = authState.account?.assigned_area_ids||[];
+  const leadHasScopedGap = isTeamLeadRole() && uncovered.some(id=>leadAreaIds.includes(state.assignments[id]));
 
   // ── All covered: show confirmation banner then auto-hide after 8s ──────
   if(allCovered){
@@ -11113,7 +11172,9 @@ function renderCalloutBanner(){
           <span class="callout-banner-names">${escapeHtml(names)}${extra}</span>
         </div>
       </div>
-      ${isTeamLeadRole() ? '' : '<button class="callout-banner-btn" id="btn-open-callout-dash">⚡ Assign coverage</button>'}
+      ${isTeamLeadRole()
+        ? (leadHasScopedGap ? '<button class="callout-banner-btn" id="btn-open-callout-dash">🙋 Request coverage</button>' : '')
+        : '<button class="callout-banner-btn" id="btn-open-callout-dash">⚡ Assign coverage</button>'}
     </div>`;
   }
 
@@ -11126,7 +11187,9 @@ function renderCalloutBanner(){
         <span class="callout-banner-names">${escapeHtml(names)}${extra}</span>
       </div>
     </div>
-    ${isTeamLeadRole() ? '' : '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>'}
+    ${isTeamLeadRole()
+      ? (leadHasScopedGap ? '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">🙋 Request coverage</button>' : '')
+      : '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>'}
   </div>`;
 }
 
@@ -12179,6 +12242,7 @@ function renderModal(){
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
   else if(m.type==='attendance-report') inner = renderAttendanceReportModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
+  else if(m.type==='pending-reassigns') inner = renderPendingReassignsModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
@@ -13093,7 +13157,13 @@ function renderCalloutDashModal(m){
   // same guard as renderCalloutBanner() — a callout with no matching staff
   // record used to crash this modal outright (every row below assumes
   // s.name exists), which looked like "nothing shows" when opening it.
-  const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
+  // A team lead only sees (and can request coverage for) gaps in their own
+  // assigned area(s) — same scoping as the banner button that gets them
+  // here in the first place.
+  const leadAreaIds = authState.account?.assigned_area_ids||[];
+  const outIds = Object.keys(state.callouts)
+    .filter(id=>state.callouts[id] && getStaffById(id))
+    .filter(id=>!isTeamLeadRole() || leadAreaIds.includes(state.assignments[id]));
   const searchQ = (m.search||'').toLowerCase().trim();
 
   // Coverage is tracked per covering-person, not per specific out-person —
@@ -13153,12 +13223,26 @@ function renderCalloutDashModal(m){
   const pendingCount = rows.filter(r=>!r.coverPerson&&!r.waived&&r.area).length;
   const allDone = pendingCount===0;
 
-  // Compact single-line candidate row — tapping it assigns immediately
-  // (no separate "select then confirm" step), matching the pattern used
-  // for the Time Off tab's coverage picks.
+  // Compact single-line candidate row. For a manager, tapping it assigns
+  // immediately (no separate "select then confirm" step), matching the
+  // pattern used for the Time Off tab's coverage picks. For a team lead
+  // (no write access to assignments — see 0026_reassignment_requests.sql)
+  // tapping it files a request instead; a candidate they've already
+  // requested shows as a non-interactive "waiting" row rather than
+  // offering to request it again.
   const candRow = (c,sid,areaId,isBest) => {
     const from = getAreaById(c.currentArea);
     const exp  = c.hasExperience?(c.sinceWorked===0?'Last rotation':c.timesWorked+'×'):'New here';
+    const alreadyRequested = isTeamLeadRole() && myReassignRequests.some(r=>r.status==='pending' && r.candidate_staff_id===c.staff.id && r.area_id===areaId);
+    if(alreadyRequested){
+      return '<div class="cd-cand-tap" style="opacity:.6;cursor:default;">'
+        +'<div class="cd-cand-av">'+escapeHtml(c.staff.name.charAt(0))+'</div>'
+        +'<div class="cd-cand-body">'
+          +'<div class="cd-cand-name">'+escapeHtml(c.staff.name)+'</div>'
+          +'<div class="cd-cand-sub">⏳ Requested — waiting on a supervisor</div>'
+        +'</div>'
+        +'</div>';
+    }
     return '<button class="cd-cand-tap'+(isBest?' best':'')+'"'
       +' data-cover="'+c.staff.id+'" data-cover-area="'+areaId+'" data-cover-out="'+sid+'">'
       +'<div class="cd-cand-av">'+escapeHtml(c.staff.name.charAt(0))+'</div>'
@@ -14761,6 +14845,65 @@ function renderPendingEvalsModal(m){
   </div>`;
 }
 
+// Same shape as renderPendingEvalsModal above, for the supervisor/admin
+// side of a team lead's "request coverage" ask (see the .cd-cand-tap
+// handler in the callout dashboard wiring, and 0026_reassignment_requests
+// .sql for why a team lead can't just do this move directly). Approving
+// re-checks capacity against current state right here — a request can go
+// stale between being filed and being reviewed (the area filled up some
+// other way in the meantime) — rather than trusting the count from when
+// it was filed.
+function renderPendingReassignsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>🙋 Pending reassignment requests</h2><p>Filed by team leads, awaiting your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending requests…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending requests: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every reassignment request has been reviewed.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const candidateName = (row.candidate&&row.candidate.name)||'Unknown';
+          const outName = row.out_staff&&row.out_staff.name;
+          const areaName = (row.area&&row.area.name)||'an area';
+          const requesterName = (row.requester&&row.requester.name)||'A team lead';
+          const isDenying = m.denyingId===row.id;
+          const area = getAreaById(row.area_id);
+          const alreadyFull = !!(area && activeInArea(row.area_id, row.candidate_staff_id).length >= area.capacity);
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(candidateName)} → ${escapeHtml(areaName)}</span>
+            </div>
+            <div class="eval-history-evaluator">requested by ${escapeHtml(requesterName)}${outName?' · covering for '+escapeHtml(outName):''}</div>
+            ${row.reason?`<div class="eval-history-note">${escapeHtml(row.reason)}</div>`:''}
+            ${alreadyFull?`<div class="alert-box rust" style="margin-top:8px;">⚠ ${escapeHtml(areaName)} is already full — approving isn't possible until there's room.</div>`:''}
+            ${isDenying ? `
+              <div style="margin-top:10px;">
+                <textarea id="deny-note-input" rows="2" placeholder="Optional — let them know why" style="width:100%;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-extra-small);padding:8px;font-family:var(--sans);resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <button class="btn btn-primary btn-sm" id="confirm-deny-btn" data-confirm-deny="${row.id}" data-confirm-deny-candidate="${row.candidate_staff_id}">Deny</button>
+                  <button class="btn btn-light btn-sm" id="cancel-deny-btn">Cancel</button>
+                </div>
+              </div>
+            ` : `
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn btn-primary btn-sm" ${alreadyFull?'disabled':''} data-approve-reassign="${row.id}" data-approve-candidate="${row.candidate_staff_id}" data-approve-area="${row.area_id}" data-approve-candidate-name="${escapeHtml(candidateName)}" data-approve-area-name="${escapeHtml(areaName)}">✓ Approve</button>
+                <button class="btn btn-light btn-sm" data-deny-reassign="${row.id}">✕ Deny</button>
+              </div>
+            `}
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
 // --- Department order (board layout) ---
 // Reorder areas within one department — same drag+arrow UI as
 // renderDeptReorderModal, since dragging a column doesn't work on a touch
@@ -15981,6 +16124,16 @@ async function openPendingEvals(){
     openModal({type:'pending-evals', loading:false, items: items||[], rejectingId:null});
   }catch(e){
     openModal({type:'pending-evals', loading:false, items:[], rejectingId:null, error: (e && e.message) || 'Could not load pending evaluations.'});
+  }
+}
+
+async function openPendingReassigns(){
+  openModal({type:'pending-reassigns', loading:true, items:[], denyingId:null});
+  try{
+    const items = await window.RC.fetchPendingReassignments();
+    openModal({type:'pending-reassigns', loading:false, items: items||[], denyingId:null});
+  }catch(e){
+    openModal({type:'pending-reassigns', loading:false, items:[], denyingId:null, error: (e && e.message) || 'Could not load pending reassignment requests.'});
   }
 }
 
@@ -18067,7 +18220,7 @@ function attachHandlers(){
   }
 
   // --- nav drawer ---
-  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); });
+  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); refreshReassignBadgeCounts(); });
   on('btn-toggle-theme', ()=>{
     themeMode = themeMode==='dark' ? 'light' : 'dark';
     try{ localStorage.setItem('rc-theme', themeMode); }catch(e){}
@@ -18107,6 +18260,7 @@ function attachHandlers(){
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
+  on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
   on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
@@ -18668,14 +18822,24 @@ function attachHandlers(){
       render();
     });
 
-    // Candidate tap — assigns immediately (no separate select-then-confirm
-    // step). assignCoverage() itself shows the confirmation toast naming
-    // who's covering whom; we just re-open the modal so the next pending
-    // person (sorted to the top) is right there to act on next.
+    // Candidate tap — for a manager, assigns immediately (no separate
+    // select-then-confirm step); assignCoverage() itself shows the
+    // confirmation toast naming who's covering whom, and we just re-open
+    // the modal so the next pending person (sorted to the top) is right
+    // there to act on next. A team lead has no write access to do this
+    // directly (see 0026_reassignment_requests.sql) — their tap just
+    // files a request and a supervisor decides, including the capacity/
+    // displacement checks below (re-checked again at that point, since
+    // things can change between the request and the review).
     document.querySelectorAll('.cd-cand-tap').forEach(btn=>btn.addEventListener('click', ()=>{
       const coverId  = btn.dataset.cover;
       const areaId   = btn.dataset.coverArea;
+      const outId    = btn.dataset.coverOut;
       if(!coverId || !areaId) return;
+      if(isTeamLeadRole()){
+        requestReassignmentAction(coverId, areaId, outId);
+        return;
+      }
       if(isTeamLeadDisplaced(coverId, areaId)){
         openModal({type:'team-lead-warning', staffId:coverId, targetAreaId:areaId, returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
         return;
@@ -20388,6 +20552,57 @@ function attachHandlers(){
     });
   }
 
+  if(activeModal.type==='pending-reassigns'){
+    const m = activeModal;
+    document.querySelectorAll('[data-approve-reassign]').forEach(el=>el.addEventListener('click', async ()=>{
+      const id = el.dataset.approveReassign;
+      const candidateId = el.dataset.approveCandidate;
+      const areaId = el.dataset.approveArea;
+      const candidateName = el.dataset.approveCandidateName;
+      const areaName = el.dataset.approveAreaName;
+      // Re-check capacity against current state — the request could have
+      // gone stale (area filled up some other way) since it was filed.
+      const area = getAreaById(areaId);
+      if(area && activeInArea(areaId, candidateId).length >= area.capacity){
+        showToast(`${areaName} is already full`, 'rust');
+        openPendingReassigns();
+        return;
+      }
+      el.disabled = true;
+      const returnToAreaId = state.assignments[candidateId] || null;
+      const sync = await syncCrudWrite(()=>window.RC.reviewReassignment({
+        requestId:id, status:'approved', reviewerId:authState.account.id, reviewNote:'',
+        candidateStaffId:candidateId, returnToAreaId, areaId, staffName:candidateName, areaName,
+      }));
+      if(sync.ok){
+        if(!state.coverage) state.coverage = {};
+        state.coverage[candidateId] = {returnToAreaId, date: todayLabel()};
+        state.assignments[candidateId] = areaId;
+        saveState();
+      }
+      showToast(sync.ok ? `${candidateName} now covering ${areaName} ✓` : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshReassignBadgeCounts();
+      if(sync.ok) openPendingReassigns(); else el.disabled = false;
+    }));
+    document.querySelectorAll('[data-deny-reassign]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({...m, denyingId: el.dataset.denyReassign});
+    }));
+    on('cancel-deny-btn', ()=>openModal({...m, denyingId:null}));
+    on('confirm-deny-btn', async ()=>{
+      const btn = document.getElementById('confirm-deny-btn');
+      const note = document.getElementById('deny-note-input')?.value?.trim();
+      const requestId = btn.dataset.confirmDeny;
+      const candidateId = btn.dataset.confirmDenyCandidate;
+      btn.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewReassignment({
+        requestId, status:'denied', reviewerId:authState.account.id, reviewNote:note||'', candidateStaffId:candidateId,
+      }));
+      showToast(sync.ok ? 'Request denied' : `Could not deny — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshReassignBadgeCounts();
+      if(sync.ok) openPendingReassigns(); else btn.disabled = false;
+    });
+  }
+
   // --- account grant / add form ---
   if(activeModal.type==='account-grant-form'){
     const m = activeModal;
@@ -20744,6 +20959,35 @@ function assignCoverage(staffId, coverAreaId){
     staffId, coverAreaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
     staffName: name, coverAreaName: area,
   }), 'coverage assign');
+}
+
+// A team lead's side of the same tap that would call assignCoverage() for
+// a manager — no board write, just files a row a supervisor has to act on
+// (see 0026_reassignment_requests.sql). No optimistic board mutation here
+// since nothing on the board actually changes until it's approved; the
+// only local state that updates right away is myReassignRequests, so the
+// "⏳ Requested" tag in the coverage dashboard shows immediately instead
+// of waiting for the next badge refresh.
+async function requestReassignmentAction(candidateId, areaId, outId){
+  const already = myReassignRequests.some(r=>r.status==='pending' && r.candidate_staff_id===candidateId && r.area_id===areaId);
+  if(already){ showToast('Already requested — waiting on a supervisor', 'rust'); return; }
+  const candidate = getStaffById(candidateId);
+  const area = getAreaById(areaId);
+  const outStaff = outId ? getStaffById(outId) : null;
+  const sync = await syncCrudWrite(()=>window.RC.requestReassignment({
+    candidateStaffId: candidateId, outStaffId: outId||null, areaId,
+    requestedBy: authState.account.id, reason: outStaff ? `Covering for ${outStaff.name}` : null,
+    candidateName: candidate?.name, areaName: area?.name,
+  }));
+  if(sync.ok){
+    myReassignRequests = [sync.result, ...myReassignRequests];
+    reassignBadgeCounts.mine++;
+  }
+  showToast(
+    sync.ok ? `Request sent for ${candidate?.name||'this candidate'} — waiting on a supervisor` : `Could not send request — ${sync.error?.message||'try again'}`,
+    sync.ok?'teal':'rust'
+  );
+  render();
 }
 
 function returnFromCoverage(staffId){
@@ -21339,6 +21583,7 @@ async function bootApp(){
   }
 
   refreshEvalBadgeCounts(); // advisory nav badge — doesn't block boot
+  refreshReassignBadgeCounts();
 }
 
 // ============ LIVE SYNC (Supabase Realtime) ============
@@ -21372,6 +21617,7 @@ async function runRealtimeRefresh(){
     reconcileStaleTempMoves();
     saveState();
     render();
+    refreshReassignBadgeCounts(); // may bring its own banner toast — see above
   }catch(e){
     console.warn('Realtime board refresh failed:', e && e.message);
   }

@@ -1108,6 +1108,90 @@ export async function myEvaluationQueue() {
 }
 
 // ---------------------------------------------------------------------------
+// Reassignment requests — a team_lead proposing "move this candidate into
+// that out person's area" without the write access to actually do it (see
+// 0026_reassignment_requests.sql). requestReassignment() just files the
+// row; the move itself only happens in reviewReassignment() when a
+// supervisor/admin approves, same "the review action IS the write" pattern
+// as assignCoverage() and reviewEvaluation().
+// ---------------------------------------------------------------------------
+
+export async function requestReassignment({ candidateStaffId, outStaffId, areaId, requestedBy, reason, candidateName, areaName }) {
+  const { data, error } = await supabase.from('reassignment_requests').insert({
+    candidate_staff_id: candidateStaffId, out_staff_id: outStaffId || null,
+    area_id: areaId, requested_by: requestedBy, status: 'pending', reason: reason || null,
+  }).select().single();
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: requestedBy,
+    action: 'reassignment_request',
+    description: `requested ${candidateName || 'a candidate'} cover ${areaName || 'an area'}`,
+    staff_id: candidateStaffId,
+    metadata: { areaId, outStaffId: outStaffId || null, requestId: data.id },
+  });
+  return data;
+}
+
+// The supervisor/admin decision on a pending request. Approving performs
+// the actual coverage move (same two writes as assignCoverage()) in the
+// same call — the caller re-checks capacity against current state right
+// before calling this (see requestReassignment usage in index.html), so a
+// request that's gone stale (area filled up since it was filed) surfaces
+// as a normal capacity error here rather than silently applying anyway.
+export async function reviewReassignment({ requestId, status, reviewerId, reviewNote, candidateStaffId, returnToAreaId, areaId, staffName, areaName }) {
+  if (status === 'approved') {
+    const now = new Date().toISOString();
+    const { error: covErr } = await supabase.from('coverage_assignments').upsert({
+      staff_id: candidateStaffId, return_to_area_id: returnToAreaId,
+      started_date: now.slice(0, 10), created_by: reviewerId,
+    });
+    if (covErr) throw covErr;
+
+    const { error: moveErr } = await supabase.from('assignments').upsert({
+      staff_id: candidateStaffId, area_id: areaId, updated_by: reviewerId, updated_at: now,
+    });
+    if (moveErr) throw moveErr;
+  }
+
+  const { error } = await supabase.from('reassignment_requests').update({
+    status, review_note: reviewNote || null, decided_by: reviewerId, decided_at: new Date().toISOString(),
+  }).eq('id', requestId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: reviewerId,
+    action: 'reassignment_request',
+    description: status === 'approved'
+      ? `approved a reassignment request — ${staffName || 'staff'} now covering ${areaName || 'an area'}`
+      : 'denied a reassignment request',
+    staff_id: candidateStaffId,
+    metadata: { requestId, status, reviewNote: reviewNote || null },
+  });
+}
+
+export async function fetchPendingReassignments() {
+  const { data, error } = await supabase
+    .from('reassignment_requests')
+    .select('*, candidate:candidate_staff_id(name), out_staff:out_staff_id(name), area:area_id(name), requester:requested_by(name)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function myReassignmentRequests(accountId) {
+  const { data, error } = await supabase
+    .from('reassignment_requests')
+    .select('*, candidate:candidate_staff_id(name), out_staff:out_staff_id(name), area:area_id(name)')
+    .eq('requested_by', accountId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
 // (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
 // visibility (eval_select: managers see everyone, team leads only their own
@@ -1148,13 +1232,16 @@ export async function fetchAuditLog({ limit = 50, startDate, endDate } = {}) {
 
 // ---------------------------------------------------------------------------
 // Live sync (Supabase Realtime / Postgres Changes) — one shared channel
-// subscribed to every table loadBoard() reads (see migration 0010 for the
-// publication setup). onChange fires on every insert/update/delete on any
-// of them; the caller decides what to do (index.html just re-runs
-// loadBoard() and re-applies it — see scheduleRealtimeRefresh there).
-// Deliberately dumb on this end: no diffing or per-table logic here, just
-// "something changed, go refetch" — keeps this file from needing to know
-// index.html's state shape.
+// subscribed to every table loadBoard() reads, plus reassignment_requests
+// (not part of the board itself, but its own inbox that needs the same
+// "something changed, come look" signal — see migration 0010 for the
+// publication setup, and 0026 for reassignment_requests joining it).
+// onChange fires on every insert/update/delete on any of them; the caller
+// decides what to do (index.html re-runs loadBoard() AND re-checks
+// reassignment badge counts/notifications — see scheduleRealtimeRefresh
+// there). Deliberately dumb on this end: no diffing or per-table logic
+// here, just "something changed, go refetch" — keeps this file from
+// needing to know index.html's state shape.
 // ---------------------------------------------------------------------------
 
 const REALTIME_TABLES = [
@@ -1162,7 +1249,7 @@ const REALTIME_TABLES = [
   'shifts', 'languages', 'positions', 'staff_language_certs', 'rotation_flows',
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
-  'attendance_events', 'active_rotation', 'temp_moves',
+  'attendance_events', 'active_rotation', 'temp_moves', 'reassignment_requests',
 ];
 
 let realtimeChannel = null;
@@ -1225,6 +1312,10 @@ window.RC = {
   reviewEvaluation,
   fetchPendingEvaluations,
   myEvaluationQueue,
+  requestReassignment,
+  reviewReassignment,
+  fetchPendingReassignments,
+  myReassignmentRequests,
   fetchAuditLog,
   subscribeToBoardChanges,
   unsubscribeFromBoardChanges,
