@@ -8179,6 +8179,22 @@
   :root[data-theme="dark"] .chip-tags,
   :root[data-theme="dark"] .chip-hours,
   :root[data-theme="dark"] .temp-scope-label{color:var(--c-text-2);}
+  /* Coverage dashboard candidate rows: same bug, worse — .cd-cand-tap
+     hardcodes a solid #fff background (not a tint, the whole row), so
+     --c-text's correctly-light dark-mode color rendered as white text on
+     a white row: not just low-contrast, completely unreadable. Re-based
+     on the --c-surface-2/-3 elevation steps already used for depth
+     elsewhere, with .cd-cand-sub and the "Others" bar/count bumped from
+     --c-text-2 to --c-text since --c-text-2 lands under 7:1 (short of
+     AAA) on these particular surfaces — hierarchy still reads via the
+     existing size/weight difference, not brightness. Applies equally to
+     a team lead's view of this dashboard (same markup, same classes).
+     All four pairings land at ~12:1 or better. */
+  :root[data-theme="dark"] .cd-cand-tap{background:var(--c-surface-2);}
+  :root[data-theme="dark"] .cd-cand-tap:hover{background:var(--c-surface-3);}
+  :root[data-theme="dark"] .cd-cand-sub{color:var(--c-text);}
+  :root[data-theme="dark"] .cd-others-bar{background:var(--c-surface-2);color:var(--c-text);}
+  :root[data-theme="dark"] .cd-others-count{background:var(--c-surface-3);color:var(--c-text);}
 
   /* ── App tour (guided onboarding walkthrough) ── */
   .tour-scrim{position:fixed;inset:0;z-index:998;background:transparent;}
