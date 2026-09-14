@@ -5532,7 +5532,7 @@
     flex-direction:column;
     transform:translateX(100%);
     transition:transform .25s cubic-bezier(.4,0,.2,1);
-    padding-top:0;
+    padding-top:var(--md-space-3,12px);
     overflow-y:auto;
   }
   .nav-drawer.open{transform:translateX(0);}
@@ -7930,7 +7930,7 @@
 
     /* board mobile: full-width stacked, page is the scrollbar — bottom
        padding keeps the last card from sitting under the fixed tab bar */
-    .board-wrap{padding:0 0 calc(64px + env(safe-area-inset-bottom) + 16px);width:100%;box-sizing:border-box;overflow-x:hidden;}
+    .board-wrap{padding:12px 0 calc(64px + env(safe-area-inset-bottom) + 16px);width:100%;box-sizing:border-box;overflow-x:hidden;}
     /* Overview/Roster/Breaks/Time Off all scroll inside .view-container
        (not the page) — same reserve, same reason. */
     .view-container{padding-bottom:calc(64px + env(safe-area-inset-bottom) + 16px);}
