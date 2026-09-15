@@ -12544,6 +12544,7 @@ function renderStaffStatsModal(m){
   const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
   const nonFixedRows = rows.filter(r=>!r.area.fixed);
   const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience);
+  const gapAreas = neverWorkedGapAreasFor(s.id);
   return `
   <div class="modal">
     <div class="modal-head">
@@ -12617,6 +12618,13 @@ function renderStaffStatsModal(m){
             <div class="stats-bestfit-sub">Based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'} so far</div>
           </div>
         </div>`}
+
+        ${gapAreas.length>0 ? `
+        <div class="pm-card" style="margin-top:12px;">
+          <div class="pm-fit-header"><p class="pm-fit-name">🧭 Never worked</p></div>
+          <p class="pm-card-footnote">${gapAreas.length} area${gapAreas.length===1?'':'s'} not yet tried: ${gapAreas.map(a=>escapeHtml(a.name)).join(', ')}</p>
+        </div>
+        ` : ''}
 
         <div class="small-muted" style="margin:16px 0 10px;font-weight:700;">
           Area history <span style="font-weight:400;">· based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}${priorMarkedCount?' + '+priorMarkedCount+' marked prior':''}</span>
@@ -13073,6 +13081,7 @@ function renderStaffManagerModal(m){
     if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>';
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
+    const gapAreas = neverWorkedGapAreasFor(editing.id);
 
     return (
       // ── Headline metrics ──
@@ -13097,10 +13106,22 @@ function renderStaffManagerModal(m){
         '</div>';
       })():'')+
 
+      // ── Never worked — the flip side of proficiency, so a supervisor
+      // sees what's left for this person before the detail list of what
+      // they've already covered. Same data as the app-wide Experience
+      // gaps report, scoped to just this one person. ──
+      (gapAreas.length>0 ?
+        '<p class="pm-section-label">Never worked</p>'+
+        '<div class="pm-card">'+
+          '<div class="pm-fit-header"><p class="pm-fit-name">🧭 '+gapAreas.length+' area'+(gapAreas.length===1?'':'s')+' not yet tried</p></div>'+
+          '<p class="pm-card-footnote">'+gapAreas.map(a=>escapeHtml(a.name)).join(', ')+'</p>'+
+        '</div>'
+      : '')+
+
       // ── Worked areas with proficiency — at 100% coverage, the full list
       // is just every area saying "yes" back at you; a single callout to
       // go plan what's next is more useful than scrolling past it. ──
-      '<p class="pm-section-label">Proficiency by area</p>'+
+      '<p class="pm-section-label" style="margin-top:24px;">Proficiency by area</p>'+
       (pct===100 ? (
         '<div class="pm-card pm-ready-path-card">'+
           '<div class="pm-fit-header"><p class="pm-fit-name">🏆 Ready for a new path</p><span class="pm-badge warn">100%</span></div>'+
