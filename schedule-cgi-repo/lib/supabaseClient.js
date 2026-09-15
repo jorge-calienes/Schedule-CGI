@@ -1018,7 +1018,20 @@ export async function fetchBoardStateAt({ beforeTimestamp }) {
 // target; anyone placed, edited, or otherwise touched since stays exactly
 // as they are. Also rolls the active rotation window back to what was in
 // effect at that point, per the same reasoning.
-export async function restoreBoardState({ changedStaff, periodLabel, startDate, weeks, restoredFromDescription, actingAccountId }) {
+//
+// `deletePeriodId` is passed only when the entry being restored to is the
+// rotate_period action itself (its audit row carries the new period's id
+// in metadata.periodId) — the caller is undoing a specific mistaken Rotate
+// Now, same as the fresh-session "Undo" banner's deleteRotationPeriod().
+// Without this, the mistaken rotation_periods snapshot stays behind even
+// after assignments/active_rotation are put back: isRepeatArea() and
+// every other reader of rotation history (best-fit ranking, the Rotation
+// History screen) would keep comparing against it as if it really
+// happened — and since it snapshots the *pre*-rotate assignments (see
+// createRotationPeriod's caller), those snapshot values now equal the
+// just-restored live ones, so it reads as "repeat" for literally everyone
+// rather than just quietly being ignored.
+export async function restoreBoardState({ changedStaff, periodLabel, startDate, weeks, restoredFromDescription, deletePeriodId, actingAccountId }) {
   for (const { staffId, areaId } of changedStaff || []) {
     const { error } = await supabase
       .from('assignments')
@@ -1036,11 +1049,18 @@ export async function restoreBoardState({ changedStaff, periodLabel, startDate, 
   });
   if (activeErr) throw activeErr;
 
+  if (deletePeriodId) {
+    await supabase.from('rotation_period_assignments').delete().eq('period_id', deletePeriodId);
+    const { error: delErr } = await supabase.from('rotation_periods').delete().eq('id', deletePeriodId);
+    if (delErr) throw delErr;
+  }
+
   await supabase.from('audit_log').insert({
     actor_id: actingAccountId,
     action: 'restore_rotation',
-    description: `restored the board to ${restoredFromDescription || 'an earlier point'} (${(changedStaff || []).length} staff moved back)`,
-    metadata: { weeks, movedCount: (changedStaff || []).length },
+    description: `restored the board to ${restoredFromDescription || 'an earlier point'} (${(changedStaff || []).length} staff moved back)`
+      + (deletePeriodId ? ' and removed the rotation record it created' : ''),
+    metadata: { weeks, movedCount: (changedStaff || []).length, deletedPeriodId: deletePeriodId || null },
   });
 }
 

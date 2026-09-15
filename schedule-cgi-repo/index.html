@@ -14643,6 +14643,7 @@ function renderRestorePeriodConfirmModal(m){
           ${m.changedStaff.length===0
             ? 'Nobody currently on the board differs from that point — only the period/dates will change.'
             : `${m.changedStaff.length} staff member${m.changedStaff.length===1?'':'s'} will move back to where they were then. Anyone placed or edited since stays exactly as they are now.`}
+          ${m.anchorEntry?.action==='rotate_period'?' This also removes the rotation record that action created, so it stops counting as a real rotation (no more spurious "repeat" flags from it).':''}
         </div>
         ${m.changedStaff.length>0?`
         <div class="option-list" style="max-height:280px;overflow-y:auto;">
@@ -20661,12 +20662,20 @@ function attachHandlers(){
       state.rotationWeeks = m.snapshot.weeks;
       saveState();
       const restoredFromDescription = m.anchorEntry ? `right before "${m.anchorEntry.description||m.anchorEntry.action}" (${m.anchorEntry.created_at?new Date(m.anchorEntry.created_at).toLocaleString():''})` : undefined;
+      // Restoring to right before a rotate_period action means undoing that
+      // rotation specifically — its rotation_periods row has to go too, or
+      // it keeps being read back as real rotation history (see
+      // restoreBoardState()'s comment on deletePeriodId).
+      const deletePeriodId = m.anchorEntry?.action==='rotate_period' ? m.anchorEntry?.metadata?.periodId : undefined;
       const sync = await syncCrudWrite(()=>window.RC.restoreBoardState({
         changedStaff: changedStaff.map(c=>({staffId:c.staffId, areaId:c.areaId})),
         periodLabel: m.snapshot.periodLabel, startDate: m.snapshot.startDate, weeks: m.snapshot.weeks,
-        restoredFromDescription,
+        restoredFromDescription, deletePeriodId,
         actingAccountId: authState.account.id,
       }));
+      if(sync.ok && deletePeriodId){
+        try{ if(typeof window.RC.fetchRotationHistory==='function') state.history = await window.RC.fetchRotationHistory(); }catch(e){}
+      }
       closeModal();
       showToast(sync.ok ? `Restored ✓` : `Restored here, but the server didn't fully sync: ${(sync.error&&sync.error.message)||'try again'}`, sync.ok?'teal':'rust');
     });
