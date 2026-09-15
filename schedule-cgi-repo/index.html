@@ -12542,6 +12542,8 @@ function renderStaffStatsModal(m){
   const maxTimes = rows.length ? Math.max(...rows.map(r=>r.timesWorked)) : 0;
   const hasAnyExperienceData = rows.some(r=>r.hasExperience);
   const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
+  const nonFixedRows = rows.filter(r=>!r.area.fixed);
+  const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience);
   return `
   <div class="modal">
     <div class="modal-head">
@@ -12619,6 +12621,12 @@ function renderStaffStatsModal(m){
         <div class="small-muted" style="margin:16px 0 10px;font-weight:700;">
           Area history <span style="font-weight:400;">· based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}${priorMarkedCount?' + '+priorMarkedCount+' marked prior':''}</span>
         </div>
+        ${readyForNewPath ? `
+        <div class="pm-card pm-ready-path-card">
+          <div class="pm-fit-header"><p class="pm-fit-name">🏆 Ready for a new path</p><span class="pm-badge warn">100%</span></div>
+          <p class="pm-card-footnote">${escapeHtml(s.name.split(' ')[0])} has experience in all ${nonFixedRows.length} rotation areas — worth finding a new path.</p>
+        </div>
+        ` : `
         <div class="stats-bar-list">
           ${rows.map(r=>{
             const rating = getAreaRating(s.id, r.areaId);
@@ -12647,6 +12655,7 @@ function renderStaffStatsModal(m){
             </div>`;
           }).join('')}
         </div>
+        `}
       `}
     </div>
     <div class="modal-foot">
@@ -13088,8 +13097,16 @@ function renderStaffManagerModal(m){
         '</div>';
       })():'')+
 
-      // ── Worked areas with proficiency ──
+      // ── Worked areas with proficiency — at 100% coverage, the full list
+      // is just every area saying "yes" back at you; a single callout to
+      // go plan what's next is more useful than scrolling past it. ──
       '<p class="pm-section-label">Proficiency by area</p>'+
+      (pct===100 ? (
+        '<div class="pm-card pm-ready-path-card">'+
+          '<div class="pm-fit-header"><p class="pm-fit-name">🏆 Ready for a new path</p><span class="pm-badge warn">100%</span></div>'+
+          '<p class="pm-card-footnote">'+escapeHtml(editing.name.split(' ')[0])+' has experience in all '+total+' rotation areas — worth finding a new path.</p>'+
+        '</div>'
+      ) : (
       '<div class="pm-stack">'+
       worked.map(r=>{
         const rating  = getAreaRating(editing.id, r.areaId);
@@ -13106,7 +13123,8 @@ function renderStaffManagerModal(m){
           '<p class="pm-stat-meta">'+ratingLabel+' · '+workedLabel+'</p>'+
           '</div>';
       }).join('')+
-      '</div>'+
+      '</div>'
+      ))+
 
       // ── Rotation history timeline ──
       (state.history.length>0 ?
