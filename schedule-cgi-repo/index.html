@@ -10673,6 +10673,14 @@ function render(){
   const _bwOld = document.querySelector('.board-wrap');
   const _boardScroll     = _bwOld?.scrollTop  || 0;
   const _boardScrollLeft = _bwOld?.scrollLeft || 0;
+  // Same problem, one level down: every render() rebuilds the modal's DOM
+  // too, so a plain re-render triggered from *inside* an open modal (e.g.
+  // toggling a prior-experience checkbox, which calls render() on every
+  // single tap to persist it) was silently scrolling the modal back to the
+  // top each time — annoying for anything with more than a couple of
+  // checkboxes to work through in one sitting.
+  const _mbOld = document.querySelector('.modal-body');
+  const _modalScroll = _mbOld?.scrollTop || 0;
 
   const mainContent = (mainViews[viewMode] || renderBoard)();
   root.innerHTML = `
@@ -10709,10 +10717,11 @@ function render(){
 
   // ── Only play the modal "pop-in" entrance animation when a genuinely new modal opens,
   //    not when the same modal re-renders internally (tab switch, toggle, search, etc.) ──
+  const _sameModalReRendering = activeModal && activeModal.type === _prevModalType;
   if(activeModal){
     const modalEl = document.querySelector('#modal-backdrop .modal');
     if(modalEl){
-      if(activeModal.type === _prevModalType) modalEl.classList.add('modal-no-anim');
+      if(_sameModalReRendering) modalEl.classList.add('modal-no-anim');
       _prevModalType = activeModal.type;
     }
   }
@@ -10727,6 +10736,20 @@ function render(){
       const bw2 = document.querySelector('.board-wrap');
       if(bw2){ bw2.scrollTop = _boardScroll; bw2.scrollLeft = _boardScrollLeft; }
     });
+  }
+  // Only restore onto the *same* modal re-rendering in place — a genuinely
+  // new modal replacing the old one should open at its own natural scroll
+  // position, not inherit whatever the previous modal happened to be
+  // scrolled to.
+  if(_sameModalReRendering && _modalScroll){
+    const mb = document.querySelector('.modal-body');
+    if(mb){
+      mb.scrollTop = _modalScroll;
+      requestAnimationFrame(()=>{
+        const mb2 = document.querySelector('.modal-body');
+        if(mb2) mb2.scrollTop = _modalScroll;
+      });
+    }
   }
 }
 
