@@ -6613,6 +6613,7 @@
   .rotate-section-head.advance{color:var(--md-sys-color-primary);}
   .rotate-section-head.stay{color:var(--md-sys-color-on-surface-variant);}
   .rotate-section-head.complete{color:#2E7D32;}
+  .rotate-section-head.tried{color:#3E8E8B;}
   .rotate-list{display:flex;flex-direction:column;gap:var(--md-space-2);margin-bottom:var(--md-space-2);}
   .rotate-row{
     background:var(--md-sys-color-surface-container-lowest);
@@ -7653,6 +7654,7 @@
     width:28px;height:28px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;
   }
+  .org-sup-avatar-unassigned{background:#9CA3AF;}
   .org-sup-name{font-weight:700;font-size:13px;color:var(--c-text,#1D1D1F);}
   .org-sup-count{
     font-size:11px;font-weight:700;color:var(--c-text-2,#6E6E73);
@@ -8123,8 +8125,19 @@
   :root[data-theme="dark"]{
     --c-bg:#000000; --c-surface:#1C1C1E; --c-surface-2:#2C2C2E; --c-surface-3:#3A3A3C;
     --c-border:rgba(255,255,255,.16); --c-separator:rgba(255,255,255,.12);
-    --c-text:#F2F2F7; --c-text-2:#AEAEB2; --c-text-3:#8E8E93;
-    --c-accent:#6D9CF1; --c-red:#FF453A; --c-green:#32D74B; --c-orange:#FF9F0A;
+    /* --c-text-2/-3 and --c-accent/--c-red were tuned as *fills* (badges,
+       accent dots) first and reused as text second — fine for AA, short of
+       AAA's 7:1 against these surfaces (as low as 3.3:1 for --c-red on
+       --c-surface-3). Brightened here so every existing var(--c-text-2),
+       var(--c-text-3), var(--c-accent) and var(--c-red) usage clears AAA
+       against all four surface tokens at once — --c-text-2/-3 converge to
+       the same value since there's no room left for a distinct third tier
+       once both must individually clear --c-surface-3. Solid-fill contexts
+       that need the OLD, more saturated tone with white/black text on top
+       (button fills, notification badges) get their own dedicated
+       dark-only override below rather than reusing these tokens. */
+    --c-text:#F2F2F7; --c-text-2:#CCCCCF; --c-text-3:#CCCCCF;
+    --c-accent:#B7D2FA; --c-red:#FFBDB6; --c-green:#32D74B; --c-orange:#FF9F0A;
 
     --md-sys-color-primary:#9FC2FF; --md-sys-color-on-primary:#00295E;
     --md-sys-color-primary-container:#1B4479; --md-sys-color-on-primary-container:#D9E5FF;
@@ -8195,6 +8208,127 @@
   :root[data-theme="dark"] .cd-cand-sub{color:var(--c-text);}
   :root[data-theme="dark"] .cd-others-bar{background:var(--c-surface-2);color:var(--c-text);}
   :root[data-theme="dark"] .cd-others-count{background:var(--c-surface-3);color:var(--c-text);}
+
+  /* Callout banners (needs-coverage/partial-coverage/all-covered/rotate-undo
+     + the default amber state) all hardcode a light pastel background with
+     a fixed DARK saturated title/names color tuned for that light bg —
+     .callout-banner-icon has no color of its own and just inherits
+     --c-text, so on the (correctly light, for dark mode) inherited text
+     color it was invisible against the light pastel, same underlying bug
+     as every other fix in this file. Re-tinted each state to a dark
+     version of its own hue (reusing the navy already established for
+     .chip.lead/.org-leaf.lead) with title/names bumped to a light tint of
+     the same hue — the icon needs no override since --c-text now reads
+     correctly against a dark background automatically. Button fills are
+     separately darkened (not lightened) since their text is fixed white;
+     all pairings below measure ≥7:1. */
+  :root[data-theme="dark"] .callout-banner{background:#3A2E12;}
+  :root[data-theme="dark"] .callout-banner-title{color:#FFC46A;}
+  :root[data-theme="dark"] .callout-banner-names{color:#E8B463;}
+  :root[data-theme="dark"] .callout-banner-btn{background:#7A4E07;}
+  :root[data-theme="dark"] .callout-banner-btn:hover{background:#6B4406;}
+  /* @keyframes always wins over a plain class rule on the animated
+     property, no matter its specificity — the static background override
+     above never actually painted on needs-coverage/all-covered, which
+     stay mid-pulse indefinitely (`infinite`), so the animation itself has
+     to be re-pointed at a dark-toned keyframe. */
+  :root[data-theme="dark"] .callout-banner.needs-coverage{background:#3A1F1F;animation-name:banner-pulse-dark;}
+  :root[data-theme="dark"] .callout-banner.needs-coverage .callout-banner-title{color:#FFB3AB;}
+  :root[data-theme="dark"] .callout-banner.needs-coverage .callout-banner-names{color:#FFA79E;}
+  :root[data-theme="dark"] .callout-banner.needs-coverage .callout-banner-btn{background:#8B1A12;}
+  :root[data-theme="dark"] .callout-banner.needs-coverage .callout-banner-btn:hover{background:#6B120C;}
+  :root[data-theme="dark"] .callout-banner.partial-coverage{background:#3A2E12;}
+  :root[data-theme="dark"] .callout-banner.partial-coverage .callout-banner-btn{background:#7A4E07;}
+  :root[data-theme="dark"] .callout-banner.all-covered{background:#163821;animation-name:banner-green-pulse-dark;}
+  :root[data-theme="dark"] .callout-banner.all-covered .callout-banner-title{color:#6FDD8B;}
+  :root[data-theme="dark"] .callout-banner.all-covered .callout-banner-names{color:#8FE0A5;}
+  :root[data-theme="dark"] .callout-banner.all-covered .callout-banner-btn,
+  :root[data-theme="dark"] .all-covered-btn{background:#1A5A30;}
+  :root[data-theme="dark"] .callout-banner.all-covered .callout-banner-btn:hover{background:#154825;}
+  :root[data-theme="dark"] .callout-banner.rotate-undo{background:#1B2A44;}
+  :root[data-theme="dark"] .callout-banner.rotate-undo .callout-banner-title{color:#9EC0F7;}
+  :root[data-theme="dark"] .callout-banner.rotate-undo .callout-banner-names{color:#B7D2FA;}
+  :root[data-theme="dark"] .callout-banner.rotate-undo .callout-banner-btn{background:#1E3F70;}
+  :root[data-theme="dark"] .callout-banner.rotate-undo .callout-banner-btn:hover{background:#163158;}
+  /* Same light-pastel-bg-with-inherited---c-text bug on two more "selected/
+     lead" highlight states. */
+  :root[data-theme="dark"] .org-leaf.lead{background:#1B2A44;}
+  :root[data-theme="dark"] .sup-card.active{background:#1B2A44;}
+  /* Status/cert badges: fixed light-bg + fixed dark-text pairs that are
+     already short of AAA in light mode too (a pre-existing, theme-
+     independent gap — flagged separately, not silently changed there) but
+     since these overrides are scoped to dark mode only, fixing them here
+     carries no risk to light mode and gets dark mode itself to AAA. */
+  :root[data-theme="dark"] .chip-out-tag{background:#3A1F1F;color:#FFB3AB;}
+  :root[data-theme="dark"] .chip-out-scheduled{color:#FFD5CF!important;}
+  :root[data-theme="dark"] .chip-out-covered{color:#7EE2A8!important;}
+  :root[data-theme="dark"] .chip-blocked-badge{background:#3A1F1F;color:#FFB3AB;}
+  :root[data-theme="dark"] .chip-late-arrival-tag{background:#3A2E12;color:#FFC46A;}
+  :root[data-theme="dark"] .chip-repeat-badge{background:#3A2E12;color:#FFC46A;}
+  :root[data-theme="dark"] .streak-badge{background:#3A2E12;color:#FFC46A;}
+  :root[data-theme="dark"] .cert-badge.cert-counter,
+  :root[data-theme="dark"] .roster-card-cert{background:#163821;color:#8FE0A5;border-color:#2E7D32;}
+  :root[data-theme="dark"] .cert-badge.cert-lang{background:#12283A;color:#AAD4F8;border-color:#1565C0;}
+  :root[data-theme="dark"] .roster-card-out,
+  :root[data-theme="dark"] .ov-out-tag{background:#3A1F1F;color:#FFB3AB;}
+  :root[data-theme="dark"] .dash-pick-badge.best{background:#17324D;color:#AAD4F8;}
+  :root[data-theme="dark"] .dash-pick-badge.warn{background:#3A2E12;color:#FFC46A;}
+  :root[data-theme="dark"] .area-count.under{background:#3A2E12;color:#FFC46A;}
+  :root[data-theme="dark"] .area-count.ok{background:#163821;color:#8FE0A5;}
+  :root[data-theme="dark"] .area-count.over{background:#3A1F1F;color:#FFB3AB;}
+  /* Supervisor chip badge: --sup-bg/--sup-border are per-supervisor
+     admin-chosen colors (out of scope, can't guarantee AAA for an
+     arbitrary hue) but --sup-bg is only ever a ~10% tint (see the `1A`
+     alpha suffix where it's set), so the composited background stays
+     close to the surface tone regardless of hue — safe to force the name
+     TEXT to --c-text without needing to know the supervisor's color. The
+     colored dot stays on --sup-fg; it's a decorative swatch, not text. */
+  :root[data-theme="dark"] .chip-sup-badge{color:var(--c-text);}
+  /* Fixed (non-customizable) fallback gray swatches — safe to darken
+     directly, unlike the admin/supervisor-color-driven avatars nearby
+     that keep an arbitrary inline background and are out of scope here. */
+  :root[data-theme="dark"] .org-leaf-avatar,
+  :root[data-theme="dark"] .sup-mini-avatar,
+  :root[data-theme="dark"] .sup-mini-more,
+  :root[data-theme="dark"] .org-sup-avatar-unassigned{background:#4E5560;}
+  /* Quick-out glyph and its icon-only siblings sit on --c-text-3 already
+     brightened above; only the hardcoded (non-token) red .is-out state and
+     the notification badges below need a direct override. */
+  :root[data-theme="dark"] .chip-quick-out.is-out{color:var(--c-red);}
+  /* Nav rotate button / org-diagram root box: --c-accent had to be
+     brightened above so it clears AAA as TEXT (links, active tab labels),
+     but that same brighter value is too light to hold white button text —
+     the opposite requirement. These reuse the app's own pre-existing
+     :active darken (#254d8a, already used one tap-state down) as the
+     resting dark-mode fill instead of var(--c-accent). */
+  :root[data-theme="dark"] .nav-rotate-btn,
+  :root[data-theme="dark"] .org-root-box{background:#254d8a;}
+  :root[data-theme="dark"] .nav-rotate-btn:active{background:#1A3660;}
+  /* Notification badges: same white-text-on-fill issue as the buttons
+     above, on --c-red specifically. --c-red itself stays brightened for
+     its (far more common) use as plain text/icon color elsewhere. */
+  :root[data-theme="dark"] .nav-item-badge,
+  :root[data-theme="dark"] .topbar-nav-badge{background:#7A160F;}
+  /* Rotate-preview section headers: .advance/.stay already ride
+     theme-aware md-sys tokens that are fine in dark mode; .complete and
+     .tried hardcode fixed light-mode-tuned colors. */
+  :root[data-theme="dark"] .rotate-section-head.complete{color:var(--c-green);}
+  :root[data-theme="dark"] .rotate-section-head.tried{color:#78C9C6;}
+  :root[data-theme="dark"] .chip-lead-star{color:#FFB93D;}
+  /* Empty rating stars ride the Material outline token, which (like
+     --c-text-3 before its brightening above) is too dim for AAA here;
+     reuses the already-brightened --c-text-2 rather than touching the
+     shared outline token everywhere else it's used. */
+  :root[data-theme="dark"] .prof-star.empty{color:var(--c-text-2);}
+  /* Both rely on a UA/button default text color instead of an explicit
+     one, so they render literal black regardless of theme — invisible
+     against a dark card. */
+  :root[data-theme="dark"] .sidebar-mini-btn{color:var(--md-sys-color-on-surface);}
+  :root[data-theme="dark"] .team-dash-card-name{color:var(--c-text);}
+  :root[data-theme="dark"] .chip-menu-btn{color:var(--c-text-2);}
+  :root[data-theme="dark"] .cd-best-tag{background:#163821;color:#8FE0A5;}
+  @keyframes banner-pulse-dark{0%,100%{background:#3A1F1F;}50%{background:#4A2626;}}
+  @keyframes banner-green-pulse-dark{0%{background:#1F4A2B;}100%{background:#163821;}}
 
   /* ── App tour (guided onboarding walkthrough) ── */
   .tour-scrim{position:fixed;inset:0;z-index:998;background:transparent;}
@@ -13575,7 +13709,7 @@ function renderOrgDiagramModal(m){
           ${unassigned.length>0?`
           <div class="org-group">
             <span class="org-sup-box org-unassigned-box" title="Staff without a supervisor">
-              <span class="org-sup-avatar" style="background:#9CA3AF;">?</span>
+              <span class="org-sup-avatar org-sup-avatar-unassigned">?</span>
               <span class="org-sup-name">No supervisor</span>
               <span class="org-sup-count">${unassigned.length}</span>
             </span>
@@ -15979,7 +16113,7 @@ function renderRotatePreviewModal(m){
       </div>` : ''}
 
       ${gapCandidates.length>0?`
-      <div class="rotate-section-head" style="color:#3E8E8B;">🆕 ${gapCandidates.length} could try a new area</div>
+      <div class="rotate-section-head tried">🆕 ${gapCandidates.length} could try a new area</div>
       <div class="rotate-list">
         ${gapCandidates.map(g=>{
           const picked = gapPicks[g.staff.id];
