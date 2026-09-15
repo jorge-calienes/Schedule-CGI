@@ -9828,11 +9828,21 @@ function lastCompletedRotation(){
   return h[h.length-1];
 }
 
-// area a staff member was in during the last completed rotation
-function lastAreaFor(staffId){
-  const last = lastCompletedRotation();
-  if(!last) return null;
-  return last.assignments[staffId] || null;
+// How many of the most recent completed rotations, counting backward from
+// the last one, staffId spent in areaId — stops at the first rotation
+// where they weren't there. Shared by isRepeatArea() (require 2+ to flag
+// a real pattern, not just one coincidental match right after whatever
+// rotation happens to be most recent) and getRepeatStreak() (the 🔥N
+// badge, which already worked this way for the staff member's *current*
+// area — this just generalizes it to an arbitrary candidate area too).
+function consecutiveRotationsInArea(staffId, areaId){
+  const h = historyBeforeActivePeriod();
+  let streak = 0;
+  for(let i=h.length-1;i>=0;i--){
+    if(h[i].assignments[staffId]===areaId) streak++;
+    else break;
+  }
+  return streak;
 }
 
 // all block partners for a staff id (mutual)
@@ -9873,7 +9883,10 @@ function blockConflictsIn(staffId, areaId){
   return staffInArea(areaId, staffId).filter(s=>partners.has(s.id));
 }
 
-// was staffId in areaId last rotation?
+// has staffId been in areaId for at least the last 2 rotations in a row?
+// A single coincidental match right after whatever rotation happens to be
+// most recent isn't a real pattern worth calling out — this only fires
+// once there's an actual streak, same bar as the 🔥 badge.
 function isRepeatArea(staffId, areaId){
   // Team leads are expected to stay in their own area every rotation, and
   // a "fixed" area is by definition one staff don't rotate in or out of —
@@ -9883,8 +9896,7 @@ function isRepeatArea(staffId, areaId){
   const staff = getStaffById(staffId);
   if(staff?.isTeamLead) return false;
   if(getAreaById(areaId)?.fixed) return false;
-  const last = lastAreaFor(staffId);
-  return last && last===areaId;
+  return consecutiveRotationsInArea(staffId, areaId) >= 2;
 }
 
 // count how many times staffId has worked areaId across all history (for best-fit ranking)
@@ -11605,7 +11617,7 @@ function renderChip(s){
       </div>
       <!-- Status badges + mobile controls flush right -->
       <div class="chip-status-badges">
-        ${streak>=2&&!area?.fixed?`<span class="streak-badge" title="${streak} rotations in a row">🔥${streak}</span>`:''}
+        ${streak>=3&&!area?.fixed?`<span class="streak-badge" title="${streak} rotations in a row">🔥${streak}</span>`:''}
         ${isScheduled&&!hasCoverage?'<span class="chip-out-tag chip-out-scheduled">📅</span>':isScheduled&&hasCoverage?'<span class="chip-out-tag chip-out-covered">✓</span>':isOut?'<span class="chip-out-tag">Out</span>':''}
         ${lateEvent?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
         ${leftEarlyEvent?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
@@ -21104,13 +21116,7 @@ function getRepeatStreak(staffId){
   if(staff?.isTeamLead) return 0;
   const currentArea = state.assignments[staffId];
   if(!currentArea) return 0;
-  const h = historyBeforeActivePeriod();
-  let streak = 0;
-  for(let i=h.length-1;i>=0;i--){
-    if(h[i].assignments[staffId]===currentArea) streak++;
-    else break;
-  }
-  return streak;
+  return consecutiveRotationsInArea(staffId, currentArea);
 }
 
 // ── Coverage gap: is an area below its target minimum? ──
