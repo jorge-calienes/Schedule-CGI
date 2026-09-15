@@ -14583,7 +14583,7 @@ function renderAuditLogModal(m){
   return `
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
-      <div><h2>Audit log</h2><p>Most recent ${(m.entries||[]).length} actions across the app.</p></div>
+      <div><h2>Audit log</h2><p>${m.dateFilter?`${(m.entries||[]).length} action${(m.entries||[]).length===1?'':'s'} on ${escapeHtml(m.dateFilter)}.`:`Most recent ${(m.entries||[]).length} actions across the app.`}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
@@ -20616,8 +20616,24 @@ function attachHandlers(){
     const actionFilterSel = document.getElementById('audit-action-filter');
     if(actionFilterSel) actionFilterSel.addEventListener('change', ()=>{ openModal({...m, actionFilter:actionFilterSel.value}); });
     const dateFilterInput = document.getElementById('audit-date-filter');
-    if(dateFilterInput) dateFilterInput.addEventListener('change', ()=>{ openModal({...m, dateFilter:dateFilterInput.value}); });
-    on('audit-filters-clear', ()=>{ openModal({...m, actionFilter:'', dateFilter:''}); });
+    if(dateFilterInput) dateFilterInput.addEventListener('change', async ()=>{
+      const date = dateFilterInput.value;
+      if(!date){ openAuditLog(); return; }
+      // The initial load only ever fetches the most-recent 100 rows, so a
+      // date filter that just searched within them would silently come up
+      // empty for anything older than that — go back to the server scoped
+      // to this one day instead, so "find the audit-log entry for a
+      // specific date" actually works no matter how much has happened
+      // since.
+      openModal({type:'audit-log', loading:true, entries:[], search:m.search||'', actionFilter:m.actionFilter||'', dateFilter:date});
+      try{
+        const entries = await window.RC.fetchAuditLog({startDate:date, endDate:date, limit:500});
+        openModal({type:'audit-log', loading:false, entries: entries||[], search:m.search||'', actionFilter:m.actionFilter||'', dateFilter:date});
+      }catch(e){
+        openModal({type:'audit-log', loading:false, entries:[], search:m.search||'', actionFilter:m.actionFilter||'', dateFilter:date, error:(e&&e.message)||'Could not load that date.'});
+      }
+    });
+    on('audit-filters-clear', ()=>{ openAuditLog(); });
     document.querySelectorAll('[data-restore-to-audit]').forEach(btn=>btn.addEventListener('click', async ()=>{
       const auditId = btn.dataset.restoreToAudit;
       const anchorEntry = (m.entries||[]).find(e=>String(e.id)===auditId);
