@@ -5719,7 +5719,6 @@
     cursor:default;
   }
   .period-pill b{color:inherit;font-weight:inherit;}
-  .period-pill-sub{opacity:.6;font-weight:500;margin-left:2px;}
   .topbar-right{display:flex;gap:var(--md-space-2);flex-wrap:wrap;align-items:center;}
 
 
@@ -9548,19 +9547,6 @@ function friendlyDate(isoStr){
   } catch(e){ return isoStr; }
 }
 
-// Same as friendlyDate() minus the weekday — for tight spots (the topbar
-// period pill) where the day name is a "nice to have", not needed; the
-// full friendlyDate() stays in the pill's title tooltip for anyone who
-// wants it.
-function friendlyDateShort(isoStr){
-  if(!isoStr) return '—';
-  try{
-    const [y,m,d] = isoStr.split('-').map(Number);
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return months[m-1]+' '+d;
-  } catch(e){ return isoStr; }
-}
-
 async function loadState(){
   try{
     const res = await window.storage.get('app-state', true);
@@ -10948,8 +10934,8 @@ function renderTopbar(){
       </div>
     </div>
     <div class="topbar-context">
-      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}">📅 ${friendlyDateShort(state.currentPeriod)||'—'} <span class="period-pill-sub">→ ${friendlyDateShort(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}</span></button>
-      ${unplaced>0?`<span class="topbar-unplaced">⚠ ${unplaced} unplaced</span>`:''}
+      <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}">📅 ${friendlyDate(state.currentPeriod)||'—'}</button>
+      ${unplaced>0?`<span class="topbar-unplaced" title="${unplaced} unplaced">⚠ ${unplaced}</span>`:''}
     </div>
   </div>
   ${boardSearch||searchExpanded?`
