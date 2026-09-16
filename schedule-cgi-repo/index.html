@@ -10572,8 +10572,17 @@ function navBadgeCount(){
 // preview goes blank a few seconds after opening it. The underlying state
 // is still updated either way; it just surfaces next time something
 // re-renders normally (closing the modal, switching its tabs, etc.).
+// Background/advisory refreshes (badge counts, undo-rotate window expiry,
+// the "all covered" banner timer, the realtime board-changes callback) call
+// this instead of render() directly — a full render() rebuilds every open
+// modal's DOM from state, which would silently wipe out anything typed into
+// a field that isn't captured into state until a later action (e.g. the Add
+// staff Name field, only snapshotted on Save or a tab switch). Skip the
+// render whenever ANY modal is open, not just report-preview — the count
+// just updates on the next render instead (same "advisory, catches up
+// later" behavior these callers already rely on).
 function renderUnlessReportPreviewOpen(){
-  if(activeModal && activeModal.type==='report-preview') return;
+  if(activeModal) return;
   render();
 }
 async function refreshEvalBadgeCounts(){
