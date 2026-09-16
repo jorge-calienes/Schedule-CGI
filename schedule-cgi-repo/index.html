@@ -12897,8 +12897,8 @@ function renderStaffManagerModal(m){
   const breakDisplay  = m.breakVal !== undefined ? m.breakVal : (currentBreakLabel(editing?.breakTimes) || '— Select —');
   const profileTab = `
     <div class="pm-list">
-      <div class="pm-row"><span class="pm-row-label">Name</span><input class="pm-row-input" type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}"/></div>
-      <div class="pm-row"><span class="pm-row-label">TDIS #</span><input class="pm-row-input" type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/></div>
+      <div class="pm-row"><span class="pm-row-label">Name</span><input class="pm-row-input" type="text" id="staff-name-input" placeholder="Full name" value="${escapeHtml(nameVal)}" autocomplete="off" autocorrect="off" spellcheck="false"/></div>
+      <div class="pm-row"><span class="pm-row-label">TDIS #</span><input class="pm-row-input" type="text" id="staff-tdis-input" placeholder="e.g. PH2" maxlength="3" value="${escapeHtml(tdisVal)}" autocomplete="off" autocorrect="off" spellcheck="false" style="text-transform:uppercase;letter-spacing:.08em;font-family:var(--mono);"/></div>
     </div>
     <div class="field-error" id="staff-tdis-error" style="margin:-14px 0 14px;"></div>
 
