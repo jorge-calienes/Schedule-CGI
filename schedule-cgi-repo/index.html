@@ -1205,8 +1205,6 @@
     margin-top:6px;
     animation:cia-pop .15s cubic-bezier(.34,1.2,.64,1);
   }
-  .chip-cia-popup.chip-cia-popup-row2{padding-top:0;margin-top:0;}
-  .chip-cia-popup .cia-btn:disabled{opacity:.35;cursor:default;}
   @keyframes cia-pop{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
 
   .chip-cia-popup .cia-btn{
@@ -11716,20 +11714,6 @@ function renderChip(s){
       ${ciaBtn('act-late-arrival'+(lateEvent?' active':''), s.id, '⏰', 'Late', lateEvent?'Undo late arrival':'Late arrival')}
       ${ciaBtn('act-left-early'+(leftEarlyEvent?' active':''), s.id, '🚪', 'Early', leftEarlyEvent?'Undo left early':'Left early')}
     </div>` : ''}
-    ${(()=>{
-      // Reordering within an area is normally done by dragging, but drag
-      // doesn't work on a touch screen — these are the only way to do it
-      // on mobile, so they show whenever the area has more than one person,
-      // not only when a drag would otherwise be available.
-      if(readOnly || chipMenuOpen!==s.id || !areaId) return '';
-      const areaMembers = staffInArea(areaId);
-      if(areaMembers.length<2) return '';
-      const pos = areaMembers.findIndex(m=>m.id===s.id);
-      return `<div class="chip-cia-popup chip-cia-popup-row2">
-        <button class="cia-btn" data-move-staff="${s.id}" data-move-staff-dir="-1" ${pos<=0?'disabled':''} title="Move up in this area"><span class="cia-btn-icon">⬆</span><span class="cia-btn-label">Move up</span></button>
-        <button class="cia-btn" data-move-staff="${s.id}" data-move-staff-dir="1" ${pos<0||pos>=areaMembers.length-1?'disabled':''} title="Move down in this area"><span class="cia-btn-icon">⬇</span><span class="cia-btn-label">Move down</span></button>
-      </div>`;
-    })()}
   </div>`;
 }
 
@@ -16911,26 +16895,6 @@ function attachHandlers(){
     render();
   }));
 
-  // Move up/down within an area — the touch-friendly alternative to
-  // dragging a chip onto another chip (drag doesn't work on a touch screen).
-  document.querySelectorAll('[data-move-staff]').forEach(btn=>btn.addEventListener('click', e=>{
-    e.stopPropagation();
-    if(btn.disabled) return;
-    const sid = btn.dataset.moveStaff;
-    const dir = parseInt(btn.dataset.moveStaffDir, 10);
-    const areaId = state.assignments[sid];
-    if(!areaId) return;
-    const members = staffInArea(areaId).map(m=>m.id);
-    const from = members.indexOf(sid);
-    const to   = from + dir;
-    if(from<0 || to<0 || to>=members.length) return;
-    [members[from], members[to]] = [members[to], members[from]];
-    if(!state.staffOrder) state.staffOrder = {};
-    state.staffOrder[areaId] = members;
-    saveState();
-    syncBoardWrite(()=>window.RC.updateAssignmentOrder({order: members}), 'reorder staff');
-    render();
-  }));
   // close chip menu when clicking anywhere outside — use mousedown to beat click
   if(!window.__chipMenuOutside){
     window.__chipMenuOutside = true;
