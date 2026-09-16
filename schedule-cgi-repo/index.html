@@ -12940,7 +12940,8 @@ function renderStaffManagerModal(m){
       </div>
     </div>
     <div class="sw-reveal ${langSwitchOn?'open':''}" id="lang-reveal-wrap" style="margin-bottom:20px;"><div class="lang-cert-grid" id="lang-cert-section">${state.languages.map(lang=>{
-        const checked = editing&&editing.languageCerts&&editing.languageCerts.includes(lang.id);
+        const langCertsVal = m.langCerts !== undefined ? m.langCerts : (editing ? editing.languageCerts||[] : []);
+        const checked = langCertsVal.includes(lang.id);
         return '<label class="lang-cert-chip '+(checked?'checked':'')+'"><input type="checkbox" class="staff-lang-cert" data-lang-id="'+lang.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+escapeHtml(lang.name)+'</label>';
       }).join('')}</div></div>
 
@@ -18932,7 +18933,7 @@ function attachHandlers(){
       const saveBtn = document.getElementById('staff-save-btn');
       if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='Saving…'; }
 
-      if(activeModal.editId){
+      if(activeModal.editId && activeModal.editId!=='__new__'){
         const s=getStaffById(activeModal.editId); const prevFlow=s.flowId;
         const homeAreaId = (isTeamLead&&!s.homeAreaId) ? (state.assignments[s.id]||null) : s.homeAreaId;
         const sync = await syncCrudWrite(async ()=>{
