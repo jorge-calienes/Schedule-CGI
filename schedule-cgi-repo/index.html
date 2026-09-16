@@ -10181,6 +10181,7 @@ function areasByDepartment(){
   const allDepts = Object.keys(map);
   const ordered  = state.departments.filter(d=>map[d]).concat(allDepts.filter(d=>!state.departments.includes(d)));
   const isLead   = isTeamLeadRole();
+  const leadAreaIds = isLead ? new Set(authState.account?.assigned_area_ids||[]) : null;
   return ordered.map(dept=>{
     let areas = map[dept];
     const ao  = isLead ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
@@ -10188,6 +10189,16 @@ function areasByDepartment(){
       const inOrder = ao.map(id=>areas.find(a=>a.id===id)).filter(Boolean);
       const rest    = areas.filter(a=>!ao.includes(a.id));
       areas = [...inOrder, ...rest];
+    } else if(leadAreaIds && leadAreaIds.size){
+      // No manual order saved yet for this department — default to her
+      // designated area(s) first so she isn't scrolling past everyone
+      // else's areas just to reach her own every time. Purely a default:
+      // dragging to reorder (which writes a real personalAreaOrder entry
+      // above) takes over from here, same as the manual case, and this
+      // never touches the shared order anyone else sees.
+      const mine  = areas.filter(a=>leadAreaIds.has(a.id));
+      const other = areas.filter(a=>!leadAreaIds.has(a.id));
+      if(mine.length) areas = [...mine, ...other];
     }
     return {department:dept, areas};
   });
