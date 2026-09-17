@@ -7217,6 +7217,9 @@
   .time-off-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--md-sys-color-surface-container-low);border-radius:var(--md-sys-shape-corner-small);font-size:var(--md-sys-typescale-body-small-size);}
   .time-off-dates{font-weight:700;color:var(--md-sys-color-on-surface);white-space:nowrap;}
   .time-off-note{color:var(--md-sys-color-on-surface-variant);flex:1;}
+  .to-type-picker{display:flex;gap:6px;flex-wrap:wrap;}
+  .to-type-btn{flex:1;min-width:100px;padding:8px 10px;border-radius:var(--md-sys-shape-corner-small);border:1px solid var(--md-sys-color-outline-variant);background:var(--md-sys-color-surface-container-low);color:var(--md-sys-color-on-surface-variant);font-size:var(--md-sys-typescale-body-small-size);font-weight:600;cursor:pointer;white-space:nowrap;}
+  .to-type-btn.active{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);border-color:transparent;}
   .to-row-edit,.to-row-del{background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;color:var(--md-sys-color-on-surface-variant);}
   .to-row-del:hover{color:var(--md-sys-color-error);}
   /* ── Coverage banner on chip ── */
@@ -15592,6 +15595,12 @@ function renderPositionsManagerModal(m){
 function renderTimeOffManagerModal(m){
   const editing = m.staffId ? getStaffById(m.staffId) : null;
   const offs = editing ? ((state.timeOff||{})[editing.id]||[]) : [];
+  // Upcoming (not-yet-happened) late-arrival/left-early attendance events —
+  // scheduled the same way whole-day time off is, from this same screen,
+  // rather than requiring same-day marking from the board chip menu.
+  const upcomingAttendance = editing
+    ? (state.attendanceEvents||[]).filter(e=>e.staffId===editing.id && (e.eventType==='late_arrival'||e.eventType==='left_early') && e.eventDate>=todayLabel())
+    : [];
   const allStaff = m.staffId ? null : state.staff.slice().sort((a,b)=>a.name.localeCompare(b.name));
   const searchQ = m.searchQ||'';
 
@@ -15724,15 +15733,47 @@ function renderTimeOffManagerModal(m){
     </div>`;
   }
 
-  // Editing or adding a time-off entry for a specific staff member
-  const editEntry = m.editId ? offs.find(r=>r.id===m.editId) : null;
+  // Editing or adding a time-off entry, or a scheduled late-arrival/left-early,
+  // for a specific staff member. Time off and attendance events are separate
+  // tables with no relation between their ids, so an in-progress edit needs
+  // editKind alongside editId to say which one it's pointing at.
+  const editEntry = (m.editId && m.editKind!=='attendance') ? offs.find(r=>r.id===m.editId) : null;
+  const editAttendance = (m.editId && m.editKind==='attendance') ? upcomingAttendance.find(e=>e.id===m.editId) : null;
+  const entryType = editAttendance ? editAttendance.eventType : (editEntry ? 'timeoff' : (m.entryType || 'timeoff'));
+  const isAttendanceType = entryType==='late_arrival' || entryType==='left_early';
+  const isEditing = !!(editEntry || editAttendance);
+  const ENTRY_TYPE_META = {
+    timeoff:      {label:'Day(s) off',   icon:'📅'},
+    late_arrival: {label:'Late arrival', icon:'⏰'},
+    left_early:   {label:'Left early',   icon:'🚪'},
+  };
+  const combinedExisting = [
+    ...offs.map(r=>({...r, kind:'timeoff'})),
+    ...upcomingAttendance.map(e=>({...e, kind:'attendance'})),
+  ].sort((a,b)=>(a.startDate||a.eventDate).localeCompare(b.startDate||b.eventDate));
   return `
   <div class="modal" style="max-width:440px;">
     <div class="modal-head">
-      <div><h2>${editEntry?'Edit':'Add'} time off</h2><p>${escapeHtml(editing?.name||'Staff member')}</p></div>
+      <div><h2>${isEditing?'Edit':'Add'} ${ENTRY_TYPE_META[entryType].label.toLowerCase()}</h2><p>${escapeHtml(editing?.name||'Staff member')}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
+      ${isEditing ? `
+      <div class="small-muted" style="margin-bottom:12px;">${ENTRY_TYPE_META[entryType].icon} ${ENTRY_TYPE_META[entryType].label}</div>
+      ` : `
+      <div class="field" style="margin-bottom:16px;">
+        <label>Type</label>
+        <div class="to-type-picker">
+          ${Object.keys(ENTRY_TYPE_META).map(t=>`<button type="button" class="to-type-btn ${entryType===t?'active':''}" data-entry-type="${t}">${ENTRY_TYPE_META[t].icon} ${ENTRY_TYPE_META[t].label}</button>`).join('')}
+        </div>
+      </div>
+      `}
+      ${isAttendanceType ? `
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="to-date" value="${editAttendance?.eventDate||''}"/>
+      </div>
+      ` : `
       <div class="sm-grid-2">
         <div class="field">
           <label>Start date</label>
@@ -15743,24 +15784,30 @@ function renderTimeOffManagerModal(m){
           <input type="date" id="to-end" value="${editEntry?.endDate||''}"/>
         </div>
       </div>
+      `}
       <div class="field">
         <label>Note <span class="small-muted">(optional)</span></label>
-        <input type="text" id="to-label" placeholder="e.g. Vacation, Medical" value="${escapeHtml(editEntry?.label||'')}"/>
+        <input type="text" id="to-label" placeholder="${isAttendanceType?'e.g. Doctor appointment':'e.g. Vacation, Medical'}" value="${escapeHtml((editEntry?editEntry.label:editAttendance?editAttendance.note:'')||'')}"/>
       </div>
-      ${offs.length>0&&!editEntry?`
+      ${combinedExisting.length>0&&!isEditing?`
       <div class="field">
-        <label>Existing scheduled time off</label>
-        ${offs.map(r=>`<div class="time-off-row">
-          <span class="time-off-dates">${escapeHtml(r.startDate)} → ${escapeHtml(r.endDate)}</span>
+        <label>Existing scheduled</label>
+        ${combinedExisting.map(r=>r.kind==='timeoff' ? `<div class="time-off-row">
+          <span class="time-off-dates">📅 ${escapeHtml(r.startDate)} → ${escapeHtml(r.endDate)}</span>
           ${r.label?`<span class="time-off-note">${escapeHtml(r.label)}</span>`:''}
-          <button class="to-row-edit" data-to-id="${r.id}">✏</button>
-          <button class="to-row-del" data-to-id="${r.id}">✕</button>
+          <button class="to-row-edit" data-to-id="${r.id}" data-to-kind="timeoff">✏</button>
+          <button class="to-row-del" data-to-id="${r.id}" data-to-kind="timeoff">✕</button>
+        </div>` : `<div class="time-off-row">
+          <span class="time-off-dates">${ENTRY_TYPE_META[r.eventType].icon} ${escapeHtml(r.eventDate)}</span>
+          <span class="time-off-note">${ENTRY_TYPE_META[r.eventType].label}${r.note?' · '+escapeHtml(r.note):''}</span>
+          <button class="to-row-edit" data-to-id="${r.id}" data-to-kind="attendance">✏</button>
+          <button class="to-row-del" data-to-id="${r.id}" data-to-kind="attendance">✕</button>
         </div>`).join('')}
       </div>`:''}
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="to-back" type="button">← Back</button>
-      <button class="btn btn-primary" id="to-save" type="button">${editEntry?'Save changes':'Add time off'}</button>
+      <button class="btn btn-primary" id="to-save" type="button">${isEditing?'Save changes':'Add '+ENTRY_TYPE_META[entryType].label.toLowerCase()}</button>
     </div>
   </div>`;
 }
@@ -19601,20 +19648,33 @@ function attachHandlers(){
       openModal({...m});
     }));
 
-    // detail view: row edit/delete
-    // detail view: row edit/delete
+    // type picker (only shown when adding, not editing)
+    document.querySelectorAll('[data-entry-type]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openModal({...m, entryType: btn.dataset.entryType});
+    }));
+
+    // detail view: row edit/delete — time off and attendance events (late
+    // arrival / left early) are different tables, so editKind says which.
     document.querySelectorAll('.to-row-edit').forEach(el=>el.addEventListener('click',()=>{
-      openModal({...m, editId:el.dataset.toId});
+      openModal({...m, editId:el.dataset.toId, editKind:el.dataset.toKind});
     }));
     document.querySelectorAll('.to-row-del').forEach(el=>el.addEventListener('click', async ()=>{
-      if(!state.timeOff[m.staffId]) return;
       const rid = el.dataset.toId;
-      const deleted = state.timeOff[m.staffId].find(r=>r.id===rid);
-      const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
-      state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==rid);
-      if(deleted) reconcileCalloutAfterTimeOffDelete(m.staffId, deleted.startDate, deleted.endDate);
-      saveState();
-      if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      if(el.dataset.toKind==='attendance'){
+        const deleted = (state.attendanceEvents||[]).find(e=>e.id===rid);
+        const sync = await syncCrudWrite(()=>window.RC.clearAttendanceEvent({eventId:rid}));
+        state.attendanceEvents = (state.attendanceEvents||[]).filter(e=>e.id!==rid);
+        saveState();
+        if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      } else {
+        if(!state.timeOff[m.staffId]) return;
+        const deleted = state.timeOff[m.staffId].find(r=>r.id===rid);
+        const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
+        state.timeOff[m.staffId]=state.timeOff[m.staffId].filter(r=>r.id!==rid);
+        if(deleted) reconcileCalloutAfterTimeOffDelete(m.staffId, deleted.startDate, deleted.endDate);
+        saveState();
+        if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      }
       openModal({type:'time-off-manager', staffId:m.staffId, _returnModal:m._returnModal});
     }));
 
@@ -19633,23 +19693,45 @@ function attachHandlers(){
 
     // detail view: save → after saving, go to list (not back to profile)
     on('to-save', async ()=>{
-      const start = document.getElementById('to-start')?.value;
-      const end   = document.getElementById('to-end')?.value;
+      const entryType = m.editKind==='attendance'
+        ? (state.attendanceEvents||[]).find(e=>e.id===m.editId)?.eventType
+        : (m.editId ? 'timeoff' : (m.entryType || 'timeoff'));
       const label = document.getElementById('to-label')?.value?.trim()||'';
-      if(!start||!end){ showToast('Pick a start and end date','rust'); return; }
-      if(end < start){ showToast('End date must be after start','rust'); return; }
-      if(!state.timeOff[m.staffId]) state.timeOff[m.staffId]=[];
       let sync;
-      if(m.editId){
-        const r=state.timeOff[m.staffId].find(x=>x.id===m.editId);
-        sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label}));
-        if(r){ r.startDate=start; r.endDate=end; r.label=label; }
+
+      if(entryType==='late_arrival' || entryType==='left_early'){
+        const date = document.getElementById('to-date')?.value;
+        if(!date){ showToast('Pick a date','rust'); return; }
+        // No update endpoint for attendance events — editing means clearing
+        // the old row and marking a fresh one.
+        if(m.editId){
+          await syncCrudWrite(()=>window.RC.clearAttendanceEvent({eventId:m.editId}));
+          state.attendanceEvents = (state.attendanceEvents||[]).filter(e=>e.id!==m.editId);
+        }
+        const localId = uid('ae');
+        state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId:m.staffId, eventType:entryType, eventDate:date, note:label, createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+        sync = await syncCrudWrite(async ()=>{
+          const row = await window.RC.markAttendanceEvent({staffId:m.staffId, eventType:entryType, eventDate:date, note:label, actingAccountId:authState.account.id});
+          const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
+          if(ev && row) ev.id = row.id;
+        });
       } else {
-        sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id}));
-        state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label});
+        const start = document.getElementById('to-start')?.value;
+        const end   = document.getElementById('to-end')?.value;
+        if(!start||!end){ showToast('Pick a start and end date','rust'); return; }
+        if(end < start){ showToast('End date must be after start','rust'); return; }
+        if(!state.timeOff[m.staffId]) state.timeOff[m.staffId]=[];
+        if(m.editId){
+          const r=state.timeOff[m.staffId].find(x=>x.id===m.editId);
+          sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label}));
+          if(r){ r.startDate=start; r.endDate=end; r.label=label; }
+        } else {
+          sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id}));
+          state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label});
+        }
       }
       saveState();
-      showToast(sync.ok ? 'Time off saved — tap + Add to schedule another person' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      showToast(sync.ok ? 'Saved — tap + Add to schedule another person' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       // Go to list view so supervisor can immediately pick next person
       openModal({type:'time-off-manager', searchQ:m.searchQ||'', _saved:true});
     });
