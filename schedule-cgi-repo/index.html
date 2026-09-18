@@ -13391,32 +13391,100 @@ function buildDailyChangesEmail(){
     const s = getStaffById(sid);
     const areaId = state.assignments[sid];
     const area = areaId ? getAreaById(areaId) : null;
+    const waived = !!(state.coverageWaived||{})[sid];
     const covererId = areaId ? Object.keys(state.coverage||{}).find(cid=>state.assignments[cid]===areaId) : null;
     const coverer = covererId ? getStaffById(covererId) : null;
     // coverer's own board slot is now the covered area itself — their real
     // origin (where they return to tomorrow) is what's useful here.
     const covererFromArea = coverer ? getAreaById(state.coverage[covererId]?.returnToAreaId) : null;
-    return {s, area, coverer, covererFromArea};
+    return {s, area, coverer, covererFromArea, waived};
   }).sort((a,b)=>(a.area?.name||'￿').localeCompare(b.area?.name||'￿'));
 
+  // Today-only reassignments (temp moves + swaps — see doSwap()'s scope
+  // param) — grouped by the area each person is temporarily covering,
+  // same grouping as COVERAGE. A swap is two tempMoves entries whose
+  // returnToAreaId points at each other's current area; detecting that
+  // mutual pattern (rather than tagging "this came from doSwap") also
+  // correctly labels two independent moves that happen to cross paths.
+  const dayMoveRows = Object.keys(state.tempMoves||{})
+    .filter(sid=>state.tempMoves[sid]?.scope==='day' && getStaffById(sid))
+    .map(sid=>{
+      const s = getStaffById(sid);
+      const currentAreaId = state.assignments[sid];
+      const currentArea = currentAreaId ? getAreaById(currentAreaId) : null;
+      const returnAreaId = state.tempMoves[sid].returnToAreaId;
+      const returnArea = returnAreaId ? getAreaById(returnAreaId) : null;
+      return {sid, s, currentArea, returnArea};
+    });
+  const swapPartnerId = {};
+  dayMoveRows.forEach(r=>{
+    if(swapPartnerId[r.sid]) return;
+    const partner = dayMoveRows.find(o=>o.sid!==r.sid
+      && o.currentArea?.id===r.returnArea?.id
+      && r.currentArea?.id===o.returnArea?.id);
+    if(partner){ swapPartnerId[r.sid]=partner.sid; swapPartnerId[partner.sid]=r.sid; }
+  });
+  const reassignByArea = {};
+  dayMoveRows.forEach(r=>{
+    const key = r.currentArea ? r.currentArea.name : 'Unassigned';
+    if(!reassignByArea[key]) reassignByArea[key]=[];
+    const partner = swapPartnerId[r.sid] ? dayMoveRows.find(o=>o.sid===swapPartnerId[r.sid]) : null;
+    reassignByArea[key].push(partner
+      ? r.s.name+' — swapped with '+partner.s.name+' (from '+(r.returnArea?r.returnArea.name:'unassigned')+', returns tomorrow)'
+      : r.s.name+' — moved from '+(r.returnArea?r.returnArea.name:'unassigned')+' (returns tomorrow)');
+  });
+
+  // Late arrivals / left-earlys scheduled for today — same source as the
+  // board chip's Late/Early toggle and the Time Off screen's scheduling
+  // (see PR adding that), just filtered to today's date here.
+  const attendanceRowsFor = eventType => (state.attendanceEvents||[])
+    .filter(e=>e.eventType===eventType && e.eventDate===today)
+    .map(e=>getStaffById(e.staffId))
+    .filter(Boolean)
+    .map(s=>{
+      const areaId = state.assignments[s.id];
+      return {s, area: areaId ? getAreaById(areaId) : null};
+    })
+    .sort((a,b)=>a.s.name.localeCompare(b.s.name));
+  const lateRows  = attendanceRowsFor('late_arrival');
+  const earlyRows = attendanceRowsFor('left_early');
+
+  const listOrNone = list => list.length===0
+    ? ['None today.']
+    : list.map(r=>'- '+r.s.name+' ('+(r.area?r.area.name:'no area')+')');
+
   const lines = ['Reassignments for '+friendlyDate(today), ''];
+
+  lines.push('NOT PRESENT TODAY', ...listOrNone(rows));
+  lines.push('', 'LATE ARRIVALS', ...listOrNone(lateRows));
+  lines.push('', 'LEAVING EARLY', ...listOrNone(earlyRows));
+
+  lines.push('', 'COVERAGE');
   if(rows.length===0){
-    lines.push('No call-outs or scheduled leave today — no reassignments needed.');
+    lines.push('No call-outs today — no coverage needed.');
   } else {
-    lines.push('COVERAGE');
     rows.forEach(r=>{
       lines.push((r.area?r.area.name:'No area')+':');
-      lines.push('  '+r.s.name+' → '+(r.coverer
-        ? 'Covered by '+r.coverer.name+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
-        : 'NEEDS COVERAGE'));
+      lines.push('  '+r.s.name+' → '+(r.waived
+        ? 'No coverage needed'
+        : r.coverer
+          ? 'Covered by '+r.coverer.name+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
+          : 'NEEDS COVERAGE'));
       lines.push('');
     });
-    const pending = rows.filter(r=>!r.coverer && r.area).length;
+    const pending = rows.filter(r=>!r.coverer && !r.waived && r.area).length;
     lines.push(pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
+  }
 
-    lines.push('', 'NOT PRESENT TODAY');
-    rows.slice().sort((a,b)=>a.s.name.localeCompare(b.s.name)).forEach(r=>{
-      lines.push('- '+r.s.name+' ('+(r.area?r.area.name:'no area')+')');
+  lines.push('', 'REASSIGNMENTS (today only)');
+  const reassignAreaNames = Object.keys(reassignByArea).sort();
+  if(reassignAreaNames.length===0){
+    lines.push('None today.');
+  } else {
+    reassignAreaNames.forEach(areaName=>{
+      lines.push(areaName+':');
+      reassignByArea[areaName].forEach(desc=>lines.push('  '+desc));
+      lines.push('');
     });
   }
   return {subject:'Daily Reassignments — '+friendlyDate(today), body:lines.join('\n')};
