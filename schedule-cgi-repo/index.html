@@ -14891,13 +14891,19 @@ function renderTeamDashboardModal(m){
 // scheduled leave comes straight from state.timeOff, clipped to the
 // selected period so a leave spanning a period boundary only counts the
 // days that actually fall inside it. ---
-function attendancePeriodRange(periodType, anchorMonth){
+function attendancePeriodRange(periodType, anchorMonth, customRange){
   const pad = n => String(n).padStart(2,'0');
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   if(periodType==='today'){
     const today = todayLabel();
     const [ty,tm,td] = today.split('-').map(Number);
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     return { start:today, end:today, label:`Today — ${monthNames[tm-1]} ${td}, ${ty}` };
+  }
+  if(periodType==='custom'){
+    const fmt = iso => { const [cy,cm,cd] = iso.split('-').map(Number); return `${monthNames[cm-1]} ${cd}, ${cy}`; };
+    const start = (customRange && customRange.start) || todayLabel();
+    const end = (customRange && customRange.end) || start;
+    return { start, end, label: start===end ? fmt(start) : `${fmt(start)} – ${fmt(end)}` };
   }
   const [y, mo] = (anchorMonth||todayLabel().slice(0,7)).split('-').map(Number);
   const lastDayOfMonth = (year, month1to12) => new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
@@ -14907,7 +14913,6 @@ function attendancePeriodRange(periodType, anchorMonth){
     const startMonth = (q-1)*3+1, endMonth = startMonth+2;
     return { start:`${y}-${pad(startMonth)}-01`, end:`${y}-${pad(endMonth)}-${pad(lastDayOfMonth(y,endMonth))}`, label:`Q${q} ${y}` };
   }
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   return { start:`${y}-${pad(mo)}-01`, end:`${y}-${pad(mo)}-${pad(lastDayOfMonth(y,mo))}`, label:`${monthNames[mo-1]} ${y}` };
 }
 
@@ -14915,8 +14920,8 @@ function attendancePeriodRange(periodType, anchorMonth){
 // can drill down into "which days" on demand instead of only showing a
 // number — the count alone doesn't say whether two callouts landed back
 // to back or a month apart.
-function computeAttendanceReport(periodType, anchorMonth){
-  return computeAttendanceReportForRange(attendancePeriodRange(periodType, anchorMonth));
+function computeAttendanceReport(periodType, anchorMonth, customRange){
+  return computeAttendanceReportForRange(attendancePeriodRange(periodType, anchorMonth, customRange));
 }
 
 // Same computation as computeAttendanceReport(), but for an explicit
@@ -15075,7 +15080,9 @@ function arPersonDetail(r){
 function renderAttendanceReportModal(m){
   const periodType = m.periodType || 'month';
   const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
-  const report = computeAttendanceReport(periodType, anchorMonth);
+  const customStart = m.customStart || todayLabel();
+  const customEnd = m.customEnd || customStart;
+  const report = computeAttendanceReport(periodType, anchorMonth, {start:customStart, end:customEnd});
   const search = (m.search||'').trim().toLowerCase();
   const supervisorFilter = m.supervisorFilter || '';
   let rows = report.rows;
@@ -15100,8 +15107,13 @@ function renderAttendanceReportModal(m){
           <button class="rp-view-tab ${periodType==='month'?'active':''}" id="ar-period-month">Month</button>
           <button class="rp-view-tab ${periodType==='quarter'?'active':''}" id="ar-period-quarter">Quarter</button>
           <button class="rp-view-tab ${periodType==='year'?'active':''}" id="ar-period-year">Year</button>
+          <button class="rp-view-tab ${periodType==='custom'?'active':''}" id="ar-period-custom">Custom</button>
         </div>
-        ${periodType==='today' ? '' : `<input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>`}
+        ${periodType==='today' ? '' : periodType==='custom' ? `
+        <div style="display:flex;gap:8px;">
+          <input type="date" id="ar-custom-start" value="${escapeHtml(customStart)}" max="${escapeHtml(customEnd)}"/>
+          <input type="date" id="ar-custom-end" value="${escapeHtml(customEnd)}" min="${escapeHtml(customStart)}"/>
+        </div>` : `<input type="month" id="ar-anchor-month" value="${escapeHtml(anchorMonth)}"/>`}
       </div>
 
       <div class="team-dash-summary">
@@ -20917,10 +20929,21 @@ function attachHandlers(){
     on('ar-period-month',   ()=>openModal({...m, periodType:'month'}));
     on('ar-period-quarter', ()=>openModal({...m, periodType:'quarter'}));
     on('ar-period-year',    ()=>openModal({...m, periodType:'year'}));
+    on('ar-period-custom',  ()=>openModal({...m, periodType:'custom', customStart:m.customStart||todayLabel(), customEnd:m.customEnd||m.customStart||todayLabel()}));
     const monthInput = document.getElementById('ar-anchor-month');
     if(monthInput) monthInput.addEventListener('change', ()=>{
       if(monthInput.value) openModal({...m, anchorMonth:monthInput.value});
     });
+    const customStartInput = document.getElementById('ar-custom-start');
+    const customEndInput = document.getElementById('ar-custom-end');
+    function applyArCustomRange(){
+      const startVal = customStartInput?.value || m.customStart || todayLabel();
+      const endVal = customEndInput?.value || startVal;
+      if(startVal > endVal){ showToast('Start date must be before end date', 'rust'); render(); return; }
+      openModal({...m, customStart:startVal, customEnd:endVal});
+    }
+    customStartInput?.addEventListener('change', applyArCustomRange);
+    customEndInput?.addEventListener('change', applyArCustomRange);
     const searchInput = document.getElementById('ar-search');
     if(searchInput){
       searchInput.addEventListener('input', e=>{
@@ -20945,10 +20968,15 @@ function attachHandlers(){
     on('ar-export-ics', ()=>{
       const periodType = m.periodType || 'month';
       const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
-      const report = computeAttendanceReport(periodType, anchorMonth);
+      const customStart = m.customStart || todayLabel();
+      const customEnd = m.customEnd || customStart;
+      const report = computeAttendanceReport(periodType, anchorMonth, {start:customStart, end:customEnd});
       const events = attendanceReportToEvents(report);
       if(events.length===0){ showToast('Nothing to export for this period', 'rust'); return; }
-      downloadIcsFile(`attendance-${anchorMonth}-${periodType}.ics`, buildAttendanceIcs(events));
+      const filename = periodType==='custom'
+        ? `attendance-${customStart}${customEnd!==customStart?'_to_'+customEnd:''}.ics`
+        : `attendance-${anchorMonth}-${periodType}.ics`;
+      downloadIcsFile(filename, buildAttendanceIcs(events));
       showToast(`Exported ${events.length} event${events.length===1?'':'s'} — open the file to add them to Outlook`, 'teal');
     });
   }
