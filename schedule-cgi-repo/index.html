@@ -18742,6 +18742,19 @@ function attachHandlers(){
   if(activeModal.type==='team-lead-warning'){
     const returnTo = activeModal.returnTo;
     on('modal-move-anyway', ()=>{
+      // A coverage assignment (see the .cd-cand-tap handler) needs
+      // assignCoverage() — it records state.coverage (who's covering whom,
+      // and their return area for tomorrow's auto-return) on top of the
+      // move. A plain attemptPlace() here would move the team lead onto
+      // the board same as a normal placement, but leave the callout they
+      // were covering permanently stuck showing "needs coverage".
+      if(activeModal.isCoverage){
+        assignCoverage(activeModal.staffId, activeModal.targetAreaId);
+        const allCovered = calloutCoverageGaps().length===0;
+        if(allCovered){ closeModal(); showToast('All positions covered ✓','teal'); }
+        else if(returnTo) openModal(returnTo);
+        return;
+      }
       attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
       if(returnTo) openModal(returnTo); else closeModal();
     });
@@ -19239,7 +19252,7 @@ function attachHandlers(){
         return;
       }
       if(isTeamLeadDisplaced(coverId, areaId)){
-        openModal({type:'team-lead-warning', staffId:coverId, targetAreaId:areaId, returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
+        openModal({type:'team-lead-warning', staffId:coverId, targetAreaId:areaId, isCoverage:true, returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
         return;
       }
       const area = getAreaById(areaId);
