@@ -2613,17 +2613,29 @@ body{
     display:flex;flex-direction:column;gap:4px;
     background:var(--c-surface-2);
   }
+.rp-sidebar-sections{display:flex;flex-direction:column;gap:4px;}
+.rp-sidebar-extras{display:flex;flex-direction:column;gap:4px;}
 @media(max-width:600px){
     .rp-layout{flex-direction:column;}
     .rp-sidebar{
       width:100%;border-right:none;
       border-bottom:1px solid var(--c-border);
+      flex-direction:column;
+      padding:0;gap:0;
+      max-height:none;flex-shrink:0;
+    }
+    /* Only the section on/off toggles scroll horizontally as compact icon
+       chips — the date range, supervisor filter and format controls stay in
+       a normal full-width, vertically-stacked block below them (with their
+       headers visible) instead of being squeezed into that same scroll
+       strip, which is what made the date pickers hard to get to on a phone. */
+    .rp-sidebar-sections{
       flex-direction:row;flex-wrap:nowrap;
       overflow-x:auto;overflow-y:hidden;
       padding:8px;gap:6px;
-      max-height:none;flex-shrink:0;
     }
-    .rp-sidebar-head,.rp-sidebar-divider,.rp-format-row,.rp-format-check{display:none;}
+    .rp-sidebar-sections .rp-sidebar-head{display:none;}
+    .rp-sidebar-extras{padding:10px 12px 14px;gap:4px;border-top:1px solid var(--c-border);}
     .rp-section-toggle{
       flex-direction:column;align-items:center;justify-content:center;
       min-width:70px;flex-shrink:0;padding:8px 6px;gap:4px;
@@ -2719,6 +2731,13 @@ body{
   }
 
 /* Date range */
+.rp-date-preset-row{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px;}
+.rp-date-preset-btn{
+    padding:4px 9px;border-radius:999px;border:1.5px solid var(--c-border);
+    background:var(--c-surface-1);color:var(--c-text-2);font-size:10.5px;font-weight:600;
+    cursor:pointer;white-space:nowrap;
+  }
+.rp-date-preset-btn:hover{border-color:var(--c-accent);color:var(--c-accent);}
 .rp-date-range-row{display:flex;gap:6px;margin:4px 0;}
 .rp-date-field{
     flex:1;display:flex;flex-direction:column;gap:3px;
@@ -14465,6 +14484,7 @@ function renderReportPreviewModal(m){
 
     <!-- LEFT: section toggles -->
     <div class="rp-sidebar">
+      <div class="rp-sidebar-sections">
       <div class="rp-sidebar-head">Sections</div>
       ${pages.map(p=>`
         <label class="rp-section-toggle ${secs[p.id]?'on':'off'} ${previewPage===p.id?'previewing':''}">
@@ -14478,10 +14498,18 @@ function renderReportPreviewModal(m){
           </div>
           <button class="rp-preview-btn" data-preview="${p.id}" title="Preview this section">👁</button>
         </label>`).join('')}
+      </div>
 
+      <div class="rp-sidebar-extras">
       <div class="rp-sidebar-divider"></div>
 
       <div class="rp-sidebar-head" style="margin-top:0">Date range</div>
+      <div class="rp-date-preset-row">
+        <button type="button" class="rp-date-preset-btn" data-range-preset="7">Last 7 days</button>
+        <button type="button" class="rp-date-preset-btn" data-range-preset="30">Last 30 days</button>
+        <button type="button" class="rp-date-preset-btn" data-range-preset="90">Last 90 days</button>
+        ${state.currentPeriod?`<button type="button" class="rp-date-preset-btn" data-range-preset="period">This period</button>`:''}
+      </div>
       <div class="rp-date-range-row">
         <label class="rp-date-field">
           <span>From</span>
@@ -14521,6 +14549,7 @@ function renderReportPreviewModal(m){
         <label><input type="checkbox" id="rp-show-breaks" ${m.showBreaks!==false?'checked':''}> Include break times</label>
         <label><input type="checkbox" id="rp-show-seniority" ${m.showSeniority!==false?'checked':''}> Show seniority badges</label>
         <label><input type="checkbox" id="rp-show-accom" ${m.showAccom?'checked':''}> Show accommodations <span class="field-hint" style="color:var(--c-red)">(private)</span></label>
+      </div>
       </div>
     </div>
 
@@ -15358,6 +15387,23 @@ function attachHandlers(){
     const understaffedToday = ovAreaStats.filter(a=>a.pct<80).length;
     const busiestArea = ovAreaStats.length ? ovAreaStats.slice().sort((a,b)=>b.placed-a.placed)[0] : null;
 
+    // Rotation progress — for each active, rotating staff member, the % of
+    // non-fixed areas they already have real (or manually-marked) experience
+    // in. Averaged org-wide for the dashboard KPI tile below, and kept
+    // per-staff so the Staff Performance page can show each person's own
+    // number next to the areas still missing from their rotation.
+    const nonFixedAreas = state.areas.filter(a=>!a.fixed);
+    const rotatingStaff = state.staff.filter(s=>s.active!==false && staffRotates(s.id));
+    const rotationProgressByStaff = {};
+    rotatingStaff.forEach(s=>{
+      const { rows } = staffExperienceBreakdown(s.id);
+      const worked = rows.filter(r=>!r.area.fixed && r.hasExperience).length;
+      rotationProgressByStaff[s.id] = nonFixedAreas.length ? Math.round(worked/nonFixedAreas.length*100) : null;
+    });
+    const rotationProgressPct = (nonFixedAreas.length && rotatingStaff.length)
+      ? Math.round(rotatingStaff.reduce((sum,s)=>sum+(rotationProgressByStaff[s.id]||0),0) / rotatingStaff.length)
+      : null;
+
     const ovKpi = (num, label, sub, alert) => `
       <div class="ov-kpi-tile ${alert?'ov-kpi-alert':''}">
         <div class="ov-kpi-num">${num}</div>
@@ -15477,6 +15523,7 @@ function attachHandlers(){
         ${ovKpi(attendanceTotals.early, 'Left Early', 'this period', false)}
         ${ovKpi(attendanceTotals.leaveDays, 'Leave Days', 'this period', false)}
         ${ovKpi(understaffedToday, 'Areas Under 80%', 'today', understaffedToday>0)}
+        ${rotationProgressPct!==null ? ovKpi(rotationProgressPct+'%', 'Rotation Progress', 'avg. area coverage', rotationProgressPct<50) : ''}
       </div>
       <div class="ov-chart-row">
         ${attendanceChart}
@@ -15604,6 +15651,8 @@ function attachHandlers(){
           <th style="width:52px;text-align:center" title="Avg. unique positions per rotation (higher = more flexible)">Flex.</th>
           <th style="width:52px;text-align:center" title="Average proficiency rating across all areas (1–5)">Prof.</th>
           <th style="width:62px;text-align:center" title="Should supervisor move them to a new area?">Needs Move</th>
+          <th style="width:56px;text-align:center" title="% of non-fixed areas this person already has experience in">Rotation Progress</th>
+          <th style="min-width:110px" title="Non-fixed areas they've never worked — candidates for the next rotation">Areas Needed</th>
           <th>Top Areas · Flags</th>
         </tr></thead><tbody>`;
 
@@ -15640,6 +15689,10 @@ function attachHandlers(){
       const senLbl = seniorityLabel(s);
       const veteran = isVeteran(s); const senior = isSenior(s);
       const posName = s.positionId ? state.positions.find(p=>p.id===s.positionId)?.name : '';
+      const progressPct = rotationProgressByStaff[s.id];
+      const gapAreas = staffRotates(s.id) ? neverWorkedGapAreasFor(s.id) : [];
+      const gapNames = gapAreas.map(a=>a.name);
+      const gapLabel = gapNames.length>3 ? gapNames.slice(0,3).join(', ')+' +'+(gapNames.length-3)+' more' : gapNames.join(', ');
       page2 += `<tr class="${todayOut?'out-row':''}">
         <td>
           <b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b>${posName?' <span style="font-size:8pt;font-weight:600;color:#555;background:#f0f0f0;padding:1pt 5pt;border-radius:3pt;">'+escapeHtml(posName)+'</span>':''}
@@ -15660,6 +15713,8 @@ function attachHandlers(){
         <td style="text-align:center">${move
           ?'<span style="color:#e67e22;font-weight:700">⚠ Yes</span>'
           :'<span style="color:#27ae60">✓</span>'}</td>
+        <td style="text-align:center;font-weight:600;color:${progressPct==null?'#bbb':progressPct>=80?'#27ae60':progressPct>=50?'#e67e22':'#c0392b'}">${progressPct==null?'—':progressPct+'%'}</td>
+        <td style="font-size:9.5pt">${gapNames.length?escapeHtml(gapLabel):(staffRotates(s.id)?'<span style="color:#27ae60">✓ Fully rotated</span>':'—')}</td>
         <td style="font-size:10pt">${best?'<span style="color:#555">'+escapeHtml(best)+'</span>':'—'}${flags.length?'<br><small>'+flags.join(' · ')+'</small>':''}</td>
       </tr>`;
     });
@@ -16213,9 +16268,18 @@ function attachHandlers(){
     // ─────────────────────────────────────────────────────────────────────
     const reportCSS = `
       *{box-sizing:border-box;margin:0;padding:0;}
-      body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;font-size:12pt;color:#111;background:#fff;}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol','Noto Color Emoji',sans-serif;font-size:12pt;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
       .page{padding:24pt 28pt;min-height:100vh;}
       .page-break{page-break-after:always;}
+      /* Keep individually-scannable blocks whole across a page break instead
+         of letting the printer/PDF engine slice a card or table row in half
+         at the boundary — this is what was causing sections to look "cut
+         off" when printed or saved as a PDF. */
+      .dept-block, .area-card, .to-card, .day-block, .ov-chart, .ov-kpi-tile,
+      .report-header, .report-table tr, table tr, .person-row{
+        page-break-inside:avoid; break-inside:avoid;
+      }
+      .report-table thead, table thead{ display:table-header-group; }
       .report-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16pt;border-bottom:2pt solid #111;padding-bottom:8pt;}
       h1{font-size:20pt;font-weight:700;color:#111;margin-bottom:4pt;}
       .subtitle{font-size:10pt;color:#555;margin-bottom:12pt;}
@@ -18108,6 +18172,23 @@ function attachHandlers(){
     }
     dateStartEl?.addEventListener('change', applyDateRange);
     dateEndEl?.addEventListener('change', applyDateRange);
+
+    // Date range quick presets — the native <input type="date"> pickers are
+    // fiddly to dial in by hand, so offer one-tap common ranges instead.
+    document.querySelectorAll('[data-range-preset]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const preset = btn.dataset.rangePreset;
+      const endVal = todayLabel();
+      let startVal;
+      if(preset==='period'){
+        startVal = state.rotationStartDate || state.currentPeriod || endVal;
+      } else {
+        const days = Number(preset)||30;
+        const d = new Date();
+        d.setDate(d.getDate() - (days-1));
+        startVal = d.toISOString().slice(0,10);
+      }
+      openReportBuilder({...activeModal, reportStartDate:startVal, reportEndDate:endVal});
+    }));
 
     // Format checkboxes — showTimes / showBreaks / showSeniority
     const showTimesEl   = document.getElementById('rp-show-times');
