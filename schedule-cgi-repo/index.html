@@ -9091,26 +9091,35 @@ function renderCalloutBanner(){
   const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
   if(outIds.length===0) return ''; // nobody out → no banner
 
-  const coveredAreaIds = new Set(
-    Object.keys(state.coverage||{})
-      .map(cid => state.assignments[cid])
-      .filter(Boolean)
-  );
-
-  // split into three groups
-  const unassigned  = outIds.filter(id => !state.assignments[id]);           // out & no area
-  const uncovered   = outIds.filter(id => {
-    if((state.coverageWaived||{})[id]) return false; // "no coverage needed" — doesn't need action
-    const aId = state.assignments[id];
-    return aId && !coveredAreaIds.has(aId);
+  // Per-area coverer counts, same as calloutCoverageGaps() — two people out
+  // of the same area need two coverers, not just "is anyone at all covering
+  // this area", which used to be a plain Set membership check and so
+  // credited every out-person in an area to the SAME single coverer.
+  const coverCountByArea = {};
+  Object.keys(state.coverage||{}).forEach(cid=>{
+    const aId = state.assignments[cid];
+    if(!aId) return;
+    coverCountByArea[aId] = (coverCountByArea[aId]||0)+1;
   });
-  const covered     = outIds.filter(id => {
-    if((state.coverageWaived||{})[id]) return true;
+  const claimedByArea = {};
+  const waived = outIds.filter(id=>(state.coverageWaived||{})[id]);
+  const uncovered = [];
+  const actuallyCovered = [];
+  outIds.forEach(id=>{
+    if((state.coverageWaived||{})[id]) return; // tallied separately as `waived`
     const aId = state.assignments[id];
-    return aId && coveredAreaIds.has(aId);
+    if(!aId) return; // no area — neither blocks nor satisfies "all covered", same as before
+    const claimed = claimedByArea[aId]||0;
+    if(claimed < (coverCountByArea[aId]||0)){
+      claimedByArea[aId] = claimed+1;
+      actuallyCovered.push(id);
+    } else {
+      uncovered.push(id);
+    }
   });
+  const covered = [...actuallyCovered, ...waived]; // "not blocking" set
 
-  const allCovered  = uncovered.length === 0;  // everyone with an area has coverage
+  const allCovered  = uncovered.length === 0;  // everyone with an area has coverage or is waived
   const names       = outIds.slice(0,2).map(id=>getStaffById(id)?.name?.split(' ')[0]||'?').join(', ');
   const extra       = outIds.length > 2 ? ' +' + (outIds.length-2) + ' more' : '';
   // A team lead only gets the action button when at least one of the
@@ -9128,12 +9137,23 @@ function renderCalloutBanner(){
     if(elapsed > 8000) return ''; // auto-hide after 8 seconds
     // schedule re-render to remove it
     if(!window._bannerTimer) window._bannerTimer = setTimeout(()=>{ window._bannerAllCoveredAt=null; window._bannerTimer=null; renderUnlessReportPreviewOpen(); }, 8000 - elapsed);
+    // "Covered" here can mean a real person was assigned, or the slot was
+    // just waived ("no coverage needed") — those aren't the same thing, so
+    // saying "coverage confirmed" when everyone was actually just waived
+    // (nobody assigned to anyone) would misleadingly imply someone stepped in.
+    const allWaived = waived.length===outIds.length;
+    const title = allWaived ? 'All positions resolved' : 'All positions covered';
+    const subtitle = allWaived
+      ? `${escapeHtml(names)}${extra} — no coverage needed`
+      : waived.length>0
+        ? `${escapeHtml(names)}${extra} — covered or waived`
+        : `${escapeHtml(names)}${extra} — coverage confirmed`;
     return `<div class="callout-banner all-covered">
       <div class="callout-banner-left">
         <span class="callout-banner-icon">✅</span>
         <div class="callout-banner-text">
-          <span class="callout-banner-title">All positions covered</span>
-          <span class="callout-banner-names">${escapeHtml(names)}${extra} — coverage confirmed</span>
+          <span class="callout-banner-title">${title}</span>
+          <span class="callout-banner-names">${subtitle}</span>
         </div>
       </div>
       <button class="callout-banner-btn all-covered-btn" id="btn-banner-dismiss">Dismiss</button>
@@ -9162,11 +9182,12 @@ function renderCalloutBanner(){
   }
 
   // ── Mixed: some covered, some not: YELLOW ──────────────────────────────
+  const coveredLabel = actuallyCovered.length + ' covered' + (waived.length>0 ? ' · '+waived.length+' waived' : '');
   return `<div class="callout-banner partial-coverage">
     <div class="callout-banner-left">
       <span class="callout-banner-icon">⚠️</span>
       <div class="callout-banner-text">
-        <span class="callout-banner-title">${uncovered.length} still need${uncovered.length===1?'s':''} coverage · ${covered.length} covered</span>
+        <span class="callout-banner-title">${uncovered.length} still need${uncovered.length===1?'s':''} coverage · ${coveredLabel}</span>
         <span class="callout-banner-names">${escapeHtml(names)}${extra}</span>
       </div>
     </div>
@@ -9428,8 +9449,8 @@ function renderChip(s){
       ${trail.map(t=>`<span class="trail-dot" style="background:${t.color}" title="${escapeHtml(t.label)}"></span>`).join('')}
     </div>` : ''}
     ${isCovering ? `<div class="chip-covering-row">
-      <span class="chip-covering-tag">↩ Return</span>
-      <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(state.coverage[s.id].returnToAreaId)?.name||'pool')}</span>
+      <span class="chip-covering-tag">📅 Today only</span>
+      <span class="chip-covering-hint">→ ${escapeHtml(getAreaById(state.coverage[s.id].returnToAreaId)?.name||'pool')} tomorrow</span>
       ${readOnly ? '' : `<button class="act-return-coverage chip-return-btn" data-id="${s.id}" title="Return to original area">↩</button>`}
     </div>` : ''}
     ${tempMove ? `<div class="chip-covering-row chip-temp-move-row ${tempMove.scope==='rotation'?'rotation-scope':''}">
@@ -16505,9 +16526,11 @@ function attachHandlers(){
       // were covering permanently stuck showing "needs coverage".
       if(activeModal.isCoverage){
         assignCoverage(activeModal.staffId, activeModal.targetAreaId);
-        const allCovered = calloutCoverageGaps().length===0;
-        if(allCovered){ closeModal(); showToast('All positions covered ✓','teal'); }
-        else if(returnTo) openModal(returnTo);
+        // Reopen rather than auto-close, even when this closes the last gap —
+        // see the .cd-cand-tap handler below for why: a pick shouldn't feel
+        // final the instant it's made.
+        if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+        if(returnTo) openModal(returnTo);
         return;
       }
       attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
@@ -17019,14 +17042,14 @@ function attachHandlers(){
       }
       assignCoverage(coverId, areaId);
       // Check if all positions are now covered (headcount per area, not
-      // just "is anyone covering it" — see calloutCoverageGaps()).
-      const allCovered = calloutCoverageGaps().length===0;
-      if(allCovered){
-        closeModal();
-        showToast('All positions covered ✓','teal');
-      } else {
-        openModal({type:'callout-dash', selects:activeModal.selects||{}});
-      }
+      // just "is anyone covering it" — see calloutCoverageGaps()). Reopen
+      // either way rather than auto-closing on the last gap — a pick
+      // shouldn't feel locked in the instant it's made. The modal's own
+      // "Done ✓" footer button (allDone) is how the user actually leaves
+      // once they're happy with it, with every row's ✕ still right there
+      // to undo a pick in the meantime.
+      if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+      openModal({type:'callout-dash', selects:activeModal.selects||{}});
     }));
 
     // "Not necessary to find coverage" — waives this slot so it stops
@@ -17038,14 +17061,8 @@ function attachHandlers(){
       state.coverageWaived[staffId] = true;
       saveState();
       syncBoardWrite(()=>window.RC.waiveCoverage({staffId, actingAccountId: authState.account.id}), 'coverage waive');
-      const allCovered = calloutCoverageGaps().length===0;
-      if(allCovered){
-        closeModal();
-        showToast('All positions covered ✓','teal');
-      } else {
-        showToast('Marked as not needing coverage','teal');
-        openModal({type:'callout-dash', selects:activeModal.selects||{}});
-      }
+      showToast(calloutCoverageGaps().length===0 ? 'All positions covered ✓' : 'Marked as not needing coverage', 'teal');
+      openModal({type:'callout-dash', selects:activeModal.selects||{}});
     }));
     document.querySelectorAll('[data-unwaive]').forEach(btn=>btn.addEventListener('click', ()=>{
       const staffId = btn.dataset.unwaive;
