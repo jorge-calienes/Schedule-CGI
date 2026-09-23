@@ -8085,6 +8085,39 @@ function simulateFlowAdvancement(suggestions){
   });
 }
 
+// Same idea as simulateFlowAdvancement, for the supervisor's explicit "try a
+// new area" picks (gapPicks: staffId -> areaId). Chains onto occupancy AFTER
+// the flow-advance moves that will actually happen (same order the confirm
+// handler applies things in: advances first, then gap picks in pick order),
+// so two picks landing on the same last slot — or a pick competing with a
+// flow advance for it — get flagged before the supervisor confirms instead
+// of the pick just silently not happening. Returns {staffId: willApply}.
+// The confirm handler uses this exact function so preview and outcome can't
+// drift apart.
+function simulateGapPicks(flowSuggestions, gapPicks){
+  const occupancy = {};
+  state.areas.forEach(a=>{ occupancy[a.id] = 0; });
+  Object.values(state.assignments).forEach(areaId=>{ if(areaId && occupancy[areaId]!==undefined) occupancy[areaId]++; });
+  flowSuggestions.forEach(sug=>{
+    if(sug.type==='advance' && sug.toAreaId && sug.willApply!==false){
+      if(sug.fromAreaId && occupancy[sug.fromAreaId]!==undefined) occupancy[sug.fromAreaId]--;
+      if(occupancy[sug.toAreaId]!==undefined) occupancy[sug.toAreaId]++;
+    }
+  });
+  const result = {};
+  Object.entries(gapPicks||{}).forEach(([staffId, areaId])=>{
+    const area = getAreaById(areaId);
+    const fromAreaId = state.assignments[staffId] || null;
+    const willApply = !!area && occupancy[areaId] < area.capacity;
+    result[staffId] = willApply;
+    if(willApply){
+      if(fromAreaId && occupancy[fromAreaId]!==undefined) occupancy[fromAreaId]--;
+      occupancy[areaId]++;
+    }
+  });
+  return result;
+}
+
 // ============ BREAK / LUNCH TIME PARSING ============
 // breakTimes is free text like "10:30 / 1:00" (break / lunch) or "See Supervisor" (unparseable).
 // Times have no AM/PM marker, so we infer it from the known shift bands:
@@ -14052,6 +14085,7 @@ function renderRotatePreviewModal(m){
   // only when a supervisor explicitly picks one via gapPicks (staffId ->
   // areaId), applied alongside the flow suggestions on confirm.
   const gapPicks = m.gapPicks || {};
+  const gapPickWillApply = simulateGapPicks(suggestions, gapPicks);
   const gapCandidates = state.staff
     .filter(s=>s.active!==false)
     .map(s=>({ staff:s, currentAreaId: state.assignments[s.id]||null, options: neverWorkedGapAreasFor(s.id) }))
@@ -14161,22 +14195,26 @@ function renderRotatePreviewModal(m){
       <div class="rotate-list">
         ${gapCandidates.map(g=>{
           const picked = gapPicks[g.staff.id];
+          const pickBlocked = picked && gapPickWillApply[g.staff.id]===false;
           return `
           <div class="rotate-row">
             <div class="rotate-row-main">
               <span class="rotate-name">${escapeHtml(g.staff.name)}</span>
               <span class="small-muted">currently ${escapeHtml(getAreaById(g.currentAreaId)?.name||'—')}</span>
+              ${pickBlocked?`<span class="proficiency-mini-badge" style="background:#C0392B;" title="${escapeHtml(getAreaById(picked)?.name||'')} is full — this pick won't happen this period">⚠ Full</span>`:''}
             </div>
             <div class="small-muted" style="margin:4px 0 6px;">Never worked — tap to try next rotation:</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               ${g.options.slice(0,4).map(a=>`<button class="btn btn-sm ${picked===a.id?'btn-primary':'btn-light'}" data-gap-staff="${g.staff.id}" data-gap-area="${a.id}">${picked===a.id?'✓ ':''}${escapeHtml(a.name)}</button>`).join('')}
             </div>
+            ${pickBlocked?`<div class="small-muted" style="margin-top:4px;">⚠ ${escapeHtml(getAreaById(picked)?.name||'Target area')} is at capacity — won't happen this period unless there's room</div>`:''}
           </div>`;
         }).join('')}
       </div>` : ''}
 
       ${suggestions.length===0 && gapCandidates.length===0?`<div class="small-muted" style="margin-bottom:12px;">No staff enrolled in a flow yet. Use their Edit panel to assign a rotation flow.</div>`:''}
       ${capacityBlocked.length>0?`<div class="alert-box rust" style="margin-top:12px;"><b>⚠ ${capacityBlocked.length} advance${capacityBlocked.length>1?'s':''} can't happen this period</b> — target area at capacity: ${capacityBlocked.map(s=>escapeHtml(s.staff.name)+' → '+escapeHtml(s.toArea?.name||'?')).join(', ')}. They'll stay put; re-run Rotate Now once there's room, or move someone else out first.</div>`:''}
+      ${(()=>{ const blockedPicks = Object.entries(gapPicks).filter(([sid])=>gapPickWillApply[sid]===false); return blockedPicks.length>0?`<div class="alert-box rust" style="margin-top:12px;"><b>⚠ ${blockedPicks.length} "try a new area" pick${blockedPicks.length>1?'s':''} can't happen this period</b> — target area at capacity: ${blockedPicks.map(([sid,aid])=>escapeHtml(getStaffById(sid)?.name||'?')+' → '+escapeHtml(getAreaById(aid)?.name||'?')).join(', ')}. Pick a different area, or re-run once there's room.</div>`:''; })()}
       ${repeatFlags.length>0?`<div class="alert-box" style="margin-top:12px;"><b>${repeatFlags.length} repeat placement${repeatFlags.length>1?'s':''}</b> carrying forward: ${repeatFlags.map(s=>escapeHtml(s.name)).join(', ')}.</div>`:''}
     </div>
     <div class="modal-foot">
@@ -18266,14 +18304,17 @@ function attachHandlers(){
         }
       });
       // "try a new area" picks the supervisor explicitly selected in the
-      // preview — optional, so only staff with a pick get moved
-      let gapCount=0;
+      // preview — optional, so only staff with a pick get moved.
+      // simulateGapPicks() decides capacity the exact same way the preview
+      // just showed, so a pick can't drop silently here without having been
+      // flagged first.
+      const gapPickWillApply = simulateGapPicks(suggestions, activeModal.gapPicks||{});
+      let gapCount=0, gapBlockedCount=0;
       Object.entries(activeModal.gapPicks||{}).forEach(([staffId, areaId])=>{
         const staff = getStaffById(staffId);
         const area = getAreaById(areaId);
         if(!staff || !area) return;
-        const already = staffInArea(areaId, staffId).length;
-        if(already >= area.capacity) return;
+        if(gapPickWillApply[staffId]===false){ gapBlockedCount++; return; }
         const fromArea = getAreaById(state.assignments[staffId]);
         state.assignments[staffId] = areaId;
         syncBoardWrite(()=>window.RC.moveStaff({
@@ -18319,7 +18360,7 @@ function attachHandlers(){
       saveState();
       closeModal();
       const allSynced = sync.ok && rotationSync.ok;
-      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${capBlockedCount?` · ${capBlockedCount} stuck (capacity)`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}`;
+      const summary = `Period ${newLabel} started (${weeks}wk rotation) · ${advCount} advanced${blockedCount?` · ${blockedCount} blocked`:''}${capBlockedCount?` · ${capBlockedCount} stuck (capacity)`:''}${compCount?` · ${compCount} complete`:''}${gapCount?` · ${gapCount} tried a new area`:''}${gapBlockedCount?` · ${gapBlockedCount} pick${gapBlockedCount>1?'s':''} stuck (capacity)`:''}`;
       showToast(allSynced ? `${summary} — saved to database ✓` : `${summary} — not saved to the database: ${(sync.error||rotationSync.error)?.message||'try again'}`, allSynced?'teal':'rust');
     });
   }
