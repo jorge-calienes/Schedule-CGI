@@ -15378,6 +15378,74 @@ function attachHandlers(){
       leaveDays: sum.leaveDays + r.leaveDays,
     }), {callout:0, late:0, early:0, leaveDays:0});
 
+    // Period-over-period comparison — the same-length window immediately
+    // before the picked range, so a KPI can say "up 20% vs prior period"
+    // instead of only showing a number with no sense of trend.
+    const rangeSpanDays = Math.round((new Date(attendanceRangeEnd+'T00:00:00Z') - new Date(attendanceRangeStart+'T00:00:00Z')) / 86400000) + 1;
+    const prevRangeEndD = new Date(attendanceRangeStart+'T00:00:00Z'); prevRangeEndD.setUTCDate(prevRangeEndD.getUTCDate()-1);
+    const prevRangeStartD = new Date(prevRangeEndD); prevRangeStartD.setUTCDate(prevRangeStartD.getUTCDate()-(rangeSpanDays-1));
+    const prevRangeStart = prevRangeStartD.toISOString().slice(0,10);
+    const prevRangeEnd = prevRangeEndD.toISOString().slice(0,10);
+    const prevAttTotals = computeAttendanceReportForRange({start:prevRangeStart, end:prevRangeEnd}).totals;
+
+    // lowerIsBetter=true (the default) means a rising count is the bad
+    // direction — true for every attendance metric here.
+    function ovTrend(curr, prev, lowerIsBetter){
+      if(lowerIsBetter===undefined) lowerIsBetter = true;
+      if(!prev){
+        if(!curr) return null;
+        return { text:`new this period (${curr})`, cls: lowerIsBetter?'bad':'good' };
+      }
+      const diff = curr - prev;
+      if(diff===0) return { text:'flat vs prior period', cls:'flat' };
+      const pct = Math.round(Math.abs(diff)/prev*100);
+      const rising = diff>0;
+      return { text:`${rising?'▲':'▼'} ${pct}% vs prior period`, cls: (rising !== lowerIsBetter) ? 'good' : 'bad' };
+    }
+    function pctChangeText(curr, prev){
+      if(!prev){
+        if(!curr) return null;
+        return `at ${curr} this period, up from none in the prior ${rangeSpanDays}-day period`;
+      }
+      const diff = curr - prev;
+      if(diff===0) return null;
+      const pct = Math.round(Math.abs(diff)/prev*100);
+      return `${diff>0?'up':'down'} ${pct}% vs the prior ${rangeSpanDays}-day period (${prev} → ${curr})`;
+    }
+
+    // Callout day-of-week / by-area breakdown — flattened from the same
+    // per-staff callout dates already summed into attendanceTotals.callout,
+    // so these always add up to that same number.
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const calloutDatesFlat = [];
+    Object.values(attendanceByStaff).forEach(r=>{ r.callout.forEach(d=>calloutDatesFlat.push({staffId:r.staffId, date:d})); });
+    const dowCounts = [0,0,0,0,0,0,0];
+    calloutDatesFlat.forEach(({date})=>{ dowCounts[new Date(date+'T00:00:00Z').getUTCDay()]++; });
+    const areaCountsForCallouts = {};
+    calloutDatesFlat.forEach(({staffId})=>{
+      const areaId = state.assignments[staffId];
+      if(!areaId) return;
+      areaCountsForCallouts[areaId] = (areaCountsForCallouts[areaId]||0) + 1;
+    });
+    const calloutsByAreaSorted = Object.entries(areaCountsForCallouts)
+      .map(([areaId,count])=>({area:getAreaById(areaId), count}))
+      .filter(x=>x.area)
+      .sort((a,b)=>b.count-a.count);
+
+    // Coverage burden — who keeps getting pulled to cover someone else's
+    // area. assignCoverage() logs a 'move' audit_log row with a
+    // "started covering" description for exactly this (see
+    // lib/supabaseClient.js) — coverage_assignments itself is a live-only
+    // table (the row is deleted on return), so the audit trail is the only
+    // durable record of how often each person has covered over time.
+    const coverageEvents = (opts.activityLog||[]).filter(e=>e.action==='move' && typeof e.description==='string' && e.description.includes('started covering'));
+    const coverageCountByStaff = {};
+    coverageEvents.forEach(e=>{ if(!e.staff_id) return; coverageCountByStaff[e.staff_id] = (coverageCountByStaff[e.staff_id]||0) + 1; });
+    const coverageBurdenSorted = Object.entries(coverageCountByStaff)
+      .map(([staffId,count])=>({staff:getStaffById(staffId), count}))
+      .filter(x=>x.staff)
+      .sort((a,b)=>b.count-a.count);
+
     const ovAreaStats = state.areas.filter(a=>!a.fixed).map(a=>{
       const placed = staffInArea(a.id).filter(s=>s.active!==false&&!state.callouts[s.id]).length;
       const cap = a.capacity||1;
@@ -15404,11 +15472,41 @@ function attachHandlers(){
       ? Math.round(rotatingStaff.reduce((sum,s)=>sum+(rotationProgressByStaff[s.id]||0),0) / rotatingStaff.length)
       : null;
 
-    const ovKpi = (num, label, sub, alert) => `
+    // Auto-generated "what stands out" bullets — a plain-language read of
+    // the numbers above, so a supervisor scanning the dashboard doesn't
+    // have to eyeball every chart to notice what changed or where the
+    // pressure is this period.
+    const insights = [];
+    const calloutChangeText = pctChangeText(attendanceTotals.callout, prevAttTotals.callout);
+    if(calloutChangeText) insights.push(`⚡ Callouts are ${calloutChangeText}.`);
+    if(dowCounts.some(c=>c>0)){
+      const maxCount = Math.max(...dowCounts);
+      const maxIdx = dowCounts.indexOf(maxCount);
+      if(maxCount>=2) insights.push(`📅 ${dayNames[maxIdx]} sees the most callouts this period (${maxCount}) — worth extra coverage margin that day.`);
+    }
+    if(calloutsByAreaSorted.length && calloutsByAreaSorted[0].count>=2){
+      const top = calloutsByAreaSorted[0];
+      insights.push(`📍 ${escapeHtml(top.area.name)} has logged the most callouts this period (${top.count} of ${attendanceTotals.callout}) — consider a standing backup plan for it.`);
+    }
+    if(understaffedToday>0) insights.push(`🔴 ${understaffedToday} area${understaffedToday===1?' is':'s are'} under 80% staffed today.`);
+    if(rotationProgressPct!==null){
+      const lowProgressCount = rotatingStaff.filter(s=>(rotationProgressByStaff[s.id]||0)<50).length;
+      if(lowProgressCount>0) insights.push(`🔄 ${lowProgressCount} rotating staff member${lowProgressCount===1?' has':'s have'} experience in under half of the non-fixed areas — see Staff Performance for who.`);
+    }
+    const lateChangeText = pctChangeText(attendanceTotals.late, prevAttTotals.lateArrival);
+    if(lateChangeText && attendanceTotals.late>=3) insights.push(`⏰ Late arrivals are ${lateChangeText}.`);
+    if(coverageBurdenSorted.length){
+      const topCover = coverageBurdenSorted[0];
+      const runnerUp = coverageBurdenSorted[1];
+      if(topCover.count>=2 && (!runnerUp || topCover.count >= runnerUp.count*2)) insights.push(`🛡 ${escapeHtml(topCover.staff.name)} has covered ${topCover.count} time${topCover.count===1?'':'s'} this period — more than anyone else by a wide margin.`);
+    }
+
+    const ovKpi = (num, label, sub, alert, trend) => `
       <div class="ov-kpi-tile ${alert?'ov-kpi-alert':''}">
         <div class="ov-kpi-num">${num}</div>
         <div class="ov-kpi-label">${escapeHtml(label)}</div>
         ${sub?`<div class="ov-kpi-sub">${escapeHtml(sub)}</div>`:''}
+        ${trend?`<div class="ov-kpi-trend ov-kpi-trend-${trend.cls}">${escapeHtml(trend.text)}</div>`:''}
       </div>`;
 
     const ovBarRow = (label, value, max, color, valueLabel) => `
@@ -15435,6 +15533,28 @@ function attachHandlers(){
         ${ovAreaStats.length ? ovAreaStats.map(a=>ovBarRow(a.name, a.pct, 100, a.pct>=80?'#0ca30c':a.pct>=50?'#fab219':'#d03b3b', a.pct+'% ('+a.placed+'/'+a.cap+')')).join('') : '<div class="empty">No areas configured.</div>'}
         ${ovAreaStats.length?'<div class="ov-chart-legend">🟢 80%+ staffed &nbsp; 🟡 50–79% &nbsp; 🔴 under 50%</div>':''}
       </div>`;
+
+    // Callout patterns — by day of week, so a supervisor can see whether
+    // callouts cluster on a specific day (worth extra standing coverage)
+    // rather than reading them as evenly-distributed noise.
+    const dowMax = Math.max(1, ...dowCounts);
+    const calloutPatternChart = attendanceTotals.callout>0 ? `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Callout patterns &nbsp;·&nbsp; by day of week</div>
+        ${dayNames.map((d,i)=>ovBarRow(d, dowCounts[i], dowMax, '#c0392b')).join('')}
+        ${calloutsByAreaSorted.length ? `<div class="ov-chart-legend">Most affected: ${calloutsByAreaSorted.slice(0,3).map(x=>escapeHtml(x.area.name)+' ('+x.count+')').join(', ')}</div>` : ''}
+      </div>` : '';
+
+    // Coverage burden — who's been pulled to cover most often this period,
+    // so a supervisor can see if the load is spread out or landing
+    // repeatedly on the same few people.
+    const coverageBurdenTop = coverageBurdenSorted.slice(0,6);
+    const coverageBurdenMax = Math.max(1, ...coverageBurdenTop.map(x=>x.count));
+    const coverageBurdenChart = coverageBurdenTop.length ? `
+      <div class="ov-chart">
+        <div class="ov-chart-title">Coverage burden &nbsp;·&nbsp; who's covering the most</div>
+        ${coverageBurdenTop.map(x=>ovBarRow(x.staff.name, x.count, coverageBurdenMax, '#7b4fd1')).join('')}
+      </div>` : '';
 
     // Staff-by-position donut. Every position gets its own slice and its
     // own line in the legend — nothing gets folded into "Other" — since a
@@ -15515,19 +15635,25 @@ function attachHandlers(){
           <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${today}</div>
         </div>
       </div>
+      <div class="ov-insights">
+        <div class="ov-insights-title">📌 What stands out</div>
+        ${insights.length ? `<ul class="ov-insights-list">${insights.map(i=>`<li>${i}</li>`).join('')}</ul>` : `<div class="empty">Nothing unusual this period.</div>`}
+      </div>
       <div class="ov-kpi-row">
         ${ovKpi(state.staff.filter(s=>s.active!==false).length, 'Total Staff', null, false)}
         ${ovKpi(calledOut.length, 'Out Today', 'today', calledOut.length>0)}
-        ${ovKpi(attendanceTotals.callout, 'Callouts', 'this period', false)}
-        ${ovKpi(attendanceTotals.late, 'Late Arrivals', 'this period', false)}
-        ${ovKpi(attendanceTotals.early, 'Left Early', 'this period', false)}
-        ${ovKpi(attendanceTotals.leaveDays, 'Leave Days', 'this period', false)}
+        ${ovKpi(attendanceTotals.callout, 'Callouts', 'this period', false, ovTrend(attendanceTotals.callout, prevAttTotals.callout))}
+        ${ovKpi(attendanceTotals.late, 'Late Arrivals', 'this period', false, ovTrend(attendanceTotals.late, prevAttTotals.lateArrival))}
+        ${ovKpi(attendanceTotals.early, 'Left Early', 'this period', false, ovTrend(attendanceTotals.early, prevAttTotals.leftEarly))}
+        ${ovKpi(attendanceTotals.leaveDays, 'Leave Days', 'this period', false, ovTrend(attendanceTotals.leaveDays, prevAttTotals.leaveDays))}
         ${ovKpi(understaffedToday, 'Areas Under 80%', 'today', understaffedToday>0)}
         ${rotationProgressPct!==null ? ovKpi(rotationProgressPct+'%', 'Rotation Progress', 'avg. area coverage', rotationProgressPct<50) : ''}
       </div>
       <div class="ov-chart-row">
         ${attendanceChart}
         ${utilizationChart}
+        ${calloutPatternChart}
+        ${coverageBurdenChart}
         ${positionChart}
       </div>
       ${positionAreaTable}
@@ -15633,9 +15759,61 @@ function attachHandlers(){
     }
 
     const supervisorFilterName = opts.supervisorFilter ? getSupervisorById(opts.supervisorFilter)?.name : null;
+
+    // Team scorecards — one row per supervisor (plus an "Unassigned" row
+    // when relevant), rolling up the same attendance + rotation-progress
+    // numbers the per-person table below shows, so a manager can compare
+    // teams at a glance instead of only reading people one at a time. Only
+    // shown on the unfiltered "all supervisors" view — once you've already
+    // filtered to one supervisor's team, a one-row rollup of it adds nothing.
+    const scorecardGroups = state.supervisors.map(sv=>({
+      name: sv.name,
+      staffList: state.staff.filter(s=>s.active!==false && s.supervisorId===sv.id),
+    }));
+    const unassignedTeam = state.staff.filter(s=>s.active!==false && !s.supervisorId);
+    if(unassignedTeam.length) scorecardGroups.push({name:'Unassigned', staffList: unassignedTeam});
+    const supervisorScorecards = scorecardGroups.filter(g=>g.staffList.length).map(g=>{
+      const totals = g.staffList.reduce((sum,s)=>{
+        const ar = attendanceByStaff[s.id];
+        if(ar){ sum.callout+=ar.callout.length; sum.late+=ar.lateArrival.length; sum.early+=ar.leftEarly.length; sum.leaveDays+=ar.leaveDays; }
+        return sum;
+      }, {callout:0, late:0, early:0, leaveDays:0});
+      const rotating = g.staffList.filter(s=>staffRotates(s.id));
+      const avgProgress = rotating.length ? Math.round(rotating.reduce((sum,s)=>sum+(rotationProgressByStaff[s.id]||0),0)/rotating.length) : null;
+      const needsMoveCount = g.staffList.filter(s=>needsChange(s, state.assignments[s.id])).length;
+      return { name:g.name, teamSize:g.staffList.length, ...totals, avgProgress, needsMoveCount };
+    }).sort((a,b)=> (b.callout+b.late+b.early) - (a.callout+a.late+a.early));
+    const supervisorScorecardTable = (!opts.supervisorFilter && supervisorScorecards.length>1) ? `
+      <div style="margin-bottom:16pt;">
+        <div class="ov-chart-title" style="margin-bottom:6pt;">Team scorecards &nbsp;·&nbsp; ranked by attendance incidents</div>
+        <table class="report-table">
+          <thead><tr>
+            <th>Supervisor</th>
+            <th style="width:50px;text-align:center">Team</th>
+            <th style="width:52px;text-align:center">Callouts</th>
+            <th style="width:44px;text-align:center">Late</th>
+            <th style="width:60px;text-align:center">Left Early</th>
+            <th style="width:60px;text-align:center">Leave Days</th>
+            <th style="width:64px;text-align:center" title="Average rotation progress across the team's rotating staff">Avg. Rotation</th>
+            <th style="width:64px;text-align:center">Needs Move</th>
+          </tr></thead><tbody>
+          ${supervisorScorecards.map(g=>`<tr>
+            <td><b>${escapeHtml(g.name)}</b></td>
+            <td style="text-align:center">${g.teamSize}</td>
+            <td style="text-align:center">${g.callout||'—'}</td>
+            <td style="text-align:center">${g.late||'—'}</td>
+            <td style="text-align:center">${g.early||'—'}</td>
+            <td style="text-align:center">${g.leaveDays||'—'}</td>
+            <td style="text-align:center">${g.avgProgress!=null?g.avgProgress+'%':'—'}</td>
+            <td style="text-align:center;${g.needsMoveCount>0?'color:#e67e22;font-weight:700':''}">${g.needsMoveCount||'—'}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>` : '';
+
     let page2 = `<div class="page page-break">
       <h1>Staff Performance Report</h1>
       <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members${supervisorFilterName?' &nbsp;·&nbsp; Supervisor: '+escapeHtml(supervisorFilterName):''} &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
+      ${supervisorScorecardTable}
       <table class="report-table">
         <thead><tr>
           <th style="min-width:140px">Name &amp; Role</th>
@@ -15718,7 +15896,50 @@ function attachHandlers(){
         <td style="font-size:10pt">${best?'<span style="color:#555">'+escapeHtml(best)+'</span>':'—'}${flags.length?'<br><small>'+flags.join(' · ')+'</small>':''}</td>
       </tr>`;
     });
-    page2 += `</tbody></table></div>`;
+    page2 += `</tbody></table>`;
+
+    // Rotation flow bottlenecks — for each flow with enrolled staff, where
+    // in the stage sequence people are actually piling up, and how far
+    // through that stage's requirement they already are. Only rendered
+    // when at least one flow has enrolled staff, since most instances of
+    // this app may not use rotation flows at all.
+    const flowBottlenecks = (state.rotationFlows||[]).map(flow=>{
+      const enrolledStaff = state.staff.filter(s=>s.active!==false && s.flowId===flow.id && s.flowEnrolled);
+      if(!enrolledStaff.length) return null;
+      const progresses = enrolledStaff.map(s=>({staff:s, progress:getStaffFlowProgress(s.id)})).filter(x=>x.progress);
+      const completedCount = progresses.filter(x=>x.progress.completed).length;
+      const stageRows = (flow.stages||[]).map((stage, idx)=>{
+        const atStage = progresses.filter(x=>!x.progress.completed && x.progress.currentStageIdx===idx);
+        const avgWorked = atStage.length ? atStage.reduce((sum,x)=>sum+flowStageCreditedRotations(x.staff.id, stage.areaId),0)/atStage.length : 0;
+        return { areaName: getAreaById(stage.areaId)?.name||'—', required: stage.requiredRotations, atStageCount: atStage.length, avgWorked };
+      });
+      const maxAtStage = Math.max(0, ...stageRows.map(r=>r.atStageCount));
+      return { flowName: flow.name, enrolledCount: enrolledStaff.length, completedCount, stageRows, maxAtStage };
+    }).filter(Boolean);
+    if(flowBottlenecks.length){
+      page2 += `<div style="margin-top:18pt;">
+        <div class="ov-chart-title" style="margin-bottom:6pt;">Rotation flow bottlenecks &nbsp;·&nbsp; where enrolled staff are stuck</div>
+        ${flowBottlenecks.map(fb=>`
+          <div style="margin-bottom:12pt;">
+            <div style="font-size:9.5pt;font-weight:700;color:#333;margin-bottom:4pt;">${escapeHtml(fb.flowName)} — ${fb.enrolledCount} enrolled, ${fb.completedCount} completed</div>
+            <table class="report-table">
+              <thead><tr>
+                <th>Stage (area)</th>
+                <th style="width:70px;text-align:center">Required</th>
+                <th style="width:100px;text-align:center">Staff here now</th>
+                <th style="width:110px;text-align:center">Avg. rotations done here</th>
+              </tr></thead><tbody>
+              ${fb.stageRows.map(r=>`<tr>
+                <td>${escapeHtml(r.areaName)}</td>
+                <td style="text-align:center">${r.required}</td>
+                <td style="text-align:center;${r.atStageCount>0&&r.atStageCount===fb.maxAtStage?'color:#c0392b;font-weight:700':''}">${r.atStageCount||'—'}</td>
+                <td style="text-align:center">${r.atStageCount?r.avgWorked.toFixed(1):'—'}</td>
+              </tr>`).join('')}
+            </tbody></table>
+          </div>`).join('')}
+      </div>`;
+    }
+    page2 += `</div>`;
 
     // ─────────────────────────────────────────────────────────────────────
     // PAGE 3 — Certifications, Languages & Absences (three separate
@@ -16329,7 +16550,12 @@ function attachHandlers(){
       .log-table td{padding:3.5pt 6pt;border-bottom:0.5pt solid #f0f0f0;vertical-align:middle;}
       .log-table tr:last-child td{border-bottom:none;}
 
-      /* ── Overview page: KPI tiles + bar charts ── */
+      /* ── Overview page: auto insights + KPI tiles + bar charts ── */
+      .ov-insights{border:1pt solid #e2e2e2;border-radius:8pt;padding:10pt 14pt;margin-bottom:14pt;background:#fbfbf8;}
+      .ov-insights-title{font-size:9.5pt;font-weight:700;color:#111;margin-bottom:6pt;}
+      .ov-insights-list{margin:0;padding-left:18pt;}
+      .ov-insights-list li{font-size:9.5pt;color:#333;margin-bottom:4pt;line-height:1.4;}
+      .ov-insights-list li:last-child{margin-bottom:0;}
       .ov-kpi-row{display:flex;flex-wrap:wrap;gap:8pt;margin-bottom:18pt;}
       .ov-kpi-tile{flex:1 1 100pt;min-width:100pt;border:1pt solid #e2e2e2;border-radius:8pt;padding:10pt 8pt;text-align:center;background:#fafafa;}
       .ov-kpi-tile.ov-kpi-alert{border-color:#f3c6c6;background:#fff6f6;}
@@ -16337,6 +16563,10 @@ function attachHandlers(){
       .ov-kpi-tile.ov-kpi-alert .ov-kpi-num{color:#d03b3b;}
       .ov-kpi-label{font-size:8.5pt;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.03em;margin-top:2pt;}
       .ov-kpi-sub{font-size:7.5pt;color:#999;margin-top:1pt;}
+      .ov-kpi-trend{font-size:7pt;font-weight:700;margin-top:3pt;}
+      .ov-kpi-trend-good{color:#0c8a3e;}
+      .ov-kpi-trend-bad{color:#c0392b;}
+      .ov-kpi-trend-flat{color:#999;font-weight:400;}
       .ov-chart-row{display:flex;gap:16pt;flex-wrap:wrap;}
       .ov-chart{flex:1 1 240pt;min-width:220pt;border:1pt solid #eee;border-radius:8pt;padding:12pt;}
       .ov-chart-title{font-size:10.5pt;font-weight:700;color:#111;margin-bottom:10pt;}
