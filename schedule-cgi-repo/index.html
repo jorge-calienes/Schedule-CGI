@@ -16526,9 +16526,11 @@ function attachHandlers(){
       // were covering permanently stuck showing "needs coverage".
       if(activeModal.isCoverage){
         assignCoverage(activeModal.staffId, activeModal.targetAreaId);
-        const allCovered = calloutCoverageGaps().length===0;
-        if(allCovered){ closeModal(); showToast('All positions covered ✓','teal'); }
-        else if(returnTo) openModal(returnTo);
+        // Reopen rather than auto-close, even when this closes the last gap —
+        // see the .cd-cand-tap handler below for why: a pick shouldn't feel
+        // final the instant it's made.
+        if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+        if(returnTo) openModal(returnTo);
         return;
       }
       attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
@@ -17040,14 +17042,14 @@ function attachHandlers(){
       }
       assignCoverage(coverId, areaId);
       // Check if all positions are now covered (headcount per area, not
-      // just "is anyone covering it" — see calloutCoverageGaps()).
-      const allCovered = calloutCoverageGaps().length===0;
-      if(allCovered){
-        closeModal();
-        showToast('All positions covered ✓','teal');
-      } else {
-        openModal({type:'callout-dash', selects:activeModal.selects||{}});
-      }
+      // just "is anyone covering it" — see calloutCoverageGaps()). Reopen
+      // either way rather than auto-closing on the last gap — a pick
+      // shouldn't feel locked in the instant it's made. The modal's own
+      // "Done ✓" footer button (allDone) is how the user actually leaves
+      // once they're happy with it, with every row's ✕ still right there
+      // to undo a pick in the meantime.
+      if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+      openModal({type:'callout-dash', selects:activeModal.selects||{}});
     }));
 
     // "Not necessary to find coverage" — waives this slot so it stops
@@ -17059,14 +17061,8 @@ function attachHandlers(){
       state.coverageWaived[staffId] = true;
       saveState();
       syncBoardWrite(()=>window.RC.waiveCoverage({staffId, actingAccountId: authState.account.id}), 'coverage waive');
-      const allCovered = calloutCoverageGaps().length===0;
-      if(allCovered){
-        closeModal();
-        showToast('All positions covered ✓','teal');
-      } else {
-        showToast('Marked as not needing coverage','teal');
-        openModal({type:'callout-dash', selects:activeModal.selects||{}});
-      }
+      showToast(calloutCoverageGaps().length===0 ? 'All positions covered ✓' : 'Marked as not needing coverage', 'teal');
+      openModal({type:'callout-dash', selects:activeModal.selects||{}});
     }));
     document.querySelectorAll('[data-unwaive]').forEach(btn=>btn.addEventListener('click', ()=>{
       const staffId = btn.dataset.unwaive;
