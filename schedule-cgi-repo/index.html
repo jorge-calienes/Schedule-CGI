@@ -15291,6 +15291,7 @@ function attachHandlers(){
     const fixed   = state.areas.filter(a=>a.fixed);
     const calledOut = state.staff.filter(s=>s.active!==false && state.callouts[s.id]);
     const certStaff = state.staff.filter(s=>s.active!==false && (s.counterCert || (showAccom&&s.needsAccommodations)));
+    const missingCACert = state.staff.filter(s=>s.active!==false && !s.counterCert);
     const languageStaff = state.staff.filter(s=>s.active!==false && (s.languageCerts||[]).length);
     const langNames = s=>(s.languageCerts||[]).map(id=>state.languages.find(x=>x.id===id)?.name).filter(Boolean).join(', ');
     const friendlyD = d=>{ try{const[y,m,dd]=d.split('-');const dt=new Date(y,m-1,dd);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return d;}};
@@ -15666,6 +15667,16 @@ function attachHandlers(){
       page3 += `</tbody></table></div>`;
     }
 
+    if(missingCACert.length){
+      page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Missing CA Certification (${missingCACert.length})</div>
+        <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th></tr></thead><tbody>`;
+      missingCACert.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
+        const areaName = getAreaById(state.assignments[s.id])?.name||'—';
+        page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td></tr>`;
+      });
+      page3 += `</tbody></table></div>`;
+    }
+
     if(languageStaff.length){
       page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Languages (${languageStaff.length})</div>
         <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th><th>Languages</th></tr></thead><tbody>`;
@@ -15691,7 +15702,7 @@ function attachHandlers(){
       });
       page3 += `</div>`;
     }
-    if(!certStaff.length && !languageStaff.length && !calledOut.length){
+    if(!certStaff.length && !missingCACert.length && !languageStaff.length && !calledOut.length){
       page3 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No certifications, languages, or absences recorded.</div>`;
     }
     page3 += `</div>`;
@@ -15720,7 +15731,6 @@ function attachHandlers(){
     // "out today" just because today happens to be after that period.
     const todayInRange = today>=attendanceRangeStart && today<=attendanceRangeEnd;
     const active = todayInRange ? allOff.filter(r=>r.startDate<=today&&r.endDate>=today) : [];
-    const rest   = allOff.filter(r=>!active.includes(r));
 
     let page4 = `<div class="page">
       <h1>Scheduled Time Off</h1>
@@ -15737,22 +15747,52 @@ function attachHandlers(){
       });
       page4 += `</div>`;
     }
-    if(rest.length){
-      page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Scheduled leave in this period (${rest.length})</div>
-        <table><thead><tr><th style="width:160px">Name</th><th style="width:110px">Area</th><th>Dates</th><th style="width:50px;text-align:center">Days</th><th>Label</th></tr></thead><tbody>`;
-      rest.forEach(r=>{
+
+    // Per-person summary, one row per member (not one row per time-off
+    // record — the old table repeated the same name for every separate
+    // leave they'd taken in the period) — and counting call-outs/late
+    // arrivals/left-early alongside scheduled leave, not leave alone.
+    // Same attendanceByStaff data the Staff Performance page (page2) and
+    // the standalone Attendance Report use, for the same picked range.
+    const attendanceSummary = state.staff
+      .filter(s=>s.active!==false)
+      .filter(s=>!opts.supervisorFilter || s.supervisorId===opts.supervisorFilter)
+      .map(s=>({s, ar: attendanceByStaff[s.id]}))
+      .filter(x=>x.ar && x.ar.total>0)
+      .sort((a,b)=> b.ar.total-a.ar.total || a.s.name.localeCompare(b.s.name));
+
+    if(attendanceSummary.length){
+      page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Attendance &amp; leave summary (${attendanceSummary.length})</div>
+        <table><thead><tr>
+          <th style="width:150px">Name</th>
+          <th style="width:100px">Area</th>
+          <th style="width:56px;text-align:center" title="Call-outs">⚠️ Out</th>
+          <th style="width:50px;text-align:center" title="Late arrivals">⏰ Late</th>
+          <th style="width:50px;text-align:center" title="Left early">🚪 Early</th>
+          <th style="width:52px;text-align:center" title="Scheduled leave days">📅 Leave</th>
+          <th>Dates</th>
+        </tr></thead><tbody>`;
+      attendanceSummary.forEach(({s, ar})=>{
+        const area = getAreaById(state.assignments[s.id]);
+        const dateParts = [];
+        if(ar.callout.length) dateParts.push('⚠️ '+ar.callout.map(arShortDate).join(', '));
+        if(ar.lateArrival.length) dateParts.push('⏰ '+ar.lateArrival.map(arShortDate).join(', '));
+        if(ar.leftEarly.length) dateParts.push('🚪 '+ar.leftEarly.map(arShortDate).join(', '));
+        if(ar.leaveRanges.length) dateParts.push('📅 '+ar.leaveRanges.map(arLeaveRangeLabel).join(', '));
         page4 += `<tr>
-          <td><b>${escapeHtml(r.staff.name)}</b></td>
-          <td>${r.area?escapeHtml(r.area.name):'—'}</td>
-          <td>${friendlyD(r.startDate)}${r.startDate!==r.endDate?' – '+friendlyD(r.endDate):''}</td>
-          <td style="text-align:center">${businessDaysBetween(r.startDate, r.endDate)}</td>
-          <td>${escapeHtml(r.label||'—')}</td>
+          <td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td>
+          <td>${area?escapeHtml(area.name):'—'}</td>
+          <td style="text-align:center">${ar.callout.length||'—'}</td>
+          <td style="text-align:center">${ar.lateArrival.length||'—'}</td>
+          <td style="text-align:center">${ar.leftEarly.length||'—'}</td>
+          <td style="text-align:center">${ar.leaveDays||'—'}</td>
+          <td style="font-size:9pt;color:#555">${dateParts.join('<br>')}</td>
         </tr>`;
       });
       page4 += `</tbody></table></div>`;
     }
-    if(!active.length&&!rest.length){
-      page4 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No scheduled time off in this period.</div>`;
+    if(!active.length&&!attendanceSummary.length){
+      page4 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No attendance or leave activity in this period.</div>`;
     }
     page4 += `</div>`;
 
