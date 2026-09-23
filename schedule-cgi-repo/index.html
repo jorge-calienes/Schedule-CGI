@@ -7490,15 +7490,25 @@ function escapeHtml(s){
 function getStaffById(id){ return state.staff.find(s=>s.id===id); }
 function getAreaById(id){ return state.areas.find(a=>a.id===id); }
 
-// false only when the staff member's assigned position is explicitly marked
-// as not rotating (e.g. a single-station hire like Cashier CA1) — no position,
+// false when the staff member's assigned position is explicitly marked as
+// not rotating (e.g. a single-station hire like Cashier CA1) — no position,
 // an unknown position, or a position missing the flag all default to true so
-// existing data behaves exactly as before this flag existed.
+// existing data behaves exactly as before this flag existed — OR when
+// they're currently placed in a fixed area (e.g. Administration, Fraud).
+// A generic position code (OP2, CA1, ...) can be shared by staff who do
+// rotate elsewhere, so it alone can't be trusted to mean "never moves" —
+// but fixed areas are already excluded from Rotate Now entirely, so
+// anyone actually sitting in one right now isn't going anywhere on their
+// own, regardless of what position code they hold.
 function staffRotates(staffId){
   const staff = getStaffById(staffId);
-  if(!staff || !staff.positionId) return true;
-  const position = state.positions.find(p=>p.id===staff.positionId);
-  return !position || position.rotates !== false;
+  if(!staff) return true;
+  if(staff.positionId){
+    const position = state.positions.find(p=>p.id===staff.positionId);
+    if(position && position.rotates===false) return false;
+  }
+  const currentArea = getAreaById(state.assignments[staffId]);
+  return !(currentArea && currentArea.fixed);
 }
 
 // state.history only ever grows forward under normal use, so its last
@@ -7757,6 +7767,22 @@ function staffWithExperienceGaps(){
     .map(s=>({ staff:s, gapAreas: neverWorkedGapAreasFor(s.id) }))
     .filter(g=>g.gapAreas.length>0)
     .sort((a,b)=> b.gapAreas.length-a.gapAreas.length || a.staff.name.localeCompare(b.staff.name));
+}
+
+// Same gap data as staffWithExperienceGaps(), inverted — which staff are
+// missing each area, instead of which areas each staff is missing. That's
+// the more useful lens for planning an actual rotation ("who could I slot
+// into Fraud next") rather than reviewing one person at a time. Sorted by
+// widest gap first, so the areas most in need of cross-training show up
+// top.
+function experienceGapsByArea(){
+  const byArea = {};
+  staffWithExperienceGaps().forEach(({staff, gapAreas})=>{
+    gapAreas.forEach(area=>{
+      (byArea[area.id] = byArea[area.id] || {area, staff:[]}).staff.push(staff);
+    });
+  });
+  return Object.values(byArea).sort((a,b)=> b.staff.length-a.staff.length || a.area.name.localeCompare(b.area.name));
 }
 
 // Active staff who have experience (real rotation history or a marked
@@ -10405,21 +10431,20 @@ function renderReadyForPathModal(m){
 
 // --- Experience gaps: the flip side of "ready for a new path" — active
 // staff missing experience in one or more non-fixed areas, for planning
-// ahead of any specific rotation. Tapping a row opens their full Stats tab,
-// same as the roster/board chips and the "ready for a new path" list. ---
+// ahead of any specific rotation. Two lenses on the same underlying data
+// (staffWithExperienceGaps()/experienceGapsByArea()): "By area" groups it
+// for rotation planning ("who could I slot into Fraud next"), with a bar
+// showing what share of the rotating workforce has never touched that
+// area; "By person" is the original one-row-per-person list. Tapping a
+// name in either view opens their full Stats tab, same as the roster/
+// board chips and the "ready for a new path" list. ---
 function renderExperienceGapsModal(m){
+  const view = m.view==='person' ? 'person' : 'area';
   const gaps = staffWithExperienceGaps();
-  return `
-  <div class="modal" style="max-width:480px;">
-    <div class="modal-head">
-      <div>
-        <h2>🧭 Experience gaps</h2>
-        <p>${gaps.length} staff member${gaps.length===1?'':'s'} ${gaps.length===1?'has':'have'} never worked one or more areas.</p>
-      </div>
-      <button class="modal-close" id="modal-close-x">✕</button>
-    </div>
-    <div class="modal-body">
-      ${gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area they're expected to cover.</div>` : `
+  const byArea = experienceGapsByArea();
+  const rotatingCount = state.staff.filter(s=>s.active!==false && !s.isTeamLead && staffRotates(s.id)).length;
+
+  const personView = gaps.length===0 ? `<div class="small-muted">Everyone active has experience — real or marked prior — in every rotating area they're expected to cover.</div>` : `
       <div class="option-list">
         ${gaps.map(g=>{
           const preview = g.gapAreas.slice(0,3).map(a=>escapeHtml(a.name)).join(', ');
@@ -10432,7 +10457,47 @@ function renderExperienceGapsModal(m){
             </div>
           </div>`;
         }).join('')}
-      </div>`}
+      </div>`;
+
+  const areaView = byArea.length===0 ? `<div class="small-muted">Every rotating area already has experienced coverage from everyone active.</div>` : `
+      <div class="option-list">
+        ${byArea.map(({area,staff})=>{
+          const pct = rotatingCount>0 ? Math.round(staff.length/rotatingCount*100) : 0;
+          return `
+          <details class="option-card" style="flex-direction:column;align-items:stretch;padding:0;">
+            <summary style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;list-style:none;">
+              <div style="flex:1;min-width:0;">
+                <div class="oc-name">${escapeHtml(area.name)}</div>
+                <div style="height:6px;border-radius:3px;background:var(--md-sys-color-surface-variant,#e4e4e4);overflow:hidden;margin-top:6px;">
+                  <div style="height:100%;width:${Math.max(4,pct)}%;border-radius:3px;background:var(--md-sys-color-error,#c0392b);"></div>
+                </div>
+              </div>
+              <span class="oc-sub" style="white-space:nowrap;">${staff.length}/${rotatingCount} never worked</span>
+            </summary>
+            <div style="padding:2px 10px 10px;">
+              ${staff.map(s=>`<div class="option-card" data-show-stats="${s.id}" style="padding:8px 10px;margin-top:2px;">
+                <span class="oc-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</span>
+              </div>`).join('')}
+            </div>
+          </details>`;
+        }).join('')}
+      </div>`;
+
+  return `
+  <div class="modal" style="max-width:480px;max-height:88vh;">
+    <div class="modal-head">
+      <div>
+        <h2>🧭 Experience gaps</h2>
+        <p>${gaps.length} staff member${gaps.length===1?'':'s'} ${gaps.length===1?'has':'have'} never worked one or more rotating areas.</p>
+      </div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="rp-view-tabs" style="margin-bottom:14px;">
+        <button class="rp-view-tab ${view==='area'?'active':''}" id="eg-view-area">By area</button>
+        <button class="rp-view-tab ${view==='person'?'active':''}" id="eg-view-person">By person</button>
+      </div>
+      ${view==='area' ? areaView : personView}
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-experience-gaps" style="margin-left:auto;">Close</button>
@@ -16511,6 +16576,8 @@ function attachHandlers(){
   // --- experience gaps (never-worked-area list) ---
   if(activeModal.type==='experience-gaps'){
     on('modal-close-experience-gaps', closeModal);
+    on('eg-view-area', ()=>openModal({...activeModal, view:'area'}));
+    on('eg-view-person', ()=>openModal({...activeModal, view:'person'}));
   }
 
   // --- import picker: choose which Excel import to run ---
