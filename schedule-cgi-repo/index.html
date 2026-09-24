@@ -12747,8 +12747,6 @@ function computeAttendanceReportForRange(range){
     });
   });
 
-  const rangeDays = rg => Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
-
   const rows = Object.keys(byStaff).map(staffId=>{
     const r = byStaff[staffId];
     const s = getStaffById(staffId);
@@ -12757,7 +12755,10 @@ function computeAttendanceReportForRange(range){
     const lateArrival = r.late_arrival.slice().sort();
     const leftEarly = r.left_early.slice().sort();
     const leaveRanges = r.leaveRanges.slice().sort((a,b)=>a.start.localeCompare(b.start));
-    const leaveDays = leaveRanges.reduce((sum,rg)=>sum+rangeDays(rg),0);
+    // Weekdays only (see businessDaysBetween) — a Fri-Mon vacation is 2
+    // leave days charged, not 4, even though the calendar/list still show
+    // the person away through the weekend too.
+    const leaveDays = leaveRanges.reduce((sum,rg)=>sum+businessDaysBetween(rg.start, rg.end),0);
     const total = callout.length + lateArrival.length + leftEarly.length + leaveDays;
     return { staffId, name, supervisorId: s?.supervisorId||null, callout, lateArrival, leftEarly, leaveRanges, leaveDays, total };
   }).sort((a,b)=> b.total-a.total || a.name.localeCompare(b.name));
@@ -12772,8 +12773,8 @@ function arShortDate(iso){
   return parts.length===3 ? `${parts[1]}/${parts[2]}` : iso;
 }
 function arLeaveRangeLabel(rg){
-  const days = Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
-  return days>1 ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
+  const days = businessDaysBetween(rg.start, rg.end);
+  return rg.start!==rg.end ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
 }
 
 // ── Outlook export (.ics) ──────────────────────────────────────────────
