@@ -12782,7 +12782,7 @@ function arLeaveRangeLabel(rg){
 // (not just Outlook) can open it. Every callout/late-arrival/left-early
 // becomes its own all-day event so whoever's translating the phone line
 // into the calendar gets one line per person instead of retyping names.
-const AR_EVENT_LABELS = { callout: 'Called out', late_arrival: 'Late arrival', left_early: 'Left early' };
+const AR_EVENT_LABELS = { callout: 'Called out', late_arrival: 'Late arrival', left_early: 'Left early', leave: 'Scheduled leave' };
 
 function icsEscapeText(s){
   return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
@@ -12796,13 +12796,17 @@ function icsNextDay(iso){
 
 // Flattens computeAttendanceReport()'s per-person date arrays (already
 // filtered for the selected period and for scheduled-leave overlap) back
-// into one row per event — exactly what the report currently shows.
+// into one row per event — exactly what the report currently shows. Leave
+// ranges are included too (as multi-day events, via endDate) so the export
+// actually matches everyone the on-screen report lists, not just the
+// callout/late/left-early categories.
 function attendanceReportToEvents(report){
   const out = [];
   report.rows.forEach(r=>{
     r.callout.forEach(d=>out.push({staffId:r.staffId, eventType:'callout', eventDate:d}));
     r.lateArrival.forEach(d=>out.push({staffId:r.staffId, eventType:'late_arrival', eventDate:d}));
     r.leftEarly.forEach(d=>out.push({staffId:r.staffId, eventType:'left_early', eventDate:d}));
+    r.leaveRanges.forEach(rg=>out.push({staffId:r.staffId, eventType:'leave', eventDate:rg.start, eventEndDate:rg.end, note:rg.label}));
   });
   return out;
 }
@@ -12813,12 +12817,13 @@ function buildAttendanceIcs(events){
   events.forEach(e=>{
     const name = getStaffById(e.staffId)?.name || 'Unknown';
     const label = AR_EVENT_LABELS[e.eventType] || e.eventType;
+    const summaryLabel = (e.eventType==='leave' && e.note) ? `${label} (${e.note})` : label;
     lines.push('BEGIN:VEVENT');
     lines.push('UID:attendance-'+e.eventType+'-'+e.staffId+'-'+e.eventDate+'@rotation-control');
     lines.push('DTSTAMP:'+stamp);
     lines.push('DTSTART;VALUE=DATE:'+icsDate(e.eventDate));
-    lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventDate));
-    lines.push('SUMMARY:'+icsEscapeText(name+' — '+label));
+    lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventEndDate||e.eventDate));
+    lines.push('SUMMARY:'+icsEscapeText(name+' — '+summaryLabel));
     if(e.note) lines.push('DESCRIPTION:'+icsEscapeText(e.note));
     lines.push('END:VEVENT');
   });
