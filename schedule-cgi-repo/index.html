@@ -2603,6 +2603,16 @@ body{
      Report Preview Modal
      ══════════════════════════════════════════════ */
 .rp-layout{display:flex;gap:0;flex:1;min-height:0;overflow:hidden;max-height:none;}
+/* .report-modal .modal-body{flex-direction:column} (below) is meant for
+   other, simpler modals that reuse .modal-body directly — it has higher
+   specificity than the plain .rp-layout rule above and was silently
+   forcing the sidebar+preview pane into a stacked column at every screen
+   size, desktop and tablet included, not just the phone breakpoint this
+   file already has its own column override for. .rp-preview-pane's
+   min-width:0 (a row-only flex pattern) confirms side-by-side was always
+   the intended desktop/tablet layout. Same 3-class specificity as that
+   rule so this reliably wins regardless of source order. */
+.report-modal .modal-body.rp-layout{flex-direction:row;}
 
 /* Sidebar */
 .rp-sidebar{
@@ -2628,9 +2638,10 @@ body{
        .report-modal .modal-body.rp-layout (3 classes) is needed, not just
        .rp-layout, because .report-modal .modal-body (2 classes) is more
        specific than a single-class .rp-layout rule and would otherwise win
-       and keep forcing overflow:hidden regardless of this media query. */
-    .rp-layout{flex-direction:column;}
-    .report-modal .modal-body.rp-layout{overflow-y:auto;overflow-x:hidden;}
+       and keep forcing overflow:hidden regardless of this media query. The
+       flex-direction:row override above needs the same 3-class treatment
+       to flip back to column on phones — same reasoning. */
+    .report-modal .modal-body.rp-layout{flex-direction:column;overflow-y:auto;overflow-x:hidden;}
     .rp-sidebar{
       width:100%;border-right:none;
       border-bottom:1px solid var(--c-border);
