@@ -2616,13 +2616,28 @@ body{
 .rp-sidebar-sections{display:flex;flex-direction:column;gap:4px;}
 .rp-sidebar-extras{display:flex;flex-direction:column;gap:4px;}
 @media(max-width:600px){
+    /* The modal caps its body at 90vh with overflow:hidden, and the
+       sidebar below is set to never shrink (flex-shrink:0) — so on a short
+       phone screen, once the section strip + date range + filters + format
+       controls add up to more height than the modal has room for, the rest
+       used to be silently clipped with no way to scroll down to it. Letting
+       .rp-layout itself scroll vertically (instead of just the old,
+       non-functional nested overflow on .rp-sidebar) fixes that: everything
+       — sections, date range, filters, format, and the preview pane below —
+       now scrolls together as one column.
+       .report-modal .modal-body.rp-layout (3 classes) is needed, not just
+       .rp-layout, because .report-modal .modal-body (2 classes) is more
+       specific than a single-class .rp-layout rule and would otherwise win
+       and keep forcing overflow:hidden regardless of this media query. */
     .rp-layout{flex-direction:column;}
+    .report-modal .modal-body.rp-layout{overflow-y:auto;overflow-x:hidden;}
     .rp-sidebar{
       width:100%;border-right:none;
       border-bottom:1px solid var(--c-border);
       flex-direction:column;
       padding:0;gap:0;
       max-height:none;flex-shrink:0;
+      overflow-y:visible;
     }
     /* Only the section on/off toggles scroll horizontally as compact icon
        chips — the date range, supervisor filter and format controls stay in
@@ -2644,7 +2659,7 @@ body{
     .rp-section-label{font-size:10px;text-align:center;white-space:normal;}
     .rp-preview-btn{display:none;}
     .rp-check-box{width:14px;height:14px;font-size:9px;}
-    .rp-preview-pane{flex:1;min-height:0;}
+    .rp-preview-pane{flex:1;min-height:320px;}
   }
 .rp-sidebar-head{
     font-size:10px;font-weight:700;
