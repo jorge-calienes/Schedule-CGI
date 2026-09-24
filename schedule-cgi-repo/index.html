@@ -15615,7 +15615,7 @@ function attachHandlers(){
     const positionAreaTable = (posAreaColumns.length && posAreaRows.length) ? `
       <div class="ov-chart" style="margin-top:16pt;">
         <div class="ov-chart-title">Position utilization by area &nbsp;·&nbsp; today</div>
-        <div style="overflow-x:auto;">
+        <div class="rt-scroll">
         <table class="report-table">
           <thead><tr>
             <th>Area</th>
@@ -15637,6 +15637,7 @@ function attachHandlers(){
       <div class="report-header">
         <div>
           <h1>Overview</h1>
+          <div class="report-desc">A snapshot of today's staffing, recent attendance trends, and rotation health across the whole team.</div>
           <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${today}</div>
         </div>
       </div>
@@ -15671,6 +15672,7 @@ function attachHandlers(){
       <div class="report-header">
         <div>
           <h1>Schedule Board</h1>
+          <div class="report-desc">Who's assigned to each area right now, grouped by department.</div>
           <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${today}</div>
         </div>
         <div class="report-stats-row">
@@ -15791,6 +15793,7 @@ function attachHandlers(){
     const supervisorScorecardTable = (!opts.supervisorFilter && supervisorScorecards.length>1) ? `
       <div style="margin-bottom:16pt;">
         <div class="ov-chart-title" style="margin-bottom:6pt;">Team scorecards &nbsp;·&nbsp; ranked by attendance incidents</div>
+        <div class="rt-scroll">
         <table class="report-table">
           <thead><tr>
             <th>Supervisor</th>
@@ -15813,12 +15816,15 @@ function attachHandlers(){
             <td style="text-align:center;${g.needsMoveCount>0?'color:#e67e22;font-weight:700':''}">${g.needsMoveCount||'—'}</td>
           </tr>`).join('')}
         </tbody></table>
+        </div>
       </div>` : '';
 
     let page2 = `<div class="page page-break">
       <h1>Staff Performance Report</h1>
+      <div class="report-desc">Attendance, rotation progress, and flags for every active staff member, plus team-level rollups by supervisor.</div>
       <div class="subtitle">Period: ${period} &nbsp;·&nbsp; Generated ${today} &nbsp;·&nbsp; ${reportStaff.length} staff members${supervisorFilterName?' &nbsp;·&nbsp; Supervisor: '+escapeHtml(supervisorFilterName):''} &nbsp;·&nbsp; Attendance: ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>
       ${supervisorScorecardTable}
+      <div class="rt-scroll">
       <table class="report-table">
         <thead><tr>
           <th style="min-width:140px">Name &amp; Role</th>
@@ -15901,7 +15907,7 @@ function attachHandlers(){
         <td style="font-size:10pt">${best?'<span style="color:#555">'+escapeHtml(best)+'</span>':'—'}${flags.length?'<br><small>'+flags.join(' · ')+'</small>':''}</td>
       </tr>`;
     });
-    page2 += `</tbody></table>`;
+    page2 += `</tbody></table></div>`;
 
     // Rotation flow bottlenecks — for each flow with enrolled staff, where
     // in the stage sequence people are actually piling up, and how far
@@ -15927,6 +15933,7 @@ function attachHandlers(){
         ${flowBottlenecks.map(fb=>`
           <div style="margin-bottom:12pt;">
             <div style="font-size:9.5pt;font-weight:700;color:#333;margin-bottom:4pt;">${escapeHtml(fb.flowName)} — ${fb.enrolledCount} enrolled, ${fb.completedCount} completed</div>
+            <div class="rt-scroll">
             <table class="report-table">
               <thead><tr>
                 <th>Stage (area)</th>
@@ -15941,6 +15948,7 @@ function attachHandlers(){
                 <td style="text-align:center">${r.atStageCount?r.avgWorked.toFixed(1):'—'}</td>
               </tr>`).join('')}
             </tbody></table>
+            </div>
           </div>`).join('')}
       </div>`;
     }
@@ -15954,10 +15962,12 @@ function attachHandlers(){
     // ─────────────────────────────────────────────────────────────────────
     let page3 = `<div class="page page-break">
       <h1>Certifications &amp; Absences</h1>
+      <div class="report-desc">Who holds required certifications, speaks a certified language, or is out today.</div>
       <div class="subtitle">Period: ${period}</div>`;
 
     if(certStaff.length){
       page3 += `<div class="to-section"><div class="to-section-head">Certifications (${certStaff.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th><th>Certifications</th></tr></thead><tbody>`;
       certStaff.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
         const areaName = getAreaById(state.assignments[s.id])?.name||'—';
@@ -15966,27 +15976,29 @@ function attachHandlers(){
         if(showAccom&&s.needsAccommodations) certs.push('♿ Accommodations');
         page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td><td>${certs.join('  ·  ')}</td></tr>`;
       });
-      page3 += `</tbody></table></div>`;
+      page3 += `</tbody></table></div></div>`;
     }
 
     if(missingCACert.length){
       page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Missing CA Certification (${missingCACert.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th></tr></thead><tbody>`;
       missingCACert.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
         const areaName = getAreaById(state.assignments[s.id])?.name||'—';
         page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td></tr>`;
       });
-      page3 += `</tbody></table></div>`;
+      page3 += `</tbody></table></div></div>`;
     }
 
     if(languageStaff.length){
       page3 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Languages (${languageStaff.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:180px">Name</th><th style="width:100px">Area</th><th style="width:110px">Shift</th><th>Languages</th></tr></thead><tbody>`;
       languageStaff.sort((a,b)=>a.name.localeCompare(b.name)).forEach(s=>{
         const areaName = getAreaById(state.assignments[s.id])?.name||'—';
         page3 += `<tr><td><b>${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}</b></td><td>${escapeHtml(areaName)}</td><td>${escapeHtml(s.shiftHours||'—')}</td><td>🌐 ${escapeHtml(langNames(s))}</td></tr>`;
       });
-      page3 += `</tbody></table></div>`;
+      page3 += `</tbody></table></div></div>`;
     }
 
     if(calledOut.length){
@@ -16036,6 +16048,7 @@ function attachHandlers(){
 
     let page4 = `<div class="page">
       <h1>Scheduled Time Off</h1>
+      <div class="report-desc">Who's on approved leave today, plus a per-person summary of callouts, late arrivals, early departures, and leave days for the selected date range.</div>
       <div class="subtitle">Period: ${period} &nbsp;·&nbsp; ${friendlyD(attendanceRangeStart)} – ${friendlyD(attendanceRangeEnd)}</div>`;
 
     if(active.length){
@@ -16065,6 +16078,7 @@ function attachHandlers(){
 
     if(attendanceSummary.length){
       page4 += `<div class="to-section" style="margin-top:20px;"><div class="to-section-head">Attendance &amp; leave summary (${attendanceSummary.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr>
           <th style="width:150px">Name</th>
           <th style="width:100px">Area</th>
@@ -16091,7 +16105,7 @@ function attachHandlers(){
           <td style="font-size:9pt;color:#555">${dateParts.join('<br>')}</td>
         </tr>`;
       });
-      page4 += `</tbody></table></div>`;
+      page4 += `</tbody></table></div></div>`;
     }
     if(!active.length&&!attendanceSummary.length){
       page4 += `<div style="color:#aaa;font-style:italic;padding:16px 0;">No attendance or leave activity in this period.</div>`;
@@ -16186,6 +16200,7 @@ function attachHandlers(){
             <span class="day-date">${friendly}</span>
             <span class="day-summary">${summary}</span>
           </div>
+          <div class="rt-scroll">
           <table class="log-table">
             <thead><tr><th style="width:55pt">Time</th><th style="width:110pt">Type</th><th style="width:120pt">${usingAuditLog?'By':'Staff'}</th><th>Details</th></tr></thead>
             <tbody>`;
@@ -16198,7 +16213,7 @@ function attachHandlers(){
             <td style="font-size:10pt;color:#555">${escapeHtml(e.detail)}</td>
           </tr>`;
         });
-        page5 += `</tbody></table></div>`;
+        page5 += `</tbody></table></div></div>`;
       });
     }
     page5 += `</div>`;
@@ -16214,7 +16229,9 @@ function attachHandlers(){
 
     let page6 = `<div class="page page-break">
       <h1>Supervisor Summary</h1>
+      <div class="report-desc">Team size, today's coverage, and pending requests rolled up by supervisor.</div>
       <div class="subtitle">Period: ${period}</div>
+      <div class="rt-scroll">
       <table class="report-table">
         <thead><tr>
           <th>Supervisor</th>
@@ -16246,7 +16263,7 @@ function attachHandlers(){
         <td style="font-size:9pt;color:#555">${staff.map(s=>s.name.split(' ')[0]).join(', ')}</td>
       </tr>`;
     });
-    page6 += `</tbody></table></div>`;
+    page6 += `</tbody></table></div></div>`;
 
     // ─────────────────────────────────────────────────────────────────────
     // PAGE 7 — Area Utilization & Coverage Gaps
@@ -16312,6 +16329,7 @@ function attachHandlers(){
     // for reading a precise count. Capacity already has its own Cap.
     // column in the table further down, so it isn't repeated here.
     const areaImpactTable = areaImpactStats.length ? `
+      <div class="rt-scroll">
       <table class="report-table" style="margin-bottom:16pt;">
         <thead><tr>
           <th>Area</th>
@@ -16327,13 +16345,15 @@ function attachHandlers(){
           <td style="text-align:center">${a.early||'—'}</td>
           <td style="text-align:center">${a.leaveDays||'—'}</td>
         </tr>`).join('')}
-      </tbody></table>` : '';
+      </tbody></table>
+      </div>` : '';
 
     let page7 = `<div class="page page-break">
       <h1>Area Utilization</h1>
       <div class="subtitle">Period: ${period} — Today's staffing vs capacity, with history</div>
       ${areaImpactChart}
       ${areaImpactTable}
+      <div class="rt-scroll">
       <table class="report-table">
         <thead><tr>
           <th>Area</th>
@@ -16369,7 +16389,7 @@ function attachHandlers(){
         <td style="font-size:9pt;color:#c0392b">${flags.join(' ')}</td>
       </tr>`;
     });
-    page7 += `</tbody></table>`;
+    page7 += `</tbody></table></div>`;
 
     // Language coverage gaps
     const areasWithNoLang = state.areas.filter(a=>!a.fixed&&langCover(a).length===0&&staffInArea(a.id).filter(s=>s.active!==false).length>0);
@@ -16399,36 +16419,40 @@ function attachHandlers(){
 
     let page8 = `<div class="page">
       <h1>Notes, Proficiency &amp; Constraints</h1>
+      <div class="report-desc">Supervisor notes, top-rated areas per person, scheduling constraints, and any pending or team-lead coverage requests.</div>
       <div class="subtitle">Period: ${period}</div>`;
 
     if(rNotes.length){
       page8 += `<div class="to-section"><div class="to-section-head">Rotation notes (${rNotes.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:100pt">Period</th><th>Note</th></tr></thead><tbody>`;
       rNotes.slice(0,20).forEach(([p,note])=>{
         page8 += `<tr><td style="font-weight:600">${escapeHtml(p)}</td><td>${escapeHtml(note)}</td></tr>`;
       });
-      page8 += `</tbody></table></div>`;
+      page8 += `</tbody></table></div></div>`;
     }
 
     if(blockedPairs.length){
       page8 += `<div class="to-section" style="margin-top:16pt"><div class="to-section-head">Blocked pairs (${blockedPairs.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th>Staff A</th><th>Staff B</th><th>Reason</th></tr></thead><tbody>`;
       blockedPairs.forEach(b=>{
         page8 += `<tr><td>${escapeHtml(b.a)}</td><td>${escapeHtml(b.b)}</td><td style="color:#888">${escapeHtml(b.reason)}</td></tr>`;
       });
-      page8 += `</tbody></table></div>`;
+      page8 += `</tbody></table></div></div>`;
     }
 
     // Top proficiency by area
     const profStaff = reportStaff.filter(s=>topProf(s.id).length>0);
     if(profStaff.length){
       page8 += `<div class="to-section" style="margin-top:16pt"><div class="to-section-head">Top area proficiency ratings</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:160pt">Name</th><th>Top rated areas</th></tr></thead><tbody>`;
       profStaff.slice(0,20).forEach(s=>{
         const areas = topProf(s.id).map(p=>`${escapeHtml(p.area)} (${p.rating}/5)`).join('  ·  ');
         page8 += `<tr><td><b>${escapeHtml(s.name)}</b></td><td style="font-size:10pt">${areas}</td></tr>`;
       });
-      page8 += `</tbody></table></div>`;
+      page8 += `</tbody></table></div></div>`;
     }
 
     // Pending position requests
@@ -16437,6 +16461,7 @@ function attachHandlers(){
     ).sort((a,b)=>a.date.localeCompare(b.date));
     if(pendingReqs.length){
       page8 += `<div class="to-section" style="margin-top:16pt"><div class="to-section-head">Pending position requests (${pendingReqs.length})</div>
+        <div class="rt-scroll">
         <table><thead><tr><th style="width:150pt">Name</th><th style="width:90pt">Supervisor</th><th>From → To</th><th>Reason</th><th style="width:70pt">Submitted</th></tr></thead><tbody>`;
       pendingReqs.forEach(r=>{
         const sup = getSupervisorById(r.staff.supervisorId);
@@ -16448,7 +16473,7 @@ function attachHandlers(){
           <td style="font-size:9pt;color:#777">${r.date}</td>
         </tr>`;
       });
-      page8 += `</tbody></table></div>`;
+      page8 += `</tbody></table></div></div>`;
     }
 
     // Team lead coverage events
@@ -16460,11 +16485,12 @@ function attachHandlers(){
     }));
     if(tlCovEvents.length){
       page8 += '<div class="to-section" style="margin-top:16pt"><div class="to-section-head">Team lead coverage events ('+tlCovEvents.length+')</div>'
+        +'<div class="rt-scroll">'
         +'<table><thead><tr><th style="width:80pt">Date</th><th style="width:100pt">Area</th><th>Out</th><th>Covering</th><th style="width:65pt">Status</th></tr></thead><tbody>';
       tlCovEvents.forEach(ev=>{
         page8 += '<tr><td>'+escapeHtml(ev.date||'')+'</td><td>'+escapeHtml(ev.area)+'</td><td>'+escapeHtml(ev.outLead)+'</td><td>'+(ev.coverLead?escapeHtml(ev.coverLead):'<span style="color:#c0392b">⚠ Unassigned</span>')+'</td><td>'+escapeHtml(ev.status||'pending')+'</td></tr>';
       });
-      page8 += '</tbody></table></div>';
+      page8 += '</tbody></table></div></div>';
     }
 
     // Arrival log (late arrivals)
@@ -16474,6 +16500,7 @@ function attachHandlers(){
     if(arrivalData.length){
       const late=arrivalData.filter(l=>{ if(!l.scheduled||!l.actual) return false; const toM=t=>{const[h,m]=t.split(':').map(Number);return h*60+m;}; return toM(l.actual)-toM(l.scheduled)>5; });
       page8 += '<div class="to-section" style="margin-top:16pt"><div class="to-section-head">Arrival log — '+arrivalData.length+' records, '+late.length+' late (>5 min)</div>'
+        +'<div class="rt-scroll">'
         +'<table><thead><tr><th style="width:150pt">Name</th><th style="width:80pt">Date</th><th style="width:70pt">Scheduled</th><th style="width:70pt">Actual</th><th style="width:70pt">Diff</th></tr></thead><tbody>';
       arrivalData.slice(0,30).forEach(l=>{
         const toM=t=>{if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m;};
@@ -16481,7 +16508,7 @@ function attachHandlers(){
         const diffStr=diff!=null?(diff>0?'<span style="color:#c0392b">+'+diff+' min</span>':diff<-5?'<span style="color:#27ae60">'+diff+' min</span>':diff+' min'):'—';
         page8 += '<tr><td><b>'+escapeHtml(l.name)+'</b></td><td>'+escapeHtml(l.date)+'</td><td>'+escapeHtml(l.scheduled||'—')+'</td><td>'+escapeHtml(l.actual||'—')+'</td><td>'+diffStr+'</td></tr>';
       });
-      page8 += '</tbody></table></div>';
+      page8 += '</tbody></table></div></div>';
     }
 
     if(!rNotes.length&&!blockedPairs.length&&!profStaff.length&&!pendingReqs.length&&!tlCovEvents.length&&!arrivalData.length){
@@ -16508,6 +16535,7 @@ function attachHandlers(){
       .report-table thead, table thead{ display:table-header-group; }
       .report-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16pt;border-bottom:2pt solid #111;padding-bottom:8pt;}
       h1{font-size:20pt;font-weight:700;color:#111;margin-bottom:4pt;}
+      .report-desc{font-size:9.5pt;color:#777;margin-bottom:6pt;max-width:640pt;line-height:1.4;}
       .subtitle{font-size:10pt;color:#555;margin-bottom:12pt;}
       .report-stats-row{display:flex;gap:12pt;align-items:center;}
       .report-stat{font-size:10pt;font-weight:600;background:#f4f4f4;padding:3pt 8pt;border-radius:4pt;}
@@ -16608,6 +16636,7 @@ function attachHandlers(){
         body{font-size:14px;}
         .page{min-height:auto;padding:20px;}
         h1{font-size:20px;}
+        .report-desc{font-size:12.5px;max-width:none;}
         .subtitle{font-size:12px;}
         .report-table, table{font-size:12px;}
         .report-table th, table th{font-size:11px;}
@@ -16621,11 +16650,18 @@ function attachHandlers(){
         .ov-donut-legend-row{font-size:11px;}
         .ov-donut-legend-value{font-size:10.5px;}
         .ov-donut-center-num{font-size:18px;}
-        /* Wide tables scroll horizontally within themselves instead of
-           forcing the whole page to scroll sideways on a phone. */
-        .report-table, table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
-        .report-table tbody, .report-table thead, .report-table tr,
-        table tbody, table thead, table tr{display:table;width:100%;table-layout:auto;}
+        /* Wide tables scroll horizontally within a wrapper div instead of
+           forcing the whole page to scroll sideways on a phone. The table
+           itself keeps its native display:table — thead/tbody/tr are never
+           overridden to their own separate display:table contexts, since
+           that made each compute its own column widths independently and
+           let the header row drift out of alignment with the data rows
+           beneath it (worse the more a header label's length differed from
+           its column's data). Scrolling the wrapper instead of the table
+           keeps header and data in the same table, so columns always line
+           up exactly regardless of content length. */
+        .rt-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+        .rt-scroll table, .rt-scroll .report-table{white-space:nowrap;}
       }
       @media screen and (max-width:700px){
         body{font-size:15px;}
