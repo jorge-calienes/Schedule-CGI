@@ -2603,6 +2603,16 @@ body{
      Report Preview Modal
      ══════════════════════════════════════════════ */
 .rp-layout{display:flex;gap:0;flex:1;min-height:0;overflow:hidden;max-height:none;}
+/* .report-modal .modal-body{flex-direction:column} (below) is meant for
+   other, simpler modals that reuse .modal-body directly — it has higher
+   specificity than the plain .rp-layout rule above and was silently
+   forcing the sidebar+preview pane into a stacked column at every screen
+   size, desktop and tablet included, not just the phone breakpoint this
+   file already has its own column override for. .rp-preview-pane's
+   min-width:0 (a row-only flex pattern) confirms side-by-side was always
+   the intended desktop/tablet layout. Same 3-class specificity as that
+   rule so this reliably wins regardless of source order. */
+.report-modal .modal-body.rp-layout{flex-direction:row;}
 
 /* Sidebar */
 .rp-sidebar{
@@ -2616,13 +2626,29 @@ body{
 .rp-sidebar-sections{display:flex;flex-direction:column;gap:4px;}
 .rp-sidebar-extras{display:flex;flex-direction:column;gap:4px;}
 @media(max-width:600px){
-    .rp-layout{flex-direction:column;}
+    /* The modal caps its body at 90vh with overflow:hidden, and the
+       sidebar below is set to never shrink (flex-shrink:0) — so on a short
+       phone screen, once the section strip + date range + filters + format
+       controls add up to more height than the modal has room for, the rest
+       used to be silently clipped with no way to scroll down to it. Letting
+       .rp-layout itself scroll vertically (instead of just the old,
+       non-functional nested overflow on .rp-sidebar) fixes that: everything
+       — sections, date range, filters, format, and the preview pane below —
+       now scrolls together as one column.
+       .report-modal .modal-body.rp-layout (3 classes) is needed, not just
+       .rp-layout, because .report-modal .modal-body (2 classes) is more
+       specific than a single-class .rp-layout rule and would otherwise win
+       and keep forcing overflow:hidden regardless of this media query. The
+       flex-direction:row override above needs the same 3-class treatment
+       to flip back to column on phones — same reasoning. */
+    .report-modal .modal-body.rp-layout{flex-direction:column;overflow-y:auto;overflow-x:hidden;}
     .rp-sidebar{
       width:100%;border-right:none;
       border-bottom:1px solid var(--c-border);
       flex-direction:column;
       padding:0;gap:0;
       max-height:none;flex-shrink:0;
+      overflow-y:visible;
     }
     /* Only the section on/off toggles scroll horizontally as compact icon
        chips — the date range, supervisor filter and format controls stay in
@@ -2644,7 +2670,7 @@ body{
     .rp-section-label{font-size:10px;text-align:center;white-space:normal;}
     .rp-preview-btn{display:none;}
     .rp-check-box{width:14px;height:14px;font-size:9px;}
-    .rp-preview-pane{flex:1;min-height:0;}
+    .rp-preview-pane{flex:1;min-height:320px;}
   }
 .rp-sidebar-head{
     font-size:10px;font-weight:700;
@@ -12747,8 +12773,6 @@ function computeAttendanceReportForRange(range){
     });
   });
 
-  const rangeDays = rg => Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
-
   const rows = Object.keys(byStaff).map(staffId=>{
     const r = byStaff[staffId];
     const s = getStaffById(staffId);
@@ -12757,7 +12781,10 @@ function computeAttendanceReportForRange(range){
     const lateArrival = r.late_arrival.slice().sort();
     const leftEarly = r.left_early.slice().sort();
     const leaveRanges = r.leaveRanges.slice().sort((a,b)=>a.start.localeCompare(b.start));
-    const leaveDays = leaveRanges.reduce((sum,rg)=>sum+rangeDays(rg),0);
+    // Weekdays only (see businessDaysBetween) — a Fri-Mon vacation is 2
+    // leave days charged, not 4, even though the calendar/list still show
+    // the person away through the weekend too.
+    const leaveDays = leaveRanges.reduce((sum,rg)=>sum+businessDaysBetween(rg.start, rg.end),0);
     const total = callout.length + lateArrival.length + leftEarly.length + leaveDays;
     return { staffId, name, supervisorId: s?.supervisorId||null, callout, lateArrival, leftEarly, leaveRanges, leaveDays, total };
   }).sort((a,b)=> b.total-a.total || a.name.localeCompare(b.name));
@@ -12772,8 +12799,8 @@ function arShortDate(iso){
   return parts.length===3 ? `${parts[1]}/${parts[2]}` : iso;
 }
 function arLeaveRangeLabel(rg){
-  const days = Math.round((new Date(rg.end+'T00:00:00Z') - new Date(rg.start+'T00:00:00Z')) / 86400000) + 1;
-  return days>1 ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
+  const days = businessDaysBetween(rg.start, rg.end);
+  return rg.start!==rg.end ? `${arShortDate(rg.start)}–${arShortDate(rg.end)} (${days}d)` : arShortDate(rg.start);
 }
 
 // ── Outlook export (.ics) ──────────────────────────────────────────────
