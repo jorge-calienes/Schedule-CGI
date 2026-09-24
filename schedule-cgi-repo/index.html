@@ -12813,7 +12813,14 @@ function attendanceReportToEvents(report){
 
 function buildAttendanceIcs(events){
   const stamp = new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
-  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rotation Control//Attendance Export//EN','CALSCALE:GREGORIAN'];
+  // METHOD:PUBLISH marks this as a set of standalone calendar entries rather
+  // than a meeting invitation — without it, Outlook (desktop and the web
+  // attachment preview alike) treats a double-clicked/previewed .ics as a
+  // single-item invite dialog and only ever shows the first VEVENT, even
+  // when the file itself contains every event correctly. STATUS:CONFIRMED
+  // and SEQUENCE:0 on each event are the matching per-event half of that
+  // same PUBLISH convention (RFC 5545 §3.7.2 / §3.8.1.11).
+  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rotation Control//Attendance Export//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
   events.forEach(e=>{
     const name = getStaffById(e.staffId)?.name || 'Unknown';
     const label = AR_EVENT_LABELS[e.eventType] || e.eventType;
@@ -12825,6 +12832,9 @@ function buildAttendanceIcs(events){
     lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventEndDate||e.eventDate));
     lines.push('SUMMARY:'+icsEscapeText(name+' — '+summaryLabel));
     if(e.note) lines.push('DESCRIPTION:'+icsEscapeText(e.note));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('SEQUENCE:0');
+    lines.push('TRANSP:TRANSPARENT');
     lines.push('END:VEVENT');
   });
   lines.push('END:VCALENDAR');
