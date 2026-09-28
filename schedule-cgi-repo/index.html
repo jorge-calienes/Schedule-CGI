@@ -18010,9 +18010,13 @@ function attachHandlers(){
         }
       }
       saveState();
-      showToast(sync.ok ? 'Saved — tap + Add to schedule another person' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      // Go to list view so supervisor can immediately pick next person
-      openModal({type:'time-off-manager', searchQ:m.searchQ||'', _saved:true});
+      showToast(sync.ok ? 'Saved — add another entry below, or ← Back for someone else' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      // Stay on this staff member's add screen (not editId/entryType, so it
+      // resets to a fresh "Add" form) — a supervisor logging several things
+      // for the same person (a leave range, a late arrival, an early leave)
+      // can keep going without re-searching and re-picking them each time.
+      // ← Back still goes to the list to pick someone else.
+      openModal({type:'time-off-manager', staffId:m.staffId, searchQ:m.searchQ||'', _saved:true});
     });
   }
 
