@@ -3682,7 +3682,17 @@ button{font-family:var(--sans);cursor:pointer;}
 .overview-legend span{display:inline-flex;align-items:center;gap:4px;}
 .ov-dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
 
-/* Department section */
+/* Department section. On mobile these just stack, full-width, in source
+   order — sticky headers make sense there since each is a straightforward
+   vertical section. On desktop, .ov-depts-flow instead lets a small
+   department (Agency, Courier, QC, Fixed positions, etc. — anything with
+   only a couple of areas) sit next to the following one on the same row,
+   using --ov-dept-cards (set inline per department) to size each block to
+   its own card count instead of forcing a full-width row that leaves the
+   rest of that row empty. A department with enough areas to exceed the
+   row on its own still wraps onto one (its own .ov-areas-grid handles
+   wrapping internally), same as before. */
+.ov-depts-flow{display:flex;flex-direction:column;}
 .ov-dept{margin-bottom:0;}
 .ov-dept-head{
     font-size:10px;font-weight:800;
@@ -3693,11 +3703,30 @@ button{font-family:var(--sans);cursor:pointer;}
     border-bottom:1px solid var(--c-border);
     position:sticky;top:0;z-index:1;
   }
+@media(min-width:900px){
+    .ov-depts-flow{flex-direction:row;flex-wrap:wrap;align-items:flex-start;}
+    .ov-dept{
+      flex:0 1 auto;
+      /* Matches .ov-areas-grid's own math (250px card + 10px gap, minus one
+         gap since there's one fewer gap than cards) plus its 32px of
+         horizontal padding, so a block sized for N cards actually fits N
+         250px-minimum cards instead of rounding them down. */
+      width:calc(22px + var(--ov-dept-cards, 1) * 260px);
+      max-width:100%;
+      min-width:282px;
+    }
+    /* Side-by-side blocks can each be scrolled past at a different point,
+       so "stuck to the top" would mean several headers fighting for the
+       same spot — plain in-flow headers instead. */
+    .ov-dept-head{position:static;}
+  }
 
-/* Responsive area grid — fills all available width. Min column width kept
-   deliberately small (and, unlike before, shrinks further as the viewport
-   grows) so a wide screen packs more area cards per row instead of just
-   stretching a handful of cards to fill the extra space. */
+/* Responsive area grid — fills all available width. 250px is the minimum
+   readable width for a card carrying a name, capacity count, and a list of
+   staff rows with action buttons; below that on desktop it starts feeling
+   cramped, so this doesn't shrink further as the viewport grows the way an
+   earlier version did — a wide screen instead fits more DEPARTMENT blocks
+   per row (see .ov-depts-flow) rather than narrower cards. */
 .ov-areas-grid{
     display:grid;
     grid-template-columns:repeat(auto-fill, minmax(min(150px, calc(50% - 5px)), 1fr));
@@ -3705,17 +3734,11 @@ button{font-family:var(--sans);cursor:pointer;}
     padding:10px 12px 14px;
     background:var(--c-surface-2);
   }
-@media(min-width:1200px){
+@media(min-width:900px){
     .ov-areas-grid{
-      grid-template-columns:repeat(auto-fill, minmax(min(160px, 100%), 1fr));
+      grid-template-columns:repeat(auto-fill, minmax(min(250px, 100%), 1fr));
       gap:10px;
       padding:12px 16px 16px;
-    }
-  }
-@media(min-width:1700px){
-    .ov-areas-grid{
-      grid-template-columns:repeat(auto-fill, minmax(min(140px, 100%), 1fr));
-      gap:8px;
     }
   }
 
@@ -9670,13 +9693,20 @@ function renderOverview(){
         <span><span class="lead-star">★</span>lead</span>
       </div>
     </div>
-    ${groups.map(g=>renderOverviewDept(g)).join('')}
+    <div class="ov-depts-flow">
+      ${groups.map(g=>renderOverviewDept(g)).join('')}
+    </div>
   </div>`;
 }
 
 function renderOverviewDept(g){
+  // A department block sizes to its own area count rather than forcing a
+  // full-width row — a small department (few areas) then wraps onto the
+  // same row as the next one instead of leaving the rest of that row empty
+  // below a lone 1-2-card section. --ov-dept-cards drives that width; see
+  // .ov-dept's CSS for the actual sizing.
   return `
-  <div class="ov-dept">
+  <div class="ov-dept" style="--ov-dept-cards:${g.areas.length}">
     <div class="ov-dept-head">${escapeHtml(g.department)} <span style="font-weight:400;opacity:.6;">${g.areas.reduce((n,a)=>n+staffInArea(a.id).length,0)} staff</span></div>
     <div class="ov-areas-grid">
       ${g.areas.map(a=>renderOverviewArea(a)).join('')}
