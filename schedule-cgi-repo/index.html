@@ -3694,19 +3694,28 @@ button{font-family:var(--sans);cursor:pointer;}
     position:sticky;top:0;z-index:1;
   }
 
-/* Responsive area grid — fills all available width */
+/* Responsive area grid — fills all available width. Min column width kept
+   deliberately small (and, unlike before, shrinks further as the viewport
+   grows) so a wide screen packs more area cards per row instead of just
+   stretching a handful of cards to fill the extra space. */
 .ov-areas-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(min(170px, calc(50% - 5px)), 1fr));
-    gap:10px;
+    grid-template-columns:repeat(auto-fill, minmax(min(150px, calc(50% - 5px)), 1fr));
+    gap:8px;
     padding:10px 12px 14px;
     background:var(--c-surface-2);
   }
 @media(min-width:1200px){
     .ov-areas-grid{
-      grid-template-columns:repeat(auto-fill, minmax(min(200px, 100%), 1fr));
-      gap:12px;
+      grid-template-columns:repeat(auto-fill, minmax(min(160px, 100%), 1fr));
+      gap:10px;
       padding:12px 16px 16px;
+    }
+  }
+@media(min-width:1700px){
+    .ov-areas-grid{
+      grid-template-columns:repeat(auto-fill, minmax(min(140px, 100%), 1fr));
+      gap:8px;
     }
   }
 
@@ -3720,6 +3729,15 @@ button{font-family:var(--sans);cursor:pointer;}
     transition:box-shadow .12s;
   }
 .ov-area:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);}
+/* Highlight when a "Move" is in progress (tap-target-btn shows) or a chip
+   is being dragged over — same visual language as the board's .area-drop. */
+.ov-area.tap-target{
+    outline:2px dashed var(--c-accent);
+    outline-offset:-2px;
+    background:rgba(47,95,168,.05);
+  }
+.ov-area.dragover{background:var(--md-sys-color-primary-container);}
+.ov-area .tap-target-btn{margin:6px 8px 0;width:auto;}
 .ov-area-head{
     display:flex;align-items:center;gap:6px;
     padding:8px 10px 6px;
@@ -3735,18 +3753,47 @@ button{font-family:var(--sans);cursor:pointer;}
     padding:6px 10px 8px;
   }
 .ov-row{
-    padding:4px 8px;
+    display:flex;align-items:center;gap:4px;
+    padding:4px 6px 4px 8px;
     font-size:12px;
-    cursor:pointer;
+    cursor:grab;
     border-bottom:1px solid var(--md-sys-color-outline-variant);
-    cursor:pointer;
     border-radius:var(--md-sys-shape-corner-extra-small);
   }
 .ov-row:hover{background:var(--md-sys-color-surface-container-high);}
 .ov-row:last-child{border-bottom:none;}
 .ov-row.out{opacity:0.55;}
 .ov-row.flagged{background:var(--md-sys-color-tertiary-container);}
-.ov-name{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--c-text);display:block;}
+.ov-row.dragging{opacity:.4;}
+.ov-row.ov-drop-target{box-shadow:0 0 0 2px var(--c-accent,#2F5FA8);}
+.ov-row.selected-for-move{box-shadow:0 0 0 2px var(--md-sys-color-primary);}
+.ov-row.swap-first{background:var(--md-sys-color-tertiary-container);}
+.ov-row.swap-target{outline:2px dashed #F59E0B;outline-offset:-2px;cursor:pointer;}
+.ov-swap-target-row{
+    flex-basis:100%;
+    font-size:10px;font-weight:700;color:#D97706;
+    background:#FEF3C7;border-radius:4px;
+    padding:2px 6px;margin-bottom:2px;
+    text-align:center;
+  }
+.ov-row-main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.ov-name{
+    font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    color:var(--c-text);display:block;
+    background:none;border:none;padding:0;margin:0;text-align:left;
+    font-family:inherit;cursor:pointer;
+  }
+.ov-name:hover{text-decoration:underline;}
+.ov-row-actions{display:flex;gap:2px;flex-shrink:0;}
+.ov-row-act{
+    width:20px;height:20px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;line-height:1;
+    background:var(--c-surface-2);border:1px solid var(--c-border);border-radius:5px;
+    color:var(--c-text-2);cursor:pointer;padding:0;
+  }
+.ov-row-act:hover{background:var(--c-surface);color:var(--c-text);}
+.ov-row-act.active{background:var(--c-accent);border-color:var(--c-accent);color:#fff;}
 .ov-hours{font-size:10px;color:var(--c-text-2);}
 .ov-break{font-size:10px;color:var(--c-text-2);}
 .ov-flag{
@@ -8442,7 +8489,7 @@ function render(){
   // Sync today's scheduled time-off on every render
   _applyTodayTimeOff();
   if(isTeamLeadRole() && viewMode!=='board') viewMode='board'; // team leads: board view only, no other tabs
-  const dragModes = (viewMode==='board' || viewMode==='supervisors');
+  const dragModes = (viewMode==='board' || viewMode==='supervisors' || viewMode==='overview');
   const mainViews = {
     board: renderBoard,
     overview: renderOverview,
@@ -9641,13 +9688,19 @@ function renderOverviewArea(area){
   const members = staffInArea(area.id);
   const present = activeInArea(area.id).length;
   const over = present > area.capacity;
+  const readOnly = isTeamLeadRole();
+  // Same rule as the board's area-drop: a fixed area only accepts a tap
+  // placement when it's a temporary (day/rotation-scoped) move, not a
+  // permanent one — see renderArea()'s isTapTarget for the full reasoning.
+  const isTapTarget = !readOnly && !!selectedStaffId && state.assignments[selectedStaffId] !== area.id && (!area.fixed || tempMoveScope);
   return `
-  <div class="ov-area">
+  <div class="ov-area ${isTapTarget?'tap-target':''}" data-dropzone="area" data-area-id="${area.id}">
     <div class="ov-area-head" style="border-color:${area.color}">
       <span class="area-swatch" style="background:${area.color}"></span>
       <span class="ov-area-name">${escapeHtml(area.name)}</span>
       <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
     </div>
+    ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="${area.id}">Move here</button>`:''}
     ${members.length===0 ? '<div class="ov-empty">No one placed</div>' : members.map(s=>renderOverviewRow(s, area.id)).join('')}
   </div>`;
 }
@@ -9658,10 +9711,22 @@ function renderOverviewRow(s, areaId){
   const conflicts = blockConflictsIn(s.id, areaId);
   const flagged = repeat || conflicts.length>0;
   const times = [s.shiftHours, s.breakTimes].filter(Boolean).join(' · ');
+  const readOnly = isTeamLeadRole();
+  const isSelected = selectedStaffId === s.id;
+  const isSwapFirst = swapMode && swapMode.staffId === s.id;
+  const isSwapTarget = swapMode && swapMode.staffId !== s.id;
   return `
-  <div class="ov-row ${isOut?'out':''} ${flagged?'flagged':''}" data-show-stats="${s.id}">
-    <span class="ov-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.tdisNumber?` <span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdisNumber)}</span>`:''}${s.isSubcontractor?' <span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}${isOut?' <span class="ov-out-tag">Out</span>':''}${flagged&&!isOut?` <span class="ov-flag-dot" title="${[repeat&&'repeat',conflicts.length&&'blocked'].filter(Boolean).join(', ')}">⚠</span>`:''}</span>
-    ${times?`<span class="ov-times">${escapeHtml(times)}</span>`:''}
+  <div class="ov-row ${isOut?'out':''} ${flagged?'flagged':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''}" draggable="${readOnly?'false':'true'}" data-staff-id="${s.id}">
+    ${isSwapTarget?'<div class="ov-swap-target-row">⇄ Tap to swap here</div>':''}
+    <div class="ov-row-main">
+      <button class="ov-name" data-show-stats="${s.id}">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.tdisNumber?` <span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdisNumber)}</span>`:''}${s.isSubcontractor?' <span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}${isOut?' <span class="ov-out-tag">Out</span>':''}${flagged&&!isOut?` <span class="ov-flag-dot" title="${[repeat&&'repeat',conflicts.length&&'blocked'].filter(Boolean).join(', ')}">⚠</span>`:''}</button>
+      ${times?`<span class="ov-times">${escapeHtml(times)}</span>`:''}
+    </div>
+    ${readOnly ? '' : `
+    <div class="ov-row-actions">
+      <button class="ov-row-act act-move ${isSelected?'active':''}" data-id="${s.id}" title="${isSelected?'Cancel move':'Move'}">${isSelected?'✕':'↗'}</button>
+      <button class="ov-row-act act-swap-init ${isSwapFirst?'active':''}" data-id="${s.id}" title="${isSwapFirst?'Cancel swap':'Swap'}">${isSwapFirst?'✕':'⇄'}</button>
+    </div>`}
   </div>`;
 }
 
@@ -14830,6 +14895,74 @@ function attachHandlers(){
       const targetAreaId = zone.dataset.dropzone==='area' ? zone.dataset.areaId : null;
       attemptPlace(dragStaffId, targetAreaId, false);
       dragStaffId = null;
+    });
+  });
+
+  // ── Overview view: drag, drop, and tap-to-swap ──────────────────────────
+  // Same underlying attemptPlace()/doSwap() the board uses, so capacity,
+  // block-conflict, cert, and team-lead checks all apply identically — this
+  // is just a second set of drag handles/drop targets over the denser
+  // Overview layout, not a separate move/swap implementation. Dropping a
+  // row onto an area card (the [data-dropzone="area"] handler above, which
+  // .ov-area also carries) moves them there; dropping one row onto another
+  // swaps the two, or — same area — just reorders them, matching the
+  // board's chip-on-chip drop.
+  document.querySelectorAll('.ov-row[draggable=true]').forEach(row=>{
+    row.addEventListener('dragstart', e=>{
+      dragStaffId = row.dataset.staffId;
+      boardInteractionInProgress = true;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', ()=>{
+      row.classList.remove('dragging');
+      boardInteractionInProgress = false;
+      document.querySelectorAll('.ov-row.ov-drop-target').forEach(r=>r.classList.remove('ov-drop-target'));
+    });
+  });
+  document.querySelectorAll('.ov-row[data-staff-id]').forEach(row=>{
+    row.addEventListener('dragover', e=>{
+      if(!dragStaffId || dragStaffId===row.dataset.staffId) return;
+      e.preventDefault();
+      e.stopPropagation(); // don't also light up the .ov-area dropzone underneath
+      row.classList.add('ov-drop-target');
+    });
+    row.addEventListener('dragleave', ()=>{ row.classList.remove('ov-drop-target'); });
+    row.addEventListener('drop', e=>{
+      if(!dragStaffId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove('ov-drop-target');
+      const targetStaffId = row.dataset.staffId;
+      if(targetStaffId===dragStaffId){ dragStaffId=null; return; }
+      const sourceAreaId = state.assignments[dragStaffId];
+      const targetAreaId = state.assignments[targetStaffId];
+      if(sourceAreaId && sourceAreaId===targetAreaId){
+        const members = staffInArea(targetAreaId).map(s=>s.id);
+        const from = members.indexOf(dragStaffId);
+        const to   = members.indexOf(targetStaffId);
+        if(from>=0 && to>=0){
+          members.splice(from, 1);
+          members.splice(to, 0, dragStaffId);
+          if(!state.staffOrder) state.staffOrder = {};
+          state.staffOrder[targetAreaId] = members;
+          saveState();
+          syncBoardWrite(()=>window.RC.updateAssignmentOrder({order: members}), 'reorder staff');
+          render();
+        }
+      } else {
+        doSwap(dragStaffId, targetStaffId, null);
+      }
+      dragStaffId = null;
+    });
+    // Tap-to-swap completion — mirrors the board's `.chip[data-staff-id]`
+    // click handler below, for the Overview row markup instead of a chip.
+    row.addEventListener('click', e=>{
+      if(!swapMode || swapMode.staffId===row.dataset.staffId) return;
+      if(e.target.closest('.ov-row-act')) return;
+      e.stopPropagation();
+      const capturedScope = tempMoveScope; tempMoveScope = null;
+      doSwap(swapMode.staffId, row.dataset.staffId, capturedScope);
     });
   });
 
