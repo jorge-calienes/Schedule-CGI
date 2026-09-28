@@ -12217,7 +12217,7 @@ function buildPriorExpImportPreview(rawRows, headers){
     const name = String(row[nameHeader]??'').trim();
     const tdisNumber = tdisHeader ? String(row[tdisHeader]??'').trim().toUpperCase() : '';
     const staff = (tdisNumber && state.staff.find(s=>s.tdisNumber===tdisNumber))
-      || state.staff.find(s=>norm(s.name)===norm(name))
+      || findStaffByImportName(name)
       || null;
     const newMarks = [];
     Object.entries(areaByHeader).forEach(([header,area])=>{
@@ -12225,21 +12225,41 @@ function buildPriorExpImportPreview(rawRows, headers){
       if(!cell || !STAFF_IMPORT_TRUTHY.includes(cell)) return;
       if(staff && !hasManualPriorExperience(staff.id, area.id)) newMarks.push(area);
     });
-    return { name, tdisNumber, staff, newMarks, error: staff ? '' : 'No matching staff (checked TDIS # and name)' };
+    return { name, tdisNumber, staff, newMarks, error: staff ? '' : 'No matching staff (checked TDIS #, name, and name with a trailing code stripped)' };
   });
   return { rows, unmatchedHeaders };
 }
 
+// Shared by every "match an uploaded name to an existing staff member"
+// import (attendance, prior-experience) — outside exports (an Access
+// database, an HR system) commonly carry an all-caps name and/or a
+// trailing employee-code suffix ("MELANIE CONTEE-PJ7") that isn't part of
+// the name in this app's roster, so matching is case-insensitive and
+// falls back to that suffix stripped when the raw name doesn't hit.
+// Whitespace is also collapsed on both sides — several names in this
+// roster carry an accidental double space ("Melanie  Contee") from a
+// past import, which a plain lowercase/trim compare doesn't paper over.
+function stripImportNameCode(raw){
+  return String(raw||'').trim().replace(/-[A-Za-z]{1,4}\d{1,3}$/, '').trim();
+}
+function findStaffByImportName(rawName){
+  const norm = s => String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
+  const direct = state.staff.find(s=>norm(s.name)===norm(rawName));
+  if(direct) return direct;
+  const stripped = stripImportNameCode(rawName);
+  if(stripped && norm(stripped)!==norm(rawName)) return state.staff.find(s=>norm(s.name)===norm(stripped)) || null;
+  return null;
+}
+
 // ── Bulk attendance import (Excel/CSV) ──
 // Reads an export straight from an outside approval system (e.g. an Access
-// database) — the "Partner" column carries a trailing employee-code suffix
-// ("Branka Stankovic-PE7") that isn't part of the name in this app's
-// roster, so matching tries the raw name first, then that suffix stripped.
-// Only three columns matter here: who, what day, and tardy/early/off —
-// anything else in the file (hours breakdown, FMLA flag, etc.) is ignored.
-// Partner/Supervisor notes (if present) just ride along into the note
-// field already used internally in Manage Time Off — never shown to the
-// staff member, same as a manually-entered note.
+// database) — see findStaffByImportName() above for the name-matching
+// approach shared with the prior-experience import below. Only three
+// columns matter here: who, what day, and tardy/early/off — anything else
+// in the file (hours breakdown, FMLA flag, etc.) is ignored. Partner/
+// Supervisor notes (if present) just ride along into the note field
+// already used internally in Manage Time Off — never shown to the staff
+// member, same as a manually-entered note.
 const ATTENDANCE_IMPORT_ALIASES = {
   name: ['partner','partnername','name','employee','employeename'],
   date: ['day','date'],
@@ -12248,17 +12268,6 @@ const ATTENDANCE_IMPORT_ALIASES = {
   partnerNotes: ['partnernotes'],
   supervisorNotes: ['supervisornotes','supervisornote'],
 };
-function stripPartnerCode(raw){
-  return String(raw||'').trim().replace(/-[A-Za-z]{1,4}\d{1,3}$/, '').trim();
-}
-function findStaffForAttendanceImport(rawName){
-  const norm = s => String(s||'').trim().toLowerCase();
-  const direct = state.staff.find(s=>norm(s.name)===norm(rawName));
-  if(direct) return direct;
-  const stripped = stripPartnerCode(rawName);
-  if(stripped && norm(stripped)!==norm(rawName)) return state.staff.find(s=>norm(s.name)===norm(stripped)) || null;
-  return null;
-}
 function buildAttendanceImportPreview(rawRows, headers){
   const norm = h => String(h).toLowerCase().replace(/[^a-z0-9]/g,'');
   const find = aliases => headers.find(h=>aliases.includes(norm(h))) || '';
@@ -12277,7 +12286,7 @@ function buildAttendanceImportPreview(rawRows, headers){
     const eventType = typeKey==='tardy' ? 'late_arrival' : typeKey==='early' ? 'left_early' : typeKey==='off' ? 'timeoff' : null;
     const approvalRaw = approvalHeader ? String(row[approvalHeader] ?? '').trim() : '';
     const isApproved = !approvalHeader || approvalRaw.toLowerCase()==='approved';
-    const staff = rawName ? findStaffForAttendanceImport(rawName) : null;
+    const staff = rawName ? findStaffByImportName(rawName) : null;
     const partnerNote = partnerNotesHeader ? String(row[partnerNotesHeader] ?? '').trim() : '';
     const supervisorNote = supervisorNotesHeader ? String(row[supervisorNotesHeader] ?? '').trim() : '';
     const note = [partnerNote, supervisorNote].filter(Boolean).join(' — ');
