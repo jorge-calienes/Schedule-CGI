@@ -12236,11 +12236,14 @@ function buildPriorExpImportPreview(rawRows, headers){
 // trailing employee-code suffix ("MELANIE CONTEE-PJ7") that isn't part of
 // the name in this app's roster, so matching is case-insensitive and
 // falls back to that suffix stripped when the raw name doesn't hit.
+// Whitespace is also collapsed on both sides — several names in this
+// roster carry an accidental double space ("Melanie  Contee") from a
+// past import, which a plain lowercase/trim compare doesn't paper over.
 function stripImportNameCode(raw){
   return String(raw||'').trim().replace(/-[A-Za-z]{1,4}\d{1,3}$/, '').trim();
 }
 function findStaffByImportName(rawName){
-  const norm = s => String(s||'').trim().toLowerCase();
+  const norm = s => String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
   const direct = state.staff.find(s=>norm(s.name)===norm(rawName));
   if(direct) return direct;
   const stripped = stripImportNameCode(rawName);
