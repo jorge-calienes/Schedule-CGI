@@ -12243,9 +12243,11 @@ function buildPriorExpImportPreview(rawRows, headers){
 // surname, which never ends in a digit ("Smith-Jones" is untouched).
 // Whitespace is also collapsed on both sides — several names in this
 // roster carry an accidental double space ("Melanie  Contee") from a
-// past import, which a plain lowercase/trim compare doesn't paper over.
+// past import, which a plain lowercase/trim compare doesn't paper over —
+// and tolerated between the dash and the code itself ("Jorge Calienes
+// Castro - PH2" has a space on both sides of the dash), not just around it.
 function stripImportNameCode(raw){
-  return String(raw||'').trim().replace(/-[A-Za-z]{0,4}\d{1,4}$/, '').trim();
+  return String(raw||'').trim().replace(/-\s*[A-Za-z]{0,4}\d{1,4}$/, '').trim();
 }
 function findStaffByImportName(rawName){
   const norm = s => String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
