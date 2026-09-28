@@ -10363,6 +10363,7 @@ function renderModal(){
   else if(m.type==='import-picker') inner = renderImportPickerModal(m);
   else if(m.type==='staff-import') inner = renderStaffImportModal(m);
   else if(m.type==='prior-exp-import') inner = renderPriorExpImportModal(m);
+  else if(m.type==='attendance-import') inner = renderAttendanceImportModal(m);
   else if(m.type==='ready-for-path') inner = renderReadyForPathModal(m);
   else if(m.type==='experience-gaps') inner = renderExperienceGapsModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
@@ -12229,6 +12230,83 @@ function buildPriorExpImportPreview(rawRows, headers){
   return { rows, unmatchedHeaders };
 }
 
+// ── Bulk attendance import (Excel/CSV) ──
+// Reads an export straight from an outside approval system (e.g. an Access
+// database) — the "Partner" column carries a trailing employee-code suffix
+// ("Branka Stankovic-PE7") that isn't part of the name in this app's
+// roster, so matching tries the raw name first, then that suffix stripped.
+// Only three columns matter here: who, what day, and tardy/early/off —
+// anything else in the file (hours breakdown, FMLA flag, etc.) is ignored.
+// Partner/Supervisor notes (if present) just ride along into the note
+// field already used internally in Manage Time Off — never shown to the
+// staff member, same as a manually-entered note.
+const ATTENDANCE_IMPORT_ALIASES = {
+  name: ['partner','partnername','name','employee','employeename'],
+  date: ['day','date'],
+  type: ['tardyearlyoff','absencetype','leavetype'],
+  approval: ['approvalstatus'],
+  partnerNotes: ['partnernotes'],
+  supervisorNotes: ['supervisornotes','supervisornote'],
+};
+function stripPartnerCode(raw){
+  return String(raw||'').trim().replace(/-[A-Za-z]{1,4}\d{1,3}$/, '').trim();
+}
+function findStaffForAttendanceImport(rawName){
+  const norm = s => String(s||'').trim().toLowerCase();
+  const direct = state.staff.find(s=>norm(s.name)===norm(rawName));
+  if(direct) return direct;
+  const stripped = stripPartnerCode(rawName);
+  if(stripped && norm(stripped)!==norm(rawName)) return state.staff.find(s=>norm(s.name)===norm(stripped)) || null;
+  return null;
+}
+function buildAttendanceImportPreview(rawRows, headers){
+  const norm = h => String(h).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const find = aliases => headers.find(h=>aliases.includes(norm(h))) || '';
+  const nameHeader = find(ATTENDANCE_IMPORT_ALIASES.name);
+  const dateHeader = find(ATTENDANCE_IMPORT_ALIASES.date);
+  const typeHeader = find(ATTENDANCE_IMPORT_ALIASES.type);
+  const approvalHeader = find(ATTENDANCE_IMPORT_ALIASES.approval);
+  const partnerNotesHeader = find(ATTENDANCE_IMPORT_ALIASES.partnerNotes);
+  const supervisorNotesHeader = find(ATTENDANCE_IMPORT_ALIASES.supervisorNotes);
+
+  const rows = rawRows.map(row=>{
+    const rawName = String(row[nameHeader] ?? '').trim();
+    const dateStr = dateHeader ? normalizeDateForImport(row[dateHeader]) : '';
+    const typeRaw = String(row[typeHeader] ?? '').trim();
+    const typeKey = typeRaw.toLowerCase().replace(/[^a-z]/g,'');
+    const eventType = typeKey==='tardy' ? 'late_arrival' : typeKey==='early' ? 'left_early' : typeKey==='off' ? 'timeoff' : null;
+    const approvalRaw = approvalHeader ? String(row[approvalHeader] ?? '').trim() : '';
+    const isApproved = !approvalHeader || approvalRaw.toLowerCase()==='approved';
+    const staff = rawName ? findStaffForAttendanceImport(rawName) : null;
+    const partnerNote = partnerNotesHeader ? String(row[partnerNotesHeader] ?? '').trim() : '';
+    const supervisorNote = supervisorNotesHeader ? String(row[supervisorNotesHeader] ?? '').trim() : '';
+    const note = [partnerNote, supervisorNote].filter(Boolean).join(' — ');
+
+    let error = '';
+    if(!rawName) error = 'Missing partner name';
+    else if(!staff) error = 'No matching staff member';
+    else if(!dateStr) error = 'Missing or unreadable date';
+    else if(!eventType) error = `Unrecognized type "${typeRaw||'(blank)'}"`;
+    else if(!isApproved) error = `Not approved (${approvalRaw||'blank'})`;
+
+    let duplicate = false;
+    if(!error){
+      if(eventType==='timeoff') duplicate = (state.timeOff[staff.id]||[]).some(r=>dateStr>=r.startDate && dateStr<=r.endDate);
+      else duplicate = (state.attendanceEvents||[]).some(e=>e.staffId===staff.id && e.eventType===eventType && e.eventDate===dateStr);
+    }
+
+    return { rawName, staff, dateStr, eventType, typeRaw, note, error, duplicate };
+  });
+
+  const missingHeaders = [];
+  if(!nameHeader) missingHeaders.push('partner name');
+  if(!dateHeader) missingHeaders.push('date');
+  if(!typeHeader) missingHeaders.push('tardy/early/off type');
+
+  return { rows, missingHeaders };
+}
+const ATTENDANCE_IMPORT_TYPE_LABEL = {late_arrival:'⏰ Tardy', left_early:'🚪 Early', timeoff:'📅 Off'};
+
 // Mirrors exactly what's on screen in the Roster table/toolbar — whatever
 // search + filters the user currently has applied — so the export matches
 // what they're looking at rather than silently exporting everyone.
@@ -12276,6 +12354,12 @@ function renderImportPickerModal(m){
           <div class="oc-left">
             <span class="oc-name">Prior area experience</span>
             <span class="oc-sub">Mark which areas staff already know from before this system tracked rotations.</span>
+          </div>
+        </div>
+        <div class="option-card" data-import-pick="attendance">
+          <div class="oc-left">
+            <span class="oc-name">Attendance records</span>
+            <span class="oc-sub">Bulk-add approved tardy, early leave, and scheduled-off entries from an outside system's export.</span>
           </div>
         </div>
       </div>
@@ -12480,6 +12564,97 @@ function renderPriorExpImportModal(m){
       </div>
       <div class="small-muted" style="line-height:1.6;">
         One row per staff member, one column per rotating area — mark X (or Yes/1) in any area they've already worked. Matches staff by TDIS # first, then by exact name. This only <b>adds</b> new marks — it never clears one that's already checked, so it's safe to re-import the same file after adding a few more X's. Fixed-position areas aren't part of this (they don't rotate).
+      </div>
+      ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function renderAttendanceImportModal(m){
+  if(m.step==='preview'){
+    const { rows, missingHeaders } = buildAttendanceImportPreview(m.rawRows, m.headers);
+    const validRows = rows.filter(r=>!r.error && !r.duplicate);
+    const errorRows = rows.filter(r=>r.error);
+    const duplicateRows = rows.filter(r=>!r.error && r.duplicate);
+    return `
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-head">
+        <div><h2>Review import</h2><p>${escapeHtml(m.fileName)} · ${rows.length} row${rows.length===1?'':'s'} found</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        ${missingHeaders.length?`<div class="alert-box rust" style="margin-bottom:12px;">Couldn't find a column for: ${missingHeaders.map(escapeHtml).join(', ')}. Check the file has headers for the partner name, date, and tardy/early/off type.</div>`:''}
+        <div style="max-height:360px;overflow:auto;border:1px solid var(--c-border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="position:sticky;top:0;background:var(--md-sys-color-surface-container-low);">
+              <th style="text-align:left;padding:6px 8px;">Partner</th>
+              <th style="text-align:left;padding:6px 8px;">Date</th>
+              <th style="text-align:left;padding:6px 8px;">Type</th>
+              <th style="text-align:left;padding:6px 8px;">Note</th>
+              <th style="text-align:left;padding:6px 8px;">Status</th>
+            </tr></thead>
+            <tbody>
+              ${rows.map(r=>`<tr style="border-top:1px solid var(--c-border);${r.error?'opacity:.6;':''}">
+                <td style="padding:6px 8px;">${escapeHtml(r.staff?r.staff.name:(r.rawName||'—'))}</td>
+                <td style="padding:6px 8px;font-family:var(--mono);">${escapeHtml(r.dateStr||'—')}</td>
+                <td style="padding:6px 8px;">${r.eventType?ATTENDANCE_IMPORT_TYPE_LABEL[r.eventType]:escapeHtml(r.typeRaw||'—')}</td>
+                <td style="padding:6px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.note)}">${escapeHtml(r.note||'—')}</td>
+                <td style="padding:6px 8px;">${r.error?`<span style="color:var(--c-red);">⚠ ${escapeHtml(r.error)}</span>`:r.duplicate?'<span class="small-muted">already recorded</span>':'<span style="color:var(--c-green);">✓ ready</span>'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="small-muted" style="margin-top:8px;">${validRows.length} ready to import${duplicateRows.length?` · ${duplicateRows.length} already recorded (skipped)`:''}${errorRows.length?` · ${errorRows.length} skipped (see above)`:''}</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" id="import-att-back-btn">← Back</button>
+        <button class="btn btn-primary" id="import-att-confirm-btn" ${validRows.length===0?'disabled':''} style="margin-left:auto;">Import ${validRows.length} entr${validRows.length===1?'y':'ies'}</button>
+      </div>
+    </div>`;
+  }
+
+  if(m.step==='importing' || m.step==='done'){
+    const progress = m.progress || {done:0,total:0};
+    const pct = progress.total ? Math.round(progress.done/progress.total*100) : 0;
+    const results = m.results || {created:[], failed:[]};
+    return `
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-head">
+        <div><h2>${m.step==='importing'?'Importing…':'Import complete'}</h2><p>${m.step==='importing'?`${progress.done} of ${progress.total}`:''}</p></div>
+        ${m.step==='done'?'<button class="modal-close" id="modal-close-x">✕</button>':''}
+      </div>
+      <div class="modal-body">
+        ${m.step==='importing'?`
+          <div class="stats-overall-track"><div class="stats-overall-fill" style="width:${pct}%"></div></div>
+          <div class="small-muted" style="margin-top:8px;">Don't close this window…</div>
+        `:`
+          <div class="alert-box ${results.failed.length?'rust':'teal'}">${results.created.length} entr${results.created.length===1?'y':'ies'} added — saved to database ✓${results.failed.length?` · ${results.failed.length} failed`:''}</div>
+          ${results.failed.length?`
+            <div class="small-muted" style="font-weight:700;margin:12px 0 6px;">Failed</div>
+            <div class="option-list" style="max-height:200px;overflow-y:auto;">
+              ${results.failed.map(f=>`<div class="option-card"><div class="oc-left"><span class="oc-name">${escapeHtml(f.name)}</span><span class="oc-sub">${escapeHtml(f.error)}</span></div></div>`).join('')}
+            </div>
+          `:''}
+        `}
+      </div>
+      ${m.step==='done'?`<div class="modal-foot"><button class="btn btn-primary" id="import-att-done-btn" style="margin-left:auto;">Done</button></div>`:''}
+    </div>`;
+  }
+
+  // step === 'pick' (default)
+  return `
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div><h2>Import attendance records</h2><p>Bulk-add approved tardy, early leave, and scheduled-off entries from an export.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Attendance export (.xlsx, .xls, .csv)</label>
+        <input type="file" id="attendance-import-file" accept=".xlsx,.xls,.csv"/>
+      </div>
+      <div class="small-muted" style="line-height:1.6;">
+        Looks for a column with the partner's name, one with the date, and one with <b>Tardy</b>/<b>Early</b>/<b>Off</b>. If there's an Approval Status column, only rows marked Approved are imported — anything else is skipped. Partner/Supervisor notes columns (if present) are carried in as an internal note — never shown to the team member, same as typing it in by hand. Matches partner names to your roster even with a trailing employee code (e.g. "Branka Stankovic-PE7" matches "Branka Stankovic"). Re-importing the same file is safe — anything already on the books is skipped, not duplicated.
       </div>
       ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
     </div>
@@ -13689,6 +13864,7 @@ function renderTimeOffManagerModal(m){
         <div class="to-toolbar">
           <input type="text" id="to-search" placeholder="Search name, area, or note…" value="${escapeHtml(searchQ)}"/>
           <label class="to-past-toggle"><input type="checkbox" id="to-show-past" ${showPast?'checked':''}/> Show past</label>
+          <button class="btn btn-light btn-sm" id="btn-import-attendance" title="Bulk-add approved entries from an export">⬆ Import</button>
           <button class="btn btn-primary btn-sm" id="btn-add-time-off">+ Add</button>
         </div>
 
@@ -17185,6 +17361,7 @@ function attachHandlers(){
       const pick = el.dataset.importPick;
       if(pick==='staff') openModal({type:'staff-import', step:'pick'});
       else if(pick==='prior-exp') openModal({type:'prior-exp-import', step:'pick'});
+      else if(pick==='attendance') openModal({type:'attendance-import', step:'pick'});
     }));
   }
 
@@ -18057,6 +18234,7 @@ function attachHandlers(){
 
     // add new
     on('btn-add-time-off', ()=>openModal({type:'time-off-manager', pickStaff:true, searchQ:m.searchQ||'', showPast:m.showPast}));
+    on('btn-import-attendance', ()=>openModal({type:'attendance-import', step:'pick', _returnModal:{...m}}));
 
     // edit entry (from list)
     document.querySelectorAll('[data-to-edit-staff]').forEach(el=>el.addEventListener('click',()=>{
@@ -19145,6 +19323,70 @@ function attachHandlers(){
     }
 
     on('import-pexp-done-btn', closeModal);
+  }
+
+  // --- bulk attendance import (Excel/CSV) ---
+  if(activeModal.type==='attendance-import'){
+    const m = activeModal;
+
+    if(m.step==='pick' || !m.step){
+      const fileInput = document.getElementById('attendance-import-file');
+      if(fileInput) fileInput.addEventListener('change', async ()=>{
+        const file = fileInput.files[0];
+        if(!file) return;
+        try{
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, {type:'array'});
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:false});
+          if(rows.length===0){ openModal({...m, error:'No rows found in that file.'}); return; }
+          const headers = Object.keys(rows[0]);
+          openModal({type:'attendance-import', step:'preview', fileName:file.name, headers, rawRows:rows, _returnModal:m._returnModal});
+        }catch(e){
+          openModal({...m, error:'Could not read that file: '+((e&&e.message)||'unknown error')});
+        }
+      });
+    }
+
+    if(m.step==='preview'){
+      on('import-att-back-btn', ()=>openModal({type:'attendance-import', step:'pick', _returnModal:m._returnModal}));
+      on('import-att-confirm-btn', async ()=>{
+        const { rows } = buildAttendanceImportPreview(m.rawRows, m.headers);
+        const toImport = rows.filter(r=>!r.error && !r.duplicate);
+        openModal({type:'attendance-import', step:'importing', progress:{done:0, total:toImport.length}, _returnModal:m._returnModal});
+        const created = [], failed = [];
+        for(const row of toImport){
+          let sync;
+          if(row.eventType==='timeoff'){
+            sync = await syncCrudWrite(()=>window.RC.createTimeOff({
+              staffId: row.staff.id, startDate: row.dateStr, endDate: row.dateStr, label: row.note, actingAccountId: authState.account.id,
+            }));
+            if(sync.ok){
+              if(!state.timeOff[row.staff.id]) state.timeOff[row.staff.id]=[];
+              state.timeOff[row.staff.id].push({id: sync.result.id, startDate: row.dateStr, endDate: row.dateStr, label: row.note});
+            }
+          } else {
+            const localId = uid('ae');
+            sync = await syncCrudWrite(async ()=>{
+              const r = await window.RC.markAttendanceEvent({
+                staffId: row.staff.id, eventType: row.eventType, eventDate: row.dateStr, note: row.note, actingAccountId: authState.account.id,
+              });
+              return r;
+            });
+            if(sync.ok){
+              state.attendanceEvents = [...(state.attendanceEvents||[]), {id: sync.result?.id||localId, staffId: row.staff.id, eventType: row.eventType, eventDate: row.dateStr, note: row.note}];
+            }
+          }
+          if(sync.ok) created.push(row);
+          else failed.push({name: row.staff.name, error: (sync.error&&sync.error.message)||'Save failed'});
+          openModal({type:'attendance-import', step:'importing', progress:{done:created.length+failed.length, total:toImport.length}, _returnModal:m._returnModal});
+        }
+        saveState();
+        openModal({type:'attendance-import', step:'done', results:{created, failed}, _returnModal:m._returnModal});
+      });
+    }
+
+    on('import-att-done-btn', ()=>{ m._returnModal ? openModal(m._returnModal) : closeModal(); });
   }
 
   // --- manage accounts ---
