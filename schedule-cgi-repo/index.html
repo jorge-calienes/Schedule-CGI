@@ -10911,7 +10911,7 @@ function renderStaffManagerModal(m){
     const earlyCount = allAttendance.filter(e=>e.eventType==='left_early').length;
 
     const rowKind = r => r.kind==='timeoff' ? 'timeoff' : 'attendance';
-    const renderRow = r => {
+    const singleRow = r => {
       const meta = KIND_META[r.kind];
       const dateText = r.kind==='timeoff'
         ? (r.startDate===r.endDate ? escapeHtml(r.startDate) : escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate))
@@ -10934,6 +10934,52 @@ function renderStaffManagerModal(m){
       </div>`;
     };
 
+    // Bulk imports (and back-to-back single-day entries generally) create
+    // one record per day — group same-kind/same-note entries that land on
+    // consecutive calendar dates into a single range row instead of a wall
+    // of one-day rows. A group stays collapsed to its range summary until
+    // tapped open, since editing/removing one day out of a merged range
+    // needs the individual record, not the summary.
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    const groupConsecutive = rows => {
+      const sorted = rows.slice().sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
+      const groups = [];
+      sorted.forEach(r=>{
+        const start = r.kind==='timeoff' ? r.startDate : r.eventDate;
+        const end   = r.kind==='timeoff' ? r.endDate   : r.eventDate;
+        const note  = (r.kind==='timeoff' ? r.label : r.note) || '';
+        const last = groups[groups.length-1];
+        if(last && last.kind===r.kind && last.note===note && nextDay(last.end)===start && !(r.kind==='timeoff' && r.coverageStaffId)){
+          last.end = end;
+          last.items.push(r);
+        } else {
+          groups.push({ kind:r.kind, start, end, note, items:[r] });
+        }
+      });
+      return groups;
+    };
+    const renderGroup = g => {
+      if(g.items.length===1) return singleRow(g.items[0]);
+      const meta = KIND_META[g.kind];
+      const groupKey = `${g.kind}|${g.start}|${g.end}|${g.note}`;
+      const expanded = !!(m.expandedTimeGroups||{})[groupKey];
+      const dateText = escapeHtml(g.start)+' → '+escapeHtml(g.end);
+      return `<div>
+        <div class="pm-row" style="align-items:flex-start;cursor:pointer;" data-tt-group-toggle="${escapeHtml(groupKey)}">
+          <span class="pm-row-label" style="display:flex;align-items:flex-start;gap:10px;">
+            <span class="pm-icon-badge ${meta.cls}" style="width:28px;height:28px;min-width:28px;font-size:13px;">${meta.icon}</span>
+            <span>
+              <span class="time-off-dates">${dateText}</span>
+              <span class="small-muted" style="font-size:11px;"> · ${g.items.length} days</span>
+              ${g.note?'<br><span class="time-off-note small-muted">'+escapeHtml(g.note)+'</span>':''}
+            </span>
+          </span>
+          <span class="small-muted" style="font-size:13px;flex-shrink:0;">${expanded?'▾':'▸'}</span>
+        </div>
+        ${expanded ? `<div style="margin-left:16px;border-left:2px solid var(--pm-border);padding-left:2px;">${g.items.map(singleRow).join('')}</div>` : ''}
+      </div>`;
+    };
+
     return `
     <div class="pm-card" style="display:flex;gap:0;margin-bottom:20px;padding:16px 14px;">
       <div style="flex:1;text-align:center;">
@@ -10953,7 +10999,7 @@ function renderStaffManagerModal(m){
     <p class="pm-section-label pm-section-label-tight">Upcoming</p>
     ${upcoming.length===0
       ? '<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">Nothing scheduled</span></div>'
-      : '<div class="pm-list" style="margin-bottom:20px;">'+upcoming.map(renderRow).join('')+'</div>'
+      : '<div class="pm-list" style="margin-bottom:20px;">'+groupConsecutive(upcoming).map(renderGroup).join('')+'</div>'
     }
 
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
@@ -10969,7 +11015,7 @@ function renderStaffManagerModal(m){
     </div>` : ''}
     ${past.length===0
       ? `<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">${allPast.length===0?'No past entries':'Nothing in this range'}</span></div>`
-      : '<div class="pm-list" style="margin-bottom:6px;">'+past.map(renderRow).join('')+'</div>'
+      : '<div class="pm-list" style="margin-bottom:6px;">'+groupConsecutive(past).reverse().map(renderGroup).join('')+'</div>'
     }
     ${allPast.length>past.length ? `<p class="small-muted" style="font-size:11px;margin:0 0 20px;">Showing ${past.length} of ${allPast.length} — widen the range above to see more.</p>` : '<div style="margin-bottom:20px;"></div>'}
 
@@ -17695,6 +17741,16 @@ function attachHandlers(){
       const snap = snapshotStaffForm();
       const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
       openModal({...activeModal, ...def});
+    }));
+
+    // ── time tab: expand/collapse a merged consecutive-days group ──
+    document.querySelectorAll('[data-tt-group-toggle]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.ttGroupToggle;
+      const current = activeModal.expandedTimeGroups || {};
+      const next = {...current, [key]: !current[key]};
+      const snap = snapshotStaffForm();
+      const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+      openModal({...activeModal, ...def, expandedTimeGroups: next});
     }));
 
     // ── time tab: history range filter ──
