@@ -13280,14 +13280,14 @@ function buildAttendanceIcs(events){
   events.forEach(e=>{
     const name = getStaffById(e.staffId)?.name || 'Unknown';
     const label = AR_EVENT_LABELS[e.eventType] || e.eventType;
-    const summaryLabel = (e.eventType==='leave' && e.note) ? `${label} (${e.note})` : label;
     lines.push('BEGIN:VEVENT');
     lines.push('UID:attendance-'+e.eventType+'-'+e.staffId+'-'+e.eventDate+'@rotation-control');
     lines.push('DTSTAMP:'+stamp);
     lines.push('DTSTART;VALUE=DATE:'+icsDate(e.eventDate));
     lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventEndDate||e.eventDate));
-    lines.push('SUMMARY:'+icsEscapeText(name+' — '+summaryLabel));
-    if(e.note) lines.push('DESCRIPTION:'+icsEscapeText(e.note));
+    // Type only — no note/reason (the exported .ics can be seen by anyone
+    // it's shared to, not just supervisors, and the reason is personal).
+    lines.push('SUMMARY:'+icsEscapeText(name+' — '+label));
     lines.push('STATUS:CONFIRMED');
     lines.push('SEQUENCE:0');
     lines.push('TRANSP:TRANSPARENT');
