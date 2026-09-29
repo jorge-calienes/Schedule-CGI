@@ -10778,7 +10778,7 @@ function renderPlacementConflictModal(m){
 function renderStaffManagerModal(m){
   const editing = m.editId ? getStaffById(m.editId) : null;
   const tab = m.staffTab || 'profile';
-  const TAB_ORDER = ['profile','rotation','stats'];
+  const TAB_ORDER = ['profile','rotation','time','stats'];
   const isNewStaffContext = _prevStaffManagerEditId !== m.editId;
   if(isNewStaffContext) _prevStaffManagerTab = null;
   const tabChanged = _prevStaffManagerTab !== null && _prevStaffManagerTab !== tab;
@@ -10875,14 +10875,106 @@ function renderStaffManagerModal(m){
         const langCertsVal = m.langCerts !== undefined ? m.langCerts : (editing ? editing.languageCerts||[] : []);
         const checked = langCertsVal.includes(lang.id);
         return '<label class="lang-cert-chip '+(checked?'checked':'')+'"><input type="checkbox" class="staff-lang-cert" data-lang-id="'+lang.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+escapeHtml(lang.name)+'</label>';
-      }).join('')}</div></div>
+      }).join('')}</div></div>`;
 
-    <p class="pm-section-label">Scheduled time off</p>
-    ${((state.timeOff||{})[editing?.id]||[]).length===0
-      ? '<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">No upcoming time off scheduled</span></div>'
-      : '<div class="pm-list">'+((state.timeOff||{})[editing?.id]||[]).slice(-3).map(r=>'<div class="pm-row"><span class="time-off-dates">'+escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate)+'</span>'+(r.label?'<span class="time-off-note small-muted">'+escapeHtml(r.label)+'</span>':'')+'</div>').join('')+'</div>'
+  // ── Time tab: consolidates everything that used to be crammed (and
+  // capped at 3 rows) into the bottom of the Rotation tab — scheduled
+  // time off, plus late-arrival/left-early attendance events, which
+  // previously weren't shown on the profile at all.
+  const timeTab = (() => {
+    if(!editing) return '<div class="small-muted">Save first to manage time.</div>';
+    const allOff = ((state.timeOff||{})[editing.id]||[]).slice();
+    const allAttendance = (state.attendanceEvents||[]).filter(e=>e.staffId===editing.id && (e.eventType==='late_arrival'||e.eventType==='left_early'));
+    const today = todayLabel();
+    const KIND_META = { timeoff:{icon:'📅',cls:'accent'}, late_arrival:{icon:'⏰',cls:'warn'}, left_early:{icon:'🚪',cls:'success'} };
+
+    const combined = [
+      ...allOff.map(r=>({...r, kind:'timeoff', sortDate:r.startDate, endSortDate:r.endDate})),
+      ...allAttendance.map(e=>({...e, kind:e.eventType, sortDate:e.eventDate, endSortDate:e.eventDate})),
+    ];
+    const upcoming = combined.filter(r=>r.endSortDate>=today).sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
+    const allPast = combined.filter(r=>r.endSortDate<today).sort((a,b)=>b.sortDate.localeCompare(a.sortDate));
+
+    // History range filter — defaults to last 30 days rather than dumping
+    // someone's whole record on screen; presets are day-offsets from today,
+    // 'custom' reveals a from/to date pair.
+    const histRange = m.histRange || '30';
+    const daysAgo = n => { const d=new Date(today+'T00:00:00'); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
+    const histFrom = histRange==='custom' ? (m.histFrom || daysAgo(30)) : (histRange==='all' ? null : daysAgo(Number(histRange)));
+    const histTo   = histRange==='custom' ? (m.histTo   || today) : today;
+    const past = allPast.filter(r => (!histFrom || r.sortDate>=histFrom) && r.sortDate<=histTo);
+
+    const HIST_RANGE_OPTS = [ {id:'30',label:'30d'}, {id:'90',label:'90d'}, {id:'365',label:'1yr'}, {id:'custom',label:'Custom'}, {id:'all',label:'All'} ];
+
+    const offCount = allOff.length;
+    const lateCount = allAttendance.filter(e=>e.eventType==='late_arrival').length;
+    const earlyCount = allAttendance.filter(e=>e.eventType==='left_early').length;
+
+    const rowKind = r => r.kind==='timeoff' ? 'timeoff' : 'attendance';
+    const renderRow = r => {
+      const meta = KIND_META[r.kind];
+      const dateText = r.kind==='timeoff'
+        ? (r.startDate===r.endDate ? escapeHtml(r.startDate) : escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate))
+        : escapeHtml(r.eventDate);
+      const noteText = r.kind==='timeoff' ? r.label : r.note;
+      const covStaff = r.kind==='timeoff' && r.coverageStaffId ? getStaffById(r.coverageStaffId) : null;
+      return `<div class="pm-row" style="align-items:flex-start;">
+        <span class="pm-row-label" style="display:flex;align-items:flex-start;gap:10px;">
+          <span class="pm-icon-badge ${meta.cls}" style="width:28px;height:28px;min-width:28px;font-size:13px;">${meta.icon}</span>
+          <span>
+            <span class="time-off-dates">${dateText}</span>
+            ${noteText?'<br><span class="time-off-note small-muted">'+escapeHtml(noteText)+'</span>':''}
+            ${covStaff?'<br><span class="small-muted" style="font-size:11px;">Coverage: '+escapeHtml(covStaff.name)+'</span>':''}
+          </span>
+        </span>
+        <span style="display:flex;gap:2px;flex-shrink:0;">
+          <button class="to-row-edit" data-tt-edit="${r.id}" data-tt-kind="${rowKind(r)}" title="Edit">✏</button>
+          <button class="to-row-del" data-tt-del="${r.id}" data-tt-kind="${rowKind(r)}" title="Remove">✕</button>
+        </span>
+      </div>`;
+    };
+
+    return `
+    <div class="pm-card" style="display:flex;gap:0;margin-bottom:20px;padding:16px 14px;">
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:22px;font-weight:800;">${offCount}</div>
+        <div class="small-muted" style="font-size:11px;">📅 Time off</div>
+      </div>
+      <div style="flex:1;text-align:center;border-left:1px solid var(--pm-border);border-right:1px solid var(--pm-border);">
+        <div style="font-size:22px;font-weight:800;">${lateCount}</div>
+        <div class="small-muted" style="font-size:11px;">⏰ Late arrivals</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:22px;font-weight:800;">${earlyCount}</div>
+        <div class="small-muted" style="font-size:11px;">🚪 Left early</div>
+      </div>
+    </div>
+
+    <p class="pm-section-label pm-section-label-tight">Upcoming</p>
+    ${upcoming.length===0
+      ? '<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">Nothing scheduled</span></div>'
+      : '<div class="pm-list" style="margin-bottom:20px;">'+upcoming.map(renderRow).join('')+'</div>'
     }
-    ${editing ? `<button class="pm-btn pm-btn-light" id="btn-open-time-off" style="width:100%;">📅 Manage time off</button>` : ''}`;
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <p class="pm-section-label pm-section-label-tight" style="margin:0;">History</p>
+      <div class="to-filter-tabs" id="hist-range-tabs">
+        ${HIST_RANGE_OPTS.map(o=>`<button type="button" class="to-filter-tab ${histRange===o.id?'active':''}" data-hist-range="${o.id}">${o.label}</button>`).join('')}
+      </div>
+    </div>
+    ${histRange==='custom' ? `
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div class="field" style="flex:1;margin:0;"><label style="font-size:11px;">From</label><input type="date" id="hist-from-input" value="${escapeHtml(histFrom||'')}" style="width:100%;"/></div>
+      <div class="field" style="flex:1;margin:0;"><label style="font-size:11px;">To</label><input type="date" id="hist-to-input" value="${escapeHtml(histTo||'')}" style="width:100%;"/></div>
+    </div>` : ''}
+    ${past.length===0
+      ? `<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;margin-bottom:14px;"><span class="pm-row-label">${allPast.length===0?'No past entries':'Nothing in this range'}</span></div>`
+      : '<div class="pm-list" style="margin-bottom:6px;">'+past.map(renderRow).join('')+'</div>'
+    }
+    ${allPast.length>past.length ? `<p class="small-muted" style="font-size:11px;margin:0 0 20px;">Showing ${past.length} of ${allPast.length} — widen the range above to see more.</p>` : '<div style="margin-bottom:20px;"></div>'}
+
+    <button class="pm-btn pm-btn-light" id="btn-open-time-off" style="width:100%;">📅 Manage time off</button>`;
+  })();
 
   const statsTab = (() => {
     if(!editing) return '<div class="small-muted">Save first to see stats.</div>';
@@ -11124,7 +11216,7 @@ function renderStaffManagerModal(m){
     );
   })();
 
-  const tabs=[{id:'profile',icon:'👤',label:'Profile'},{id:'rotation',icon:'🔄',label:'Rotation'},{id:'stats',icon:'📊',label:'Stats'}];
+  const tabs=[{id:'profile',icon:'👤',label:'Profile'},{id:'rotation',icon:'🔄',label:'Rotation'},{id:'time',icon:'📅',label:'Time'},{id:'stats',icon:'📊',label:'Stats'}];
   const initialsOf = name => (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
   return `
   <div class="modal pm-scope">
@@ -11141,7 +11233,7 @@ function renderStaffManagerModal(m){
     </div>
     <div class="modal-body">
       <div class="sm-tab-panel ${tabChanged?'sm-tab-panel-anim':''}" style="--tab-dir:${tabDir};">
-        ${tab==='profile'?profileTab:tab==='rotation'?rotationTab:statsTab}
+        ${tab==='profile'?profileTab:tab==='rotation'?rotationTab:tab==='time'?timeTab:statsTab}
       </div>
     </div>
     <div class="modal-foot pm-footer">
@@ -17569,6 +17661,54 @@ function attachHandlers(){
       openModal({type:'time-off-manager', staffId:activeModal.editId, _returnModal:{...activeModal,...def}});
     });
 
+    // ── time tab: edit/remove a single entry inline — jumps straight to
+    // the single-entry edit form (not the full time off browsing view),
+    // and returns to this same Time tab on save/cancel/delete ──
+    document.querySelectorAll('[data-tt-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const snap = snapshotStaffForm();
+      const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+      openModal({type:'time-off-manager', staffId:activeModal.editId, editId:btn.dataset.ttEdit, editKind:btn.dataset.ttKind,
+        _returnModal:{...activeModal,...def}});
+    }));
+    document.querySelectorAll('[data-tt-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const rid = btn.dataset.ttDel, kind = btn.dataset.ttKind, staffId = activeModal.editId;
+      if(kind==='attendance'){
+        const sync = await syncCrudWrite(()=>window.RC.clearAttendanceEvent({eventId:rid}));
+        state.attendanceEvents = (state.attendanceEvents||[]).filter(e=>e.id!==rid);
+        saveState();
+        if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      } else {
+        if(!state.timeOff[staffId]) return;
+        const deleted = state.timeOff[staffId].find(r=>r.id===rid);
+        const sync = await syncCrudWrite(()=>window.RC.deleteTimeOff({timeOffId:rid}));
+        state.timeOff[staffId] = state.timeOff[staffId].filter(r=>r.id!==rid);
+        if(deleted) reconcileCalloutAfterTimeOffDelete(staffId, deleted.startDate, deleted.endDate);
+        saveState();
+        if(!sync.ok) showToast(`Removed here, but not saved to the database — ${sync.error?.message||'try again'}`, 'rust');
+      }
+      const snap = snapshotStaffForm();
+      const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+      openModal({...activeModal, ...def});
+    }));
+
+    // ── time tab: history range filter ──
+    document.querySelectorAll('[data-hist-range]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const snap = snapshotStaffForm();
+      const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+      openModal({...activeModal, ...def, histRange:btn.dataset.histRange});
+    }));
+    ['hist-from-input','hist-to-input'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('change', ()=>{
+        const snap = snapshotStaffForm();
+        const def  = Object.fromEntries(Object.entries(snap).filter(([,v])=>v!==undefined));
+        openModal({...activeModal, ...def, histRange:'custom',
+          histFrom: id==='hist-from-input' ? el.value : (activeModal.histFrom||document.getElementById('hist-from-input')?.value),
+          histTo:   id==='hist-to-input'   ? el.value : (activeModal.histTo  ||document.getElementById('hist-to-input')?.value)});
+      });
+    });
+
     // ── save: read from activeModal for fields not in current DOM ──
     on('staff-save-btn', async ()=>{
       const snap = snapshotStaffForm(); // grab whatever IS in the DOM right now
@@ -18367,13 +18507,27 @@ function attachHandlers(){
         }
       }
       saveState();
-      showToast(sync.ok ? 'Saved — add another entry below, or ← Back for someone else' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      // Stay on this staff member's add screen (not editId/entryType, so it
-      // resets to a fresh "Add" form) — a supervisor logging several things
-      // for the same person (a leave range, a late arrival, an early leave)
-      // can keep going without re-searching and re-picking them each time.
-      // ← Back still goes to the list to pick someone else.
-      openModal({type:'time-off-manager', staffId:m.staffId, searchQ:m.searchQ||'', _saved:true});
+      const returnToCaller = m.editId && m._returnModal && m._returnModal.type && m._returnModal.type !== 'noop';
+      if(!sync.ok){
+        showToast(`Saved here, but not to the database — ${sync.error?.message||'try again'}`, 'rust');
+      } else if(returnToCaller){
+        showToast('Saved', 'teal');
+      } else {
+        showToast('Saved — add another entry below, or ← Back for someone else', 'teal');
+      }
+      if(returnToCaller){
+        // editing one existing entry from its own edit affordance (e.g. the
+        // profile Time tab's inline ✏) is a single-purpose action — go
+        // straight back rather than dropping into the browsing list.
+        openModal(m._returnModal);
+      } else {
+        // Stay on this staff member's add screen (not editId/entryType, so it
+        // resets to a fresh "Add" form) — a supervisor logging several things
+        // for the same person (a leave range, a late arrival, an early leave)
+        // can keep going without re-searching and re-picking them each time.
+        // ← Back still goes to the list to pick someone else.
+        openModal({type:'time-off-manager', staffId:m.staffId, searchQ:m.searchQ||'', _saved:true});
+      }
     });
   }
 
