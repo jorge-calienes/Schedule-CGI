@@ -10941,6 +10941,11 @@ function renderStaffManagerModal(m){
     // tapped open, since editing/removing one day out of a merged range
     // needs the individual record, not the summary.
     const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    // Notes are freeform text different supervisors typed on different
+    // days ("Vacation" vs "vacation") — compare case/whitespace-insensitively
+    // so real day-to-day casing drift doesn't split an obvious range, but
+    // keep the first entry's original casing for display.
+    const normNote = s => (s||'').trim().toLowerCase();
     const groupConsecutive = rows => {
       const sorted = rows.slice().sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
       const groups = [];
@@ -10949,7 +10954,7 @@ function renderStaffManagerModal(m){
         const end   = r.kind==='timeoff' ? r.endDate   : r.eventDate;
         const note  = (r.kind==='timeoff' ? r.label : r.note) || '';
         const last = groups[groups.length-1];
-        if(last && last.kind===r.kind && last.note===note && nextDay(last.end)===start && !(r.kind==='timeoff' && r.coverageStaffId)){
+        if(last && last.kind===r.kind && normNote(last.note)===normNote(note) && nextDay(last.end)===start && !(r.kind==='timeoff' && r.coverageStaffId)){
           last.end = end;
           last.items.push(r);
         } else {
