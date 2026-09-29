@@ -14034,7 +14034,13 @@ function renderTimeOffManagerModal(m){
   // tables with no relation between their ids, so an in-progress edit needs
   // editKind alongside editId to say which one it's pointing at.
   const editEntry = (m.editId && m.editKind!=='attendance') ? offs.find(r=>r.id===m.editId) : null;
-  const editAttendance = (m.editId && m.editKind==='attendance') ? upcomingAttendance.find(e=>e.id===m.editId) : null;
+  // Look up by id against the full attendance log, not just
+  // upcomingAttendance (today-or-later only) — a deep link to edit a
+  // specific event, e.g. the profile Time tab's History rows, can point at
+  // a past late-arrival/left-early too.
+  const editAttendance = (m.editId && m.editKind==='attendance')
+    ? (state.attendanceEvents||[]).find(e=>e.id===m.editId && e.staffId===editing?.id)
+    : null;
   const entryType = editAttendance ? editAttendance.eventType : (editEntry ? 'timeoff' : (m.entryType || 'timeoff'));
   const isAttendanceType = entryType==='late_arrival' || entryType==='left_early';
   const isEditing = !!(editEntry || editAttendance);
