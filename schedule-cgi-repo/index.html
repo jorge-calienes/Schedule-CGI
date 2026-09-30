@@ -8773,9 +8773,59 @@ const TOUR_STEPS = [
     before(){ activeModal=null; navDrawerOpen=false; } },
 ];
 
+// A team lead's account is locked to a small slice of the app (their own
+// designated area's board, evaluations, breaks, and coverage requests —
+// see isTeamLeadRole() throughout) — walking them through TOUR_STEPS above
+// used to either skip a step outright (tourGoTo()'s own missing-selector
+// skip, e.g. Roster/Manage staff/Reports/Rotate Now — none of those nav
+// items exist for them) or, worse, force a manager-only modal open anyway
+// since a step's before() isn't itself role-gated (the Time tab and
+// attendance-import steps), briefly showing them editable UI they can't
+// normally reach on their own. Net effect: their actual daily tools — My
+// evaluations, Request coverage, a staff profile's read-only view — were
+// never covered at all, while two admin screens they don't have were.
+const TEAM_LEAD_TOUR_STEPS = [
+  { title: 'Welcome',
+    body: "A quick tour of what you can do as a team lead — checking the board for your area, viewing a staff profile, submitting evaluations, and requesting coverage when someone's out.",
+    selector: null,
+    before(){ activeModal=null; navDrawerOpen=false; } },
+  { title: 'Your board',
+    body: "Your designated area shows first. You can't drag people around or edit the board directly — that's for supervisors — but everything here stays live as they make changes.",
+    selector: '.board-wrap',
+    before(){ activeModal=null; navDrawerOpen=false; } },
+  { title: 'Find anyone fast',
+    body: "Search jumps straight to a staff member's chip on the board, wherever they're currently placed.",
+    selector: '#btn-toggle-search',
+    before(){ activeModal=null; navDrawerOpen=false; searchExpanded=false; } },
+  { title: 'View a staff profile',
+    body: "Tap anyone's name to see their profile: current area, position, best-fit and never-worked areas, and — on this Attendance tab — their time off, late arrivals, and left-early events for the current rotation period. It's read-only; a supervisor makes changes.",
+    selector: '.sm-tab-bar',
+    before(){ activeModal=null; navDrawerOpen=false; const s=state.staff.find(x=>x.active!==false); if(s) openModal({type:'staff-stats', staffId:s.id}); } },
+  { title: 'My evaluations',
+    body: "Submit performance evaluations for your team here. A supervisor reviews and approves each one before it counts toward their stats — anything sent back for revision shows up here too, with their note.",
+    selector: '#nav-my-evaluations',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Manage breaks',
+    body: "Set lunch and break times for people currently placed in your area. Shift hours themselves are set by a supervisor or admin.",
+    selector: '#nav-time-management',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Request coverage',
+    body: "If someone in your area is out and needs a replacement, pick a candidate here — it sends a request to a supervisor, who approves or denies it. You'll see \"Requested — waiting on a supervisor\" until they do.",
+    selector: '#nav-request-coverage',
+    before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: "You're ready",
+    body: "That's everything available to you. Reopen this tour anytime from the menu — look for \"Take the app tour\".",
+    selector: null,
+    before(){ activeModal=null; navDrawerOpen=false; } },
+];
+
+function currentTourSteps(){
+  return isTeamLeadRole() ? TEAM_LEAD_TOUR_STEPS : TOUR_STEPS;
+}
+
 function startTour(){
   tourState = { stepIndex: 0 };
-  TOUR_STEPS[0].before();
+  currentTourSteps()[0].before();
   render();
 }
 function endTour(){
@@ -8787,8 +8837,9 @@ function endTour(){
 // whose target element isn't actually on screen after its `before()` runs
 // (e.g. a nav item gated to a role the current account doesn't have).
 function tourGoTo(idx, dir){
-  if(idx < 0 || idx >= TOUR_STEPS.length){ endTour(); return; }
-  const step = TOUR_STEPS[idx];
+  const steps = currentTourSteps();
+  if(idx < 0 || idx >= steps.length){ endTour(); return; }
+  const step = steps[idx];
   step.before();
   render();
   if(step.selector && !document.querySelector(step.selector)){
@@ -8799,29 +8850,30 @@ function tourGoTo(idx, dir){
   render();
 }
 function renderTourOverlay(){
-  const step = TOUR_STEPS[tourState.stepIndex];
+  const steps = currentTourSteps();
+  const step = steps[tourState.stepIndex];
   const isFirst = tourState.stepIndex === 0;
-  const isLast = tourState.stepIndex === TOUR_STEPS.length - 1;
+  const isLast = tourState.stepIndex === steps.length - 1;
   return `
   <div class="tour-scrim ${step.selector?'':'tour-scrim-dim'}" id="tour-scrim"></div>
   <div class="tour-spotlight" id="tour-spotlight" style="display:none;"></div>
   <div class="tour-tooltip" id="tour-tooltip">
     <div class="tour-tooltip-head">
-      <span class="tour-step-count">Step ${tourState.stepIndex+1} of ${TOUR_STEPS.length}</span>
+      <span class="tour-step-count">Step ${tourState.stepIndex+1} of ${steps.length}</span>
       <button class="tour-close" id="tour-skip" aria-label="End tour">✕</button>
     </div>
     <h3>${escapeHtml(step.title)}</h3>
     <p>${escapeHtml(step.body)}</p>
     <div class="tour-tooltip-foot">
       <button class="tour-btn tour-btn-back" id="tour-back" ${isFirst?'disabled':''}>Back</button>
-      <div class="tour-progress-track"><div class="tour-progress-fill" style="width:${Math.round(((tourState.stepIndex+1)/TOUR_STEPS.length)*100)}%;"></div></div>
+      <div class="tour-progress-track"><div class="tour-progress-fill" style="width:${Math.round(((tourState.stepIndex+1)/steps.length)*100)}%;"></div></div>
       <button class="tour-btn tour-btn-next" id="tour-next">${isLast?'Done':'Next'}</button>
     </div>
   </div>`;
 }
 function positionTourOverlay(){
   if(!tourState) return;
-  const step = TOUR_STEPS[tourState.stepIndex];
+  const step = currentTourSteps()[tourState.stepIndex];
   const spotlight = document.getElementById('tour-spotlight');
   const tooltip = document.getElementById('tour-tooltip');
   if(!spotlight || !tooltip) return;
