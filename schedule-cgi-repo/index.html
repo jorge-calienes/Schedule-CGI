@@ -8033,9 +8033,25 @@ function areasByDepartment(){
     map[dept].push(a);
   });
   const allDepts = Object.keys(map);
-  const ordered  = state.departments.filter(d=>map[d]).concat(allDepts.filter(d=>!state.departments.includes(d)));
   const isLead   = isTeamLeadRole();
   const leadAreaIds = isLead ? new Set(authState.account?.assigned_area_ids||[]) : null;
+  let ordered = state.departments.filter(d=>map[d]).concat(allDepts.filter(d=>!state.departments.includes(d)));
+  if(leadAreaIds && leadAreaIds.size){
+    // The "mine first" default below only ever reordered AREAS within a
+    // department — it never touched department order itself, which always
+    // comes from the shared, admin-set state.departments list. So a lead
+    // whose designated area wasn't in whichever department happens to sort
+    // first (most of them — Agency is department #1, but most leads are
+    // assigned to Courier/Processing/QC, Communications, etc.) still had to
+    // scroll past every other department's areas to reach her own, even
+    // though her own area WAS correctly sorted first once she got there.
+    // Stable-partition departments so whichever one(s) contain her area(s)
+    // come first. There's no per-lead department order to preserve here —
+    // reordering departments is admin-only — so this always applies.
+    const mineDepts  = ordered.filter(d=>map[d].some(a=>leadAreaIds.has(a.id)));
+    const otherDepts = ordered.filter(d=>!map[d].some(a=>leadAreaIds.has(a.id)));
+    ordered = [...mineDepts, ...otherDepts];
+  }
   return ordered.map(dept=>{
     let areas = map[dept];
     const ao  = isLead ? getPersonalAreaOrder()[dept] : (state.areaOrder||{})[dept];
