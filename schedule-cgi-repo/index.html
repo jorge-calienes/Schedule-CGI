@@ -13258,13 +13258,31 @@ function icsNextDay(iso){
 // callout/late/left-early categories.
 function attendanceReportToEvents(report){
   const out = [];
+  // r.lateArrival/leftEarly are just date strings (computeAttendanceReportForRange's
+  // row shape) — look the underlying note back up from state.attendanceEvents so
+  // buildAttendanceIcs can pull a possible time out of it.
+  const findNote = (staffId, eventType, date) =>
+    (state.attendanceEvents||[]).find(e=>e.staffId===staffId && e.eventType===eventType && e.eventDate===date)?.note || '';
   report.rows.forEach(r=>{
     r.callout.forEach(d=>out.push({staffId:r.staffId, eventType:'callout', eventDate:d}));
-    r.lateArrival.forEach(d=>out.push({staffId:r.staffId, eventType:'late_arrival', eventDate:d}));
-    r.leftEarly.forEach(d=>out.push({staffId:r.staffId, eventType:'left_early', eventDate:d}));
+    r.lateArrival.forEach(d=>out.push({staffId:r.staffId, eventType:'late_arrival', eventDate:d, note:findNote(r.staffId,'late_arrival',d)}));
+    r.leftEarly.forEach(d=>out.push({staffId:r.staffId, eventType:'left_early', eventDate:d, note:findNote(r.staffId,'left_early',d)}));
     r.leaveRanges.forEach(rg=>out.push({staffId:r.staffId, eventType:'leave', eventDate:rg.start, eventEndDate:rg.end, note:rg.label}));
   });
   return out;
+}
+
+// Pulls a clock time out of a late-arrival/left-early note, if there is
+// one — "Traffic, got in around 8:15am" → "8:15 AM" — so the export can
+// show *when* without carrying the rest of the (personal) reason. Only
+// fires on a clearly time-shaped substring (H:MM, with or without am/pm,
+// or a bare hour with am/pm) so a stray number in the note isn't mistaken
+// for a time.
+const ATTENDANCE_TIME_RE = /\b\d{1,2}:\d{2}\s*(?:am|pm)?\b|\b\d{1,2}\s*(?:am|pm)\b/i;
+function extractPossibleTime(note){
+  const m = (note||'').match(ATTENDANCE_TIME_RE);
+  if(!m) return '';
+  return m[0].trim().replace(/\s*(am|pm)$/i, (_, ap)=>' '+ap.toUpperCase());
 }
 
 function buildAttendanceIcs(events){
@@ -13280,14 +13298,19 @@ function buildAttendanceIcs(events){
   events.forEach(e=>{
     const name = getStaffById(e.staffId)?.name || 'Unknown';
     const label = AR_EVENT_LABELS[e.eventType] || e.eventType;
+    // Type only — no note/reason (the exported .ics can be seen by anyone
+    // it's shared to, not just supervisors, and the reason is personal) —
+    // except a late arrival/left early may carry a clock time worth
+    // keeping, e.g. "Late arrival (8:15 AM)".
+    const isTiming = e.eventType==='late_arrival' || e.eventType==='left_early';
+    const time = isTiming ? extractPossibleTime(e.note) : '';
+    const summaryLabel = time ? `${label} (${time})` : label;
     lines.push('BEGIN:VEVENT');
     lines.push('UID:attendance-'+e.eventType+'-'+e.staffId+'-'+e.eventDate+'@rotation-control');
     lines.push('DTSTAMP:'+stamp);
     lines.push('DTSTART;VALUE=DATE:'+icsDate(e.eventDate));
     lines.push('DTEND;VALUE=DATE:'+icsNextDay(e.eventEndDate||e.eventDate));
-    // Type only — no note/reason (the exported .ics can be seen by anyone
-    // it's shared to, not just supervisors, and the reason is personal).
-    lines.push('SUMMARY:'+icsEscapeText(name+' — '+label));
+    lines.push('SUMMARY:'+icsEscapeText(name+' — '+summaryLabel));
     lines.push('STATUS:CONFIRMED');
     lines.push('SEQUENCE:0');
     lines.push('TRANSP:TRANSPARENT');
