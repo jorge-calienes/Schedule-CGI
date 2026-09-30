@@ -103,6 +103,25 @@ export async function grantAccess({ accountId, role, assignedAreaIds, pin }) {
   return body;
 }
 
+// Self-service — the signed-in account changing its own PIN, as opposed to
+// grantAccess() which is admin-only and can set anyone's. The server
+// resolves which account from the bearer token, not from anything passed
+// here, so this can never touch another account's PIN.
+export async function changeMyPin({ currentPin, newPin }) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch('/api/accounts/change-pin', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify({ currentPin, newPin }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Could not change your PIN.');
+  return body;
+}
+
 export async function fetchAccounts() {
   const { data, error } = await supabase.from('accounts').select('*').order('requested_at', { ascending: false });
   if (error) throw error;
@@ -1340,6 +1359,7 @@ window.RC = {
   subscribeToBoardChanges,
   unsubscribeFromBoardChanges,
   grantAccess,
+  changeMyPin,
   fetchAccounts,
   revokeAccess,
   setStaffLanguageCerts,
