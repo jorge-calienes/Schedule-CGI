@@ -5089,6 +5089,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .pm-icon-badge{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
 .pm-icon-badge.accent{background:var(--pm-accent-bg);color:var(--pm-accent);}
 .pm-icon-badge.success{background:var(--pm-success-bg);color:var(--pm-success);}
+.pm-icon-badge.warn{background:var(--pm-warn-bg);color:var(--pm-warn);}
 .pm-toggle-text{flex:1;min-width:0;}
 .pm-toggle-title{margin:0;font-weight:600;color:var(--pm-text-primary);}
 .pm-toggle-sub{margin:1px 0 0;font-size:12px;color:var(--pm-text-secondary);}
@@ -5577,7 +5578,7 @@ button{font-family:var(--sans);cursor:pointer;}
    no rules at all, so the whole modal rendered as an unstyled stack of
    plain divs (no bars, no banner, no tags) on both the board's staff-chip
    popup and the team lead's (only) way to see a profile. --- */
-.stats-current-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 14px;margin-bottom:14px;border-bottom:1px solid var(--pm-border);}
+.stats-current-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);padding:12px 14px;}
 .stats-current-area{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--pm-text-primary);}
 .stats-bestfit-banner{display:flex;align-items:center;gap:12px;background:var(--pm-accent-bg);border-radius:var(--pm-radius-md);padding:14px;margin-top:14px;}
 .stats-bestfit-banner.stats-bestfit-none{background:var(--pm-surface-alt);}
@@ -5586,7 +5587,6 @@ button{font-family:var(--sans);cursor:pointer;}
 .stats-bestfit-sub{font-size:12px;color:var(--pm-text-secondary);margin-top:2px;}
 .stats-bar-list{display:flex;flex-direction:column;gap:16px;margin-top:6px;}
 .stats-bar-row{display:flex;flex-direction:column;gap:6px;}
-.stats-bar-row.no-exp{opacity:.55;}
 .stats-bar-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--pm-text-primary);flex-wrap:wrap;}
 .stats-current-tag,.stats-bestfit-tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:var(--pm-radius-sm);text-transform:uppercase;letter-spacing:.03em;}
 .stats-current-tag{background:var(--pm-surface-alt);color:var(--pm-text-secondary);}
@@ -10474,6 +10474,117 @@ function renderStaffStatsModal(m){
   const nonFixedRows = rows.filter(r=>!r.area.fixed);
   const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience);
   const gapAreas = neverWorkedGapAreasFor(s.id);
+  // Areas marked as prior experience but never actually rotated through here —
+  // summarized as one glance-able card (like "Never worked") instead of a
+  // row each, since there's no count/date to show per area, just the fact.
+  // Excludes whichever one is already called out in the best-fit banner
+  // above, so it's not mentioned twice.
+  const markedPriorAreas = rows.filter(r=>r.manualPrior && r.timesWorked===0 && !(bestFit && r.areaId===bestFit.areaId));
+  const position = s.positionId ? state.positions.find(p=>p.id===s.positionId) : null;
+  const supervisor = s.supervisorId ? state.supervisors.find(sv=>sv.id===s.supervisorId) : null;
+
+  const viewTab = m.viewTab || 'experience';
+
+  // ── Attendance tab: days off, late arrivals, left early during the
+  // CURRENT rotation period only — view only (no edit/delete icons, no
+  // "manage" button, no notes/reasons shown — just the pattern, not the
+  // why). No separate history: once a rotation closes, this tab starts
+  // clean again for the new period, same as "Area history" above is
+  // scoped to completed rotations rather than a rolling date window.
+  const attTab = (() => {
+    const today = todayLabel();
+    const periodStart = state.rotationStartDate || state.currentPeriod || today;
+    const inPeriod = (start, end) => end>=periodStart && start<=today;
+
+    const allOff = ((state.timeOff||{})[s.id]||[]).filter(r=>inPeriod(r.startDate, r.endDate));
+    const allAttendance = (state.attendanceEvents||[])
+      .filter(e=>e.staffId===s.id && (e.eventType==='late_arrival'||e.eventType==='left_early'))
+      .filter(e=>inPeriod(e.eventDate, e.eventDate));
+    const KIND_META = { timeoff:{icon:'📅',cls:'accent'}, late_arrival:{icon:'⏰',cls:'warn'}, left_early:{icon:'🚪',cls:'success'} };
+
+    const combined = [
+      ...allOff.map(r=>({...r, kind:'timeoff', sortDate:r.startDate})),
+      ...allAttendance.map(e=>({...e, kind:e.eventType, sortDate:e.eventDate})),
+    ].sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
+
+    const offCount = allOff.length;
+    const lateCount = allAttendance.filter(e=>e.eventType==='late_arrival').length;
+    const earlyCount = allAttendance.filter(e=>e.eventType==='left_early').length;
+
+    const singleRow = r => {
+      const meta = KIND_META[r.kind];
+      const dateText = r.kind==='timeoff'
+        ? (r.startDate===r.endDate ? escapeHtml(r.startDate) : escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate))
+        : escapeHtml(r.eventDate);
+      return `<div class="pm-row">
+        <span class="pm-row-label" style="display:flex;align-items:center;gap:10px;">
+          <span class="pm-icon-badge ${meta.cls}" style="width:28px;height:28px;min-width:28px;font-size:13px;">${meta.icon}</span>
+          <span class="time-off-dates">${dateText}</span>
+        </span>
+      </div>`;
+    };
+
+    // Same "merge back-to-back days off into one range" grouping the full
+    // editor's Time tab uses — late/early events stay one row per day.
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    const groupConsecutive = rowsIn => {
+      const sorted = rowsIn.slice().sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
+      const groups = [];
+      sorted.forEach(r=>{
+        const start = r.kind==='timeoff' ? r.startDate : r.eventDate;
+        const end   = r.kind==='timeoff' ? r.endDate   : r.eventDate;
+        const last = groups[groups.length-1];
+        if(r.kind==='timeoff' && last && last.kind==='timeoff' && nextDay(last.end)===start && !r.coverageStaffId){
+          last.end = end;
+          last.items.push(r);
+        } else {
+          groups.push({ kind:r.kind, start, end, items:[r] });
+        }
+      });
+      return groups;
+    };
+    const renderGroup = g => {
+      if(g.items.length===1) return singleRow(g.items[0]);
+      const meta = KIND_META[g.kind];
+      const groupKey = `${g.kind}|${g.start}|${g.end}`;
+      const expanded = !!(m.attExpandedGroups||{})[groupKey];
+      const dateText = escapeHtml(g.start)+' → '+escapeHtml(g.end);
+      return `<div>
+        <div class="pm-row" style="cursor:pointer;" data-att-group-toggle="${escapeHtml(groupKey)}">
+          <span class="pm-row-label" style="display:flex;align-items:center;gap:10px;">
+            <span class="pm-icon-badge ${meta.cls}" style="width:28px;height:28px;min-width:28px;font-size:13px;">${meta.icon}</span>
+            <span class="time-off-dates">${dateText}<span class="small-muted" style="font-weight:400;font-size:11px;"> · ${g.items.length} days</span></span>
+          </span>
+          <span class="small-muted" style="font-size:13px;flex-shrink:0;">${expanded?'▾':'▸'}</span>
+        </div>
+        ${expanded ? `<div style="margin-left:16px;border-left:2px solid var(--pm-border);padding-left:2px;">${g.items.map(singleRow).join('')}</div>` : ''}
+      </div>`;
+    };
+
+    return `
+    <div class="pm-card" style="display:flex;gap:0;margin-bottom:20px;padding:16px 14px;">
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:22px;font-weight:800;">${offCount}</div>
+        <div class="small-muted" style="font-size:11px;">📅 Time off</div>
+      </div>
+      <div style="flex:1;text-align:center;border-left:1px solid var(--pm-border);border-right:1px solid var(--pm-border);">
+        <div style="font-size:22px;font-weight:800;">${lateCount}</div>
+        <div class="small-muted" style="font-size:11px;">⏰ Late arrivals</div>
+      </div>
+      <div style="flex:1;text-align:center;">
+        <div style="font-size:22px;font-weight:800;">${earlyCount}</div>
+        <div class="small-muted" style="font-size:11px;">🚪 Left early</div>
+      </div>
+    </div>
+
+    <p class="pm-section-label pm-section-label-tight">This rotation period · since ${friendlyDate(periodStart)}</p>
+    ${combined.length===0
+      ? '<div class="pm-row" style="background:var(--pm-surface-alt);border-radius:var(--pm-radius-md);border-bottom:none;"><span class="pm-row-label">Nothing to show this period</span></div>'
+      : '<div class="pm-list">'+groupConsecutive(combined).map(renderGroup).join('')+'</div>'
+    }
+    `;
+  })();
+
   return `
   <div class="modal pm-scope">
     <div class="modal-head">
@@ -10490,11 +10601,25 @@ function renderStaffStatsModal(m){
       </div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
+    <div class="sm-tab-bar">
+      <button class="sm-tab ${viewTab==='experience'?'active':''}" data-stats-view-tab="experience">📊 Experience</button>
+      <button class="sm-tab ${viewTab==='attendance'?'active':''}" data-stats-view-tab="attendance">🗓 Attendance</button>
+    </div>
     <div class="modal-body">
+      ${viewTab==='attendance' ? attTab : `
       <div class="stats-current-row">
         <span class="small-muted">Currently in</span>
         ${currentArea ? `<span class="stats-current-area"><span class="area-swatch" style="background:${currentArea.color}"></span>${escapeHtml(currentArea.name)}</span>` : '<span class="small-muted"><em>Unassigned</em></span>'}
       </div>
+
+      ${(position || s.tdisNumber || s.shiftHours || supervisor) ? `
+      <div class="pm-list" style="margin-top:14px;margin-bottom:0;">
+        ${position ? `<div class="pm-row"><span class="pm-row-label">Position</span><span>${escapeHtml(position.name)}</span></div>` : ''}
+        ${s.tdisNumber ? `<div class="pm-row"><span class="pm-row-label">TDIS #</span><span>${escapeHtml(s.tdisNumber)}</span></div>` : ''}
+        ${s.shiftHours ? `<div class="pm-row"><span class="pm-row-label">Shift</span><span>${escapeHtml(s.shiftHours)}</span></div>` : ''}
+        ${supervisor ? `<div class="pm-row"><span class="pm-row-label">Supervisor</span><span>${escapeHtml(supervisor.name)}</span></div>` : ''}
+      </div>
+      ` : ''}
 
       ${isTeamLeadRole() && currentAreaId && (authState.account.assigned_area_ids||[]).includes(currentAreaId) ? `
       <div class="field" style="margin-top:14px;">
@@ -10555,44 +10680,48 @@ function renderStaffStatsModal(m){
         </div>
         ` : ''}
 
-        <div class="small-muted" style="margin:16px 0 10px;font-weight:700;">
-          Area history <span style="font-weight:400;">· based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}${priorMarkedCount?' + '+priorMarkedCount+' marked prior':''}</span>
+        ${markedPriorAreas.length>0 ? `
+        <div class="pm-card" style="margin-top:12px;">
+          <div class="pm-fit-header"><p class="pm-fit-name">🗂 Marked prior experience</p></div>
+          <p class="pm-card-footnote">${markedPriorAreas.length} area${markedPriorAreas.length===1?'':'s'}: ${markedPriorAreas.map(r=>escapeHtml(r.area.name)).join(', ')}</p>
         </div>
+        ` : ''}
+
+        <p class="pm-section-label" style="margin-top:22px;">Area history · based on ${totalCompletedRotations} completed rotation${totalCompletedRotations===1?'':'s'}</p>
         ${readyForNewPath ? `
         <div class="pm-card pm-ready-path-card">
           <div class="pm-fit-header"><p class="pm-fit-name">🏆 Ready for a new path</p><span class="pm-badge warn">100%</span></div>
           <p class="pm-card-footnote">${escapeHtml(s.name.split(' ')[0])} has experience in all ${nonFixedRows.length} rotation areas — worth finding a new path.</p>
         </div>
-        ` : `
+        ` : rows.some(r=>r.timesWorked>0) ? `
         <div class="stats-bar-list">
-          ${rows.map(r=>{
+          ${rows.filter(r=>r.timesWorked>0).map(r=>{
             const rating = getAreaRating(s.id, r.areaId);
             const lvl = getProficiencyLevel(rating);
             const ratingHistory = getAreaRatingHistory(s.id, r.areaId);
             const lastRated = ratingHistory.length ? ratingHistory[ratingHistory.length-1] : null;
-            return `
-            <div class="stats-bar-row ${!r.hasExperience?'no-exp':''}">
+            const label = `
               <div class="stats-bar-label">
                 <span class="area-swatch" style="background:${r.area.color}"></span>
                 <span>${escapeHtml(r.area.name)}</span>
                 ${r.areaId===currentAreaId?'<span class="stats-current-tag">current</span>':''}
                 ${bestFit && r.areaId===bestFit.areaId?'<span class="stats-bestfit-tag">best fit</span>':''}
                 ${rating?`<span class="proficiency-mini-badge" style="background:${lvl.color};">${rating} ${lvl.label}</span>`:''}
-              </div>
+              </div>`;
+            return `
+            <div class="stats-bar-row">
+              ${label}
               <div class="stats-bar-track">
-                <div class="stats-bar-fill" style="width:${r.timesWorked>0 ? Math.max(8, Math.round(r.timesWorked/(maxTimes||1)*100)) : (r.hasExperience?8:0)}%; background:${r.area.color};"></div>
+                <div class="stats-bar-fill" style="width:${Math.max(8, Math.round(r.timesWorked/(maxTimes||1)*100))}%; background:${r.area.color};"></div>
               </div>
-              <div class="stats-bar-count">
-                ${r.timesWorked>0
-                  ? `${r.timesWorked}× <span class="small-muted">· ${r.periodsAgo===0?'last rotation':r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since'}${lastRated?` · rated ${lastRated.period}`:''}</span>`
-                  : r.manualPrior
-                    ? `<span class="small-muted">prior experience (marked)${r.manualNote?': '+escapeHtml(r.manualNote):''}</span>`
-                    : `<span class="small-muted">never worked here</span>`}
-              </div>
+              <div class="stats-bar-count">${r.timesWorked}× <span class="small-muted">· ${r.periodsAgo===0?'last rotation':r.periodsAgo+' rotation'+(r.periodsAgo===1?'':'s')+' since'}${lastRated?` · rated ${lastRated.period}`:''}</span></div>
             </div>`;
           }).join('')}
         </div>
+        ` : `
+        <div class="small-muted">No completed rotations yet — everything so far is marked prior experience, above.</div>
         `}
+      `}
       `}
     </div>
     <div class="modal-foot">
@@ -17620,6 +17749,15 @@ function attachHandlers(){
       render();
     });
     wirePriorExperienceControls('.stats-prior-exp-check', '.stats-prior-exp-note');
+    document.querySelectorAll('[data-stats-view-tab]').forEach(btn=>btn.addEventListener('click',()=>{
+      openModal({...activeModal, viewTab:btn.dataset.statsViewTab});
+    }));
+    document.querySelectorAll('[data-att-group-toggle]').forEach(el=>el.addEventListener('click',()=>{
+      const key = el.dataset.attGroupToggle;
+      const expanded = {...(activeModal.attExpandedGroups||{})};
+      expanded[key] = !expanded[key];
+      openModal({...activeModal, attExpandedGroups:expanded});
+    }));
   }
 
   // --- ready for a new path (100% area coverage list) ---
