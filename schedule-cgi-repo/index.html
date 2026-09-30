@@ -5573,6 +5573,28 @@ button{font-family:var(--sans);cursor:pointer;}
   }
 .stats-cert-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 
+/* --- staff stats modal (read-only per-area history) — these classes had
+   no rules at all, so the whole modal rendered as an unstyled stack of
+   plain divs (no bars, no banner, no tags) on both the board's staff-chip
+   popup and the team lead's (only) way to see a profile. --- */
+.stats-current-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 14px;margin-bottom:14px;border-bottom:1px solid var(--pm-border);}
+.stats-current-area{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--pm-text-primary);}
+.stats-bestfit-banner{display:flex;align-items:center;gap:12px;background:var(--pm-accent-bg);border-radius:var(--pm-radius-md);padding:14px;margin-top:14px;}
+.stats-bestfit-banner.stats-bestfit-none{background:var(--pm-surface-alt);}
+.stats-bestfit-icon{font-size:24px;flex-shrink:0;}
+.stats-bestfit-title{font-weight:700;font-size:14px;color:var(--pm-text-primary);}
+.stats-bestfit-sub{font-size:12px;color:var(--pm-text-secondary);margin-top:2px;}
+.stats-bar-list{display:flex;flex-direction:column;gap:16px;margin-top:6px;}
+.stats-bar-row{display:flex;flex-direction:column;gap:6px;}
+.stats-bar-row.no-exp{opacity:.55;}
+.stats-bar-label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--pm-text-primary);flex-wrap:wrap;}
+.stats-current-tag,.stats-bestfit-tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:var(--pm-radius-sm);text-transform:uppercase;letter-spacing:.03em;}
+.stats-current-tag{background:var(--pm-surface-alt);color:var(--pm-text-secondary);}
+.stats-bestfit-tag{background:var(--pm-success-bg);color:var(--pm-success);}
+.stats-bar-track{height:6px;border-radius:999px;background:var(--pm-surface-alt);overflow:hidden;}
+.stats-bar-fill{height:100%;border-radius:999px;transition:width .3s ease;}
+.stats-bar-count{font-size:12px;color:var(--pm-text-secondary);}
+
 /* language cert chips in staff editor */
 .lang-cert-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
 .lang-cert-chip{
@@ -10453,7 +10475,7 @@ function renderStaffStatsModal(m){
   const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience);
   const gapAreas = neverWorkedGapAreasFor(s.id);
   return `
-  <div class="modal">
+  <div class="modal pm-scope">
     <div class="modal-head">
       <div>
         <h2>${s.isTeamLead?'★ ':''}${s.needsAccommodations?'♿ ':''}${escapeHtml(s.name)}</h2>
