@@ -9119,6 +9119,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations${evalBadgeCounts.mine>0?`<span class="nav-item-badge">${evalBadgeCounts.mine}</span>`:''}</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
       <div class="nav-divider"></div>
+      <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
     </nav>`;
   }
@@ -9171,6 +9172,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
+      <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
         <button class="nav-rotate-btn" id="btn-rotate">
@@ -10387,6 +10389,7 @@ function renderModal(){
   else if(m.type==='experience-gaps') inner = renderExperienceGapsModal(m);
   else if(m.type==='manage-accounts') inner = renderManageAccountsModal(m);
   else if(m.type==='account-grant-form') inner = renderAccountGrantFormModal(m);
+  else if(m.type==='change-pin') inner = renderChangePinModal(m);
   else if(m.type==='audit-log') inner = renderAuditLogModal(m);
   else if(m.type==='restore-period-confirm') inner = renderRestorePeriodConfirmModal(m);
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
@@ -12970,6 +12973,53 @@ function renderAccountGrantFormModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="grant-cancel-btn">Cancel</button>
       <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':copy.submit}</button>
+    </div>
+  </div>`;
+}
+
+// --- Change my PIN (self-service, any signed-in role) ---
+function renderChangePinModal(m){
+  const currentPin = m.currentPin||'';
+  const newPin = m.newPin||'';
+  const confirmPin = m.confirmPin||'';
+  const pinShape = /^\d{4}$/;
+  const canSubmit = pinShape.test(currentPin) && pinShape.test(newPin) && newPin===confirmPin && !m.saving;
+  if(m.done){
+    return `
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-head">
+        <div><h2>PIN updated</h2><p>Use your new PIN the next time you sign in.</p></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-primary" id="change-pin-done" style="margin-left:auto;">Done</button>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <div><h2>Change my PIN</h2><p>Enter your current PIN, then the new one twice.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Current PIN</label>
+        <input type="text" id="cp-current-input" inputmode="numeric" maxlength="4" placeholder="••••" value="${escapeHtml(currentPin)}" style="font-family:var(--mono);letter-spacing:.1em;"/>
+      </div>
+      <div class="field">
+        <label>New PIN (4 digits)</label>
+        <input type="text" id="cp-new-input" inputmode="numeric" maxlength="4" placeholder="1234" value="${escapeHtml(newPin)}" style="font-family:var(--mono);letter-spacing:.1em;"/>
+      </div>
+      <div class="field">
+        <label>Confirm new PIN</label>
+        <input type="text" id="cp-confirm-input" inputmode="numeric" maxlength="4" placeholder="1234" value="${escapeHtml(confirmPin)}" style="font-family:var(--mono);letter-spacing:.1em;"/>
+      </div>
+      <div class="field-hint" id="cp-mismatch-hint" style="color:var(--md-sys-color-error);${newPin && confirmPin && newPin!==confirmPin?'':'display:none;'}">New PIN and confirmation don't match.</div>
+      ${m.error?`<div class="alert-box rust">${escapeHtml(m.error)}</div>`:''}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="cp-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="cp-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':'Change PIN'}</button>
     </div>
   </div>`;
 }
@@ -17399,6 +17449,7 @@ function attachHandlers(){
   on('nav-reset-areas',         ()=>{ closeNav(); openModal({type:'reset-confirm', kind:'areas', typed:''}); });
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-manage-positions',    ()=>{ closeNav(); openModal({type:'positions-manager'}); });
+  on('nav-change-pin',          ()=>{ closeNav(); openModal({type:'change-pin'}); });
   on('nav-sign-out', async ()=>{
     closeNav();
     if(window.RC && typeof window.RC.unsubscribeFromBoardChanges==='function'){
@@ -20036,6 +20087,44 @@ function attachHandlers(){
           openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaIds, pin, result:true});
         }catch(e){
           openModal({...m, name, role, assignedAreaIds, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
+        }
+      });
+    }
+  }
+
+  // --- change my PIN (self-service) ---
+  if(activeModal.type==='change-pin'){
+    const m = activeModal;
+    if(m.done){
+      on('change-pin-done', closeModal);
+    } else {
+      const pinField = (id, key) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.addEventListener('input', ()=>{
+          const cleaned = el.value.replace(/\D/g,'').slice(0,4);
+          if(cleaned!==el.value) el.value = cleaned;
+          activeModal[key] = cleaned;
+          const shape = /^\d{4}$/;
+          const btn = document.getElementById('cp-submit-btn');
+          if(btn) btn.disabled = !(shape.test(activeModal.currentPin||'') && shape.test(activeModal.newPin||'') && activeModal.newPin===activeModal.confirmPin && !activeModal.saving);
+          const hint = document.getElementById('cp-mismatch-hint');
+          if(hint) hint.style.display = (activeModal.newPin && activeModal.confirmPin && activeModal.newPin!==activeModal.confirmPin) ? '' : 'none';
+        });
+      };
+      pinField('cp-current-input', 'currentPin');
+      pinField('cp-new-input', 'newPin');
+      pinField('cp-confirm-input', 'confirmPin');
+      on('cp-cancel-btn', closeModal);
+      on('cp-submit-btn', async ()=>{
+        const {currentPin, newPin, confirmPin} = m;
+        if(!/^\d{4}$/.test(currentPin) || !/^\d{4}$/.test(newPin) || newPin!==confirmPin) return;
+        openModal({...m, saving:true, error:''});
+        try{
+          await window.RC.changeMyPin({currentPin, newPin});
+          openModal({type:'change-pin', done:true});
+        }catch(e){
+          openModal({...m, saving:false, error:(e&&e.message)||'Could not change your PIN.'});
         }
       });
     }
