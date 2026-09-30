@@ -9130,6 +9130,15 @@ function renderNavDrawer(){
     // migration 0009/0017) — every other nav item opens something
     // manager-only server-side.
     const leadAreaNames = (authState.account?.assigned_area_ids||[]).map(id=>getAreaById(id)?.name).filter(Boolean);
+    // Previously a team lead's ONLY way into "request coverage" was a
+    // banner that only appears when the board already has an uncovered
+    // callout in their area — nothing persistent, so if that banner
+    // wasn't showing right now, the feature was effectively invisible.
+    // Give them a standing nav entry into the same callout-dash modal
+    // (same request-not-assign behavior for a team lead, unchanged),
+    // badged with how many gaps in their own area(s) need a request.
+    const leadAreaIdsForNav = authState.account?.assigned_area_ids||[];
+    const leadGapCount = calloutCoverageStatus().uncovered.filter(id=>leadAreaIdsForNav.includes(state.assignments[id])).length;
     return `
     <div class="nav-scrim ${isOpen?'visible':''}" id="nav-scrim"></div>
     <nav class="nav-drawer ${isOpen?'open':''}">
@@ -9140,6 +9149,9 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Schedule</div>
       <button class="nav-item" id="nav-my-evaluations"><span class="nav-item-icon">📝</span>My evaluations${evalBadgeCounts.mine>0?`<span class="nav-item-badge">${evalBadgeCounts.mine}</span>`:''}</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🍽</span>Manage breaks</button>
+      <div class="nav-divider"></div>
+      <div class="nav-drawer-section">Board</div>
+      <button class="nav-item" id="nav-request-coverage"><span class="nav-item-icon">🙋</span>Request coverage${leadGapCount>0?`<span class="nav-item-badge">${leadGapCount}</span>`:''}</button>
       <div class="nav-divider"></div>
       <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
@@ -9241,18 +9253,17 @@ function renderTempScopeButtons(subjectPhrase){
   </div>`;
 }
 
-function renderCalloutBanner(){
+// Shared by the banner and the team lead's persistent nav badge (see
+// renderNavDrawer) so both agree on exactly who still needs a coverer —
+// two people out of the same area need two coverers, not just "is
+// anyone at all covering this area" (a plain Set-membership check would
+// credit every out-person in an area to the SAME single coverer).
+function calloutCoverageStatus(){
   // getStaffById(id) can come back empty for a callout left behind by
   // someone who's since been removed — filter those out here too (on top
   // of the mapSupabaseBoard() filter) so a stale local copy of state can't
   // still show a "?" or crash the coverage dashboard below.
   const outIds = Object.keys(state.callouts).filter(id=>state.callouts[id] && getStaffById(id));
-  if(outIds.length===0) return ''; // nobody out → no banner
-
-  // Per-area coverer counts, same as calloutCoverageGaps() — two people out
-  // of the same area need two coverers, not just "is anyone at all covering
-  // this area", which used to be a plain Set membership check and so
-  // credited every out-person in an area to the SAME single coverer.
   const coverCountByArea = {};
   Object.keys(state.coverage||{}).forEach(cid=>{
     const aId = state.assignments[cid];
@@ -9276,6 +9287,12 @@ function renderCalloutBanner(){
     }
   });
   const covered = [...actuallyCovered, ...waived]; // "not blocking" set
+  return { outIds, uncovered, covered, waived, actuallyCovered };
+}
+
+function renderCalloutBanner(){
+  const { outIds, uncovered, covered, waived, actuallyCovered } = calloutCoverageStatus();
+  if(outIds.length===0) return ''; // nobody out → no banner
 
   const allCovered  = uncovered.length === 0;  // everyone with an area has coverage or is waived
   const names       = outIds.slice(0,2).map(id=>getStaffById(id)?.name?.split(' ')[0]||'?').join(', ');
@@ -11816,6 +11833,11 @@ function renderCalloutDashModal(m){
   });
   const pendingCount = rows.filter(r=>!r.coverPerson&&!r.waived&&r.area).length;
   const allDone = pendingCount===0;
+  // A team lead can now reach this modal any time from the nav drawer, not
+  // just from a banner that only shows up when there's already a gap — so
+  // "nobody's out at all" needs its own message, distinct from "everyone
+  // who's out is already covered" (allDone with rows.length>0).
+  const noneOut = rows.length===0;
 
   // Compact single-line candidate row. For a manager, tapping it assigns
   // immediately (no separate "select then confirm" step), matching the
@@ -11851,17 +11873,21 @@ function renderCalloutDashModal(m){
   return '<div class="modal" style="max-width:460px;max-height:88vh;">'
     +'<div class="modal-head">'
       +'<div><h2>Coverage</h2>'
-        +'<p>'+(allDone?'✓ All covered':pendingCount+' need'+(pendingCount>1?'':'s')+' coverage')+'</p>'
+        +'<p>'+(noneOut?'Nobody’s out right now':allDone?'✓ All covered':pendingCount+' need'+(pendingCount>1?'':'s')+' coverage')+'</p>'
       +'</div>'
       +'<button class="modal-close" id="modal-close-x">✕</button>'
     +'</div>'
-    +'<div class="cd-search-bar">'
+    +(noneOut ? '' :
+    '<div class="cd-search-bar">'
       +'<span class="cd-search-icon">🔍</span>'
       +'<input class="cd-search-input" id="cd-search" type="text" placeholder="Search by name or area…" value="'+escapeHtml(m.search||'')+'"/>'
       +(m.search?'<button class="cd-search-clear" id="cd-search-clear">✕</button>':'')
-    +'</div>'
+    +'</div>')
     +'<div class="modal-body" style="padding:0;">'
-      +rows.map(({sid,s,area,areaId,covererId,coverPerson,waived,candidates})=>{
+      +(noneOut ? '<div class="cd-no-area" style="padding:32px 20px;text-align:center;">'
+        +(isTeamLeadRole()?'Nobody in your area is marked out right now — check back if that changes, or a supervisor can mark someone out.':'Nobody is marked out right now.')
+        +'</div>' :
+      rows.map(({sid,s,area,areaId,covererId,coverPerson,waived,candidates})=>{
         return '<div class="cd-row '+(coverPerson?'cd-done':waived?'cd-waived':'cd-pending')+'">'
 
           // ── Who's out ──
@@ -11914,10 +11940,10 @@ function renderCalloutDashModal(m){
           )
 
           +'</div>';
-      }).join('')
+      }).join(''))
     +'</div>'
     +'<div class="modal-foot"><button class="btn btn-light" id="btn-email-changes">📧 Email changes</button>'
-      +(allDone?'<button class="btn btn-primary" id="btn-cov-done">Done ✓</button>':'')
+      +(allDone&&!noneOut?'<button class="btn btn-primary" id="btn-cov-done">Done ✓</button>':'')
     +'</div>'
   +'</div>';
 }
@@ -17583,6 +17609,7 @@ function attachHandlers(){
   on('nav-history',             ()=>{ closeNav(); openModal({type:'history'}); });
   on('nav-my-evaluations',      ()=>{ closeNav(); openEvalQueue(); });
   on('nav-mark-callout',        ()=>{ closeNav(); openModal({type:'mark-callout'}); });
+  on('nav-request-coverage',    ()=>{ closeNav(); openModal({type:'callout-dash'}); });
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
   document.querySelectorAll('[data-reorder-areas]').forEach(btn=>btn.addEventListener('click', ()=>{
