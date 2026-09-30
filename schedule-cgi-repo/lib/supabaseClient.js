@@ -188,6 +188,7 @@ export async function loadBoard() {
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
     { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
+    { data: positionRequests },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -211,12 +212,13 @@ export async function loadBoard() {
     supabase.from('attendance_events').select('*').order('event_date', { ascending: false }),
     supabase.from('active_rotation').select('*').maybeSingle(),
     supabase.from('temp_moves').select('*'),
+    supabase.from('position_requests').select('*').order('created_at'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, positions, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
-    attendanceEvents, activeRotation, tempMoves,
+    attendanceEvents, activeRotation, tempMoves, positionRequests,
   };
 }
 
@@ -1231,6 +1233,66 @@ export async function myReassignmentRequests(accountId) {
 }
 
 // ---------------------------------------------------------------------------
+// Position-change requests (0029_position_requests.sql). Unlike reassignment
+// requests, both logging a request and deciding it are manager-only actions
+// today — there's no staff self-service login in this app, so a supervisor
+// logs a request on a staffer's behalf and a supervisor/admin later decides
+// it. Approving performs the actual move in the same call, same
+// "the review action IS the write" pattern as reviewReassignment().
+// ---------------------------------------------------------------------------
+
+export async function createPositionRequest({ staffId, fromAreaId, toAreaId, reason, requestedBy, staffName, toAreaName }) {
+  const { data, error } = await supabase.from('position_requests').insert({
+    staff_id: staffId, from_area_id: fromAreaId || null, to_area_id: toAreaId,
+    reason: reason || null, requested_by: requestedBy, status: 'pending',
+  }).select().single();
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: requestedBy,
+    action: 'position_request',
+    description: `logged a position request for ${staffName || 'staff'} → ${toAreaName || 'an area'}`,
+    staff_id: staffId,
+    metadata: { toAreaId, requestId: data.id },
+  });
+  return data;
+}
+
+export async function reviewPositionRequest({ requestId, status, reviewerId, staffId, toAreaId, staffName, toAreaName }) {
+  if (status === 'approved') {
+    const { error: moveErr } = await supabase.from('assignments').upsert({
+      staff_id: staffId, area_id: toAreaId, updated_by: reviewerId, updated_at: new Date().toISOString(),
+    });
+    if (moveErr) throw moveErr;
+  }
+
+  const { error } = await supabase.from('position_requests').update({
+    status, decided_by: reviewerId, decided_at: new Date().toISOString(),
+  }).eq('id', requestId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: reviewerId,
+    action: 'position_request',
+    description: status === 'approved'
+      ? `approved a position request — ${staffName || 'staff'} moved to ${toAreaName || 'an area'}`
+      : 'denied a position request',
+    staff_id: staffId,
+    metadata: { requestId, status },
+  });
+}
+
+export async function fetchPendingPositionRequests() {
+  const { data, error } = await supabase
+    .from('position_requests')
+    .select('*, staff:staff_id(name), from_area:from_area_id(name), to_area:to_area_id(name), requester:requested_by(name)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
 // (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
 // visibility (eval_select: managers see everyone, team leads only their own
@@ -1289,6 +1351,7 @@ const REALTIME_TABLES = [
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
   'attendance_events', 'active_rotation', 'temp_moves', 'reassignment_requests',
+  'position_requests',
 ];
 
 let realtimeChannel = null;
@@ -1355,6 +1418,9 @@ window.RC = {
   reviewReassignment,
   fetchPendingReassignments,
   myReassignmentRequests,
+  createPositionRequest,
+  reviewPositionRequest,
+  fetchPendingPositionRequests,
   fetchAuditLog,
   subscribeToBoardChanges,
   unsubscribeFromBoardChanges,

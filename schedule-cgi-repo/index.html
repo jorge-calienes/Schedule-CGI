@@ -8426,7 +8426,7 @@ applyTheme();
 let evalBadgeCounts = { mine: 0, pending: 0 }; // {mine: team lead's own actionable queue, pending: supervisor's review queue}
 function navBadgeCount(){
   if(isTeamLeadRole()) return evalBadgeCounts.mine;
-  if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending + reassignBadgeCounts.pending;
+  if(authState.account?.role==='admin' || authState.account?.role==='supervisor') return evalBadgeCounts.pending + reassignBadgeCounts.pending + positionReqBadgeCounts.pending;
   return 0;
 }
 // A background data refresh (badge counts, board/history reloads) calls
@@ -8512,6 +8512,34 @@ async function refreshReassignBadgeCounts(){
       }
       knownPendingReassignIds = nowIds;
     }
+    renderUnlessReportPreviewOpen();
+  }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
+}
+
+// ── Position requests — same "lazy fetch, advisory count, diff-driven
+//    toast" shape as reassignBadgeCounts above. Unlike reassignments, both
+//    logging and deciding a position request are manager-only actions (no
+//    staff self-service login), so there's no "mine" bucket to track —
+//    just the one shared pending queue every admin/supervisor sees. ──
+let positionReqBadgeCounts = { pending: 0 };
+let knownPendingPositionReqIds = null; // null = not yet fetched once; don't banner on the very first load
+async function refreshPositionReqBadgeCounts(){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  if(authState.account.role!=='admin' && authState.account.role!=='supervisor') return;
+  try{
+    const items = await window.RC.fetchPendingPositionRequests();
+    positionReqBadgeCounts.pending = (items||[]).length;
+    const nowIds = new Set((items||[]).map(i=>i.id));
+    if(knownPendingPositionReqIds){
+      const newOnes = (items||[]).filter(i=>!knownPendingPositionReqIds.has(i.id));
+      if(newOnes.length===1){
+        const r = newOnes[0];
+        showToast(`🏷 ${r.requester?.name||'A supervisor'} logged a position request for ${r.staff?.name||'a staff member'}`, 'teal');
+      } else if(newOnes.length>1){
+        showToast(`🏷 ${newOnes.length} new position requests need review`, 'teal');
+      }
+    }
+    knownPendingPositionReqIds = nowIds;
     renderUnlessReportPreviewOpen();
   }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
 }
@@ -9187,6 +9215,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-reassigns"><span class="nav-item-icon">🙋</span>Review reassignments${reassignBadgeCounts.pending>0?`<span class="nav-item-badge">${reassignBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-position-requests"><span class="nav-item-icon">🏷</span>Review position requests${positionReqBadgeCounts.pending>0?`<span class="nav-item-badge">${positionReqBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(()=>{
         if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
         const readyCount = staffReadyForNewPath().length;
@@ -10435,6 +10464,7 @@ function renderModal(){
   else if(m.type==='attendance-report') inner = renderAttendanceReportModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='pending-reassigns') inner = renderPendingReassignsModal(m);
+  else if(m.type==='pending-position-requests') inner = renderPendingPositionRequestsModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
@@ -11336,7 +11366,27 @@ function renderStaffManagerModal(m){
       '</div>' : '')+
       '</details>';
 
-    if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>';
+    // Built before the zero-rotation early return below so a brand-new
+    // hire (the most likely reason to log a position request in the
+    // first place) still gets to see/submit/approve one — this used to
+    // live only in the tail of the full return, so it silently vanished
+    // for anyone with no rotation history yet.
+    const positionRequestsSection = '<p class="pm-section-label" style="margin-top:24px;">Position change requests</p>'
+    +(()=>{
+      const reqs=(editing?.positionRequests||[]).slice().reverse().slice(0,5);
+      if(!reqs.length) return '<div class="small-muted" style="margin:6px 0;">No requests submitted.</div>';
+      return reqs.map(r=>`<div class="pos-req-row pos-req-${r.status||'pending'}">
+        <span class="pos-req-date">${escapeHtml(r.date||'')}</span>
+        <span class="pos-req-areas">${escapeHtml(getAreaById(r.fromArea)?.name||'Current')} → ${escapeHtml(getAreaById(r.toArea)?.name||'?')}</span>
+        <span class="pos-req-reason">${escapeHtml(r.reason||'')}</span>
+        <span class="pos-req-status">${r.status==='approved'?'✅ Approved':r.status==='denied'?'❌ Denied':'⏳ Pending'}</span>
+        ${r.status==='pending'||!r.status?`<button class="pos-req-approve-btn" data-staff-id="${editing?.id}" data-req-id="${r.id}">✓ Approve</button>
+        <button class="pos-req-deny-btn" data-staff-id="${editing?.id}" data-req-id="${r.id}">✕ Deny</button>`:''}
+      </div>`).join('');
+    })()
+    +(editing?`<button class="btn btn-light btn-sm" id="btn-submit-pos-req" style="width:100%;margin-top:8px;">+ Submit position request</button>`:'');
+
+    if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>'+positionRequestsSection;
     const total  = state.areas.filter(a=>!a.fixed).length;
     const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
     const gapAreas = neverWorkedGapAreasFor(editing.id);
@@ -11435,20 +11485,7 @@ function renderStaffManagerModal(m){
       // ── Evaluation trend ──
       evalTrendSection
 
-    +'<p class="pm-section-label" style="margin-top:24px;">Position change requests</p>'
-    +(()=>{
-      const reqs=(editing?.positionRequests||[]).slice().reverse().slice(0,5);
-      if(!reqs.length) return '<div class="small-muted" style="margin:6px 0;">No requests submitted.</div>';
-      return reqs.map(r=>`<div class="pos-req-row pos-req-${r.status||'pending'}">
-        <span class="pos-req-date">${escapeHtml(r.date||'')}</span>
-        <span class="pos-req-areas">${escapeHtml(getAreaById(r.fromArea)?.name||'Current')} → ${escapeHtml(getAreaById(r.toArea)?.name||'?')}</span>
-        <span class="pos-req-reason">${escapeHtml(r.reason||'')}</span>
-        <span class="pos-req-status">${r.status==='approved'?'✅ Approved':r.status==='denied'?'❌ Denied':'⏳ Pending'}</span>
-        ${r.status==='pending'||!r.status?`<button class="pos-req-approve-btn" data-staff-id="${editing?.id}" data-req-date="${r.date}">✓ Approve</button>
-        <button class="pos-req-deny-btn" data-staff-id="${editing?.id}" data-req-date="${r.date}">✕ Deny</button>`:''}
-      </div>`).join('');
-    })()
-    +(editing?`<button class="btn btn-light btn-sm" id="btn-submit-pos-req" style="width:100%;margin-top:8px;">+ Submit position request</button>`:'')
+    +positionRequestsSection
 
     // ── Prior area experience — last, since it's an editing tool rather
     // than a stat, and marking it here already updates Best fit/Proficiency
@@ -13762,6 +13799,46 @@ function renderPendingEvalsModal(m){
 // stale between being filed and being reviewed (the area filled up some
 // other way in the meantime) — rather than trusting the count from when
 // it was filed.
+function renderPendingPositionRequestsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>🏷 Pending position requests</h2><p>Logged for a staff member, awaiting your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending requests…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending requests: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every position request has been reviewed.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const staffName = (row.staff&&row.staff.name)||'Unknown';
+          const fromAreaName = (row.from_area&&row.from_area.name)||'Current area';
+          const toAreaName = (row.to_area&&row.to_area.name)||'an area';
+          const requesterName = (row.requester&&row.requester.name)||'A supervisor';
+          const area = getAreaById(row.to_area_id);
+          const alreadyFull = !!(area && activeInArea(row.to_area_id, row.staff_id).length >= area.capacity);
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(staffName)}: ${escapeHtml(fromAreaName)} → ${escapeHtml(toAreaName)}</span>
+            </div>
+            <div class="eval-history-evaluator">logged by ${escapeHtml(requesterName)}</div>
+            ${row.reason?`<div class="eval-history-note">${escapeHtml(row.reason)}</div>`:''}
+            ${alreadyFull?`<div class="alert-box rust" style="margin-top:8px;">⚠ ${escapeHtml(toAreaName)} is already full — approving isn't possible until there's room.</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn btn-primary btn-sm" ${alreadyFull?'disabled':''} data-approve-pos-req="${row.id}" data-approve-pos-staff="${row.staff_id}" data-approve-pos-area="${row.to_area_id}" data-approve-pos-staff-name="${escapeHtml(staffName)}" data-approve-pos-area-name="${escapeHtml(toAreaName)}">✓ Approve</button>
+              <button class="btn btn-light btn-sm" data-deny-pos-req="${row.id}" data-deny-pos-staff="${row.staff_id}">✕ Deny</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
 function renderPendingReassignsModal(m){
   const items = m.items||[];
   return `
@@ -15094,6 +15171,16 @@ async function openPendingReassigns(){
     openModal({type:'pending-reassigns', loading:false, items: items||[], denyingId:null});
   }catch(e){
     openModal({type:'pending-reassigns', loading:false, items:[], denyingId:null, error: (e && e.message) || 'Could not load pending reassignment requests.'});
+  }
+}
+
+async function openPendingPositionRequests(){
+  openModal({type:'pending-position-requests', loading:true, items:[]});
+  try{
+    const items = await window.RC.fetchPendingPositionRequests();
+    openModal({type:'pending-position-requests', loading:false, items: items||[]});
+  }catch(e){
+    openModal({type:'pending-position-requests', loading:false, items:[], error: (e && e.message) || 'Could not load pending position requests.'});
   }
 }
 
@@ -17579,7 +17666,7 @@ function attachHandlers(){
   }
 
   // --- nav drawer ---
-  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); refreshReassignBadgeCounts(); });
+  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); refreshReassignBadgeCounts(); refreshPositionReqBadgeCounts(); });
   on('btn-toggle-theme', ()=>{
     themeMode = themeMode==='dark' ? 'light' : 'dark';
     try{ localStorage.setItem('rc-theme', themeMode); }catch(e){}
@@ -17621,6 +17708,7 @@ function attachHandlers(){
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
+  on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
   on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
@@ -17810,39 +17898,46 @@ function attachHandlers(){
     }));
   }
 
-  // ── Position request: approve / deny ──
-  document.querySelectorAll('.pos-req-approve-btn').forEach(btn=>btn.addEventListener('click',e=>{
+  // ── Position request: approve / deny ── (0029_position_requests.sql —
+  // identified by a real uuid now, not the submission date doubling as an id)
+  document.querySelectorAll('.pos-req-approve-btn').forEach(btn=>btn.addEventListener('click',async e=>{
     e.stopPropagation();
     const s = getStaffById(btn.dataset.staffId);
     if(!s) return;
-    const req = (s.positionRequests||[]).find(r=>r.date===btn.dataset.reqDate);
+    const req = (s.positionRequests||[]).find(r=>r.id===btn.dataset.reqId);
     if(!req) return;
-    req.status='approved';
-    // Move them to requested area
-    if(req.toArea){
-      const _fromArea = req.fromArea ? getAreaById(req.fromArea) : null;
-      const _toArea = getAreaById(req.toArea);
+    const _fromArea = req.fromArea ? getAreaById(req.fromArea) : null;
+    const _toArea = getAreaById(req.toArea);
+    const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
+      requestId: req.id, status:'approved', reviewerId: authState.account.id,
+      staffId: s.id, toAreaId: req.toArea, staffName: s.name, toAreaName: _toArea?.name,
+    }));
+    if(sync.ok){
+      req.status='approved';
       state.assignments[s.id]=req.toArea;
       logDailyEvent('move',s.id,req.fromArea,req.toArea,'Position request approved');
-      syncBoardWrite(()=>window.RC.moveStaff({
-        staffId:s.id, areaId:req.toArea, actingAccountId:authState.account.id,
-        staffName:s.name, fromAreaName:_fromArea?.name, toAreaName:_toArea?.name,
-      }), 'move');
+      saveState();
     }
-    saveState(); openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
-    showToast(`${s.name.split(' ')[0]}'s request approved`,'teal');
+    openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
+    showToast(sync.ok?`${s.name.split(' ')[0]}'s request approved`:`Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+    refreshPositionReqBadgeCounts();
   }));
-  document.querySelectorAll('.pos-req-deny-btn').forEach(btn=>btn.addEventListener('click',e=>{
+  document.querySelectorAll('.pos-req-deny-btn').forEach(btn=>btn.addEventListener('click',async e=>{
     e.stopPropagation();
     const s = getStaffById(btn.dataset.staffId);
     if(!s) return;
-    const req = (s.positionRequests||[]).find(r=>r.date===btn.dataset.reqDate);
-    if(req) req.status='denied';
-    saveState(); openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
-    showToast(`Request denied`,'rust');
+    const req = (s.positionRequests||[]).find(r=>r.id===btn.dataset.reqId);
+    if(!req) return;
+    const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
+      requestId: req.id, status:'denied', reviewerId: authState.account.id, staffId: s.id,
+    }));
+    if(sync.ok){ req.status='denied'; saveState(); }
+    openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
+    showToast(sync.ok?'Request denied':`Could not deny — ${sync.error?.message||'try again'}`,'rust');
+    refreshPositionReqBadgeCounts();
   }));
   // Submit position request
-  on('btn-submit-pos-req',()=>{
+  on('btn-submit-pos-req',async ()=>{
     const s = activeModal?.editId ? getStaffById(activeModal.editId) : null;
     if(!s) return;
     // Open a mini modal / prompt
@@ -17853,14 +17948,21 @@ function attachHandlers(){
     if(isNaN(idx)||idx<0||idx>=areas.length) return;
     const reason = prompt('Reason for request (optional):','');
     if(reason===null) return; // cancelled
-    if(!s.positionRequests) s.positionRequests=[];
-    s.positionRequests.push({
-      date: todayLabel(), fromArea: state.assignments[s.id],
-      toArea: areas[idx].id, reason, status:'pending'
-    });
-    logDailyEvent('move', s.id, state.assignments[s.id], areas[idx].id, 'Position request submitted');
-    saveState(); openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
-    showToast(`Request submitted for review`,'teal');
+    const fromAreaId = state.assignments[s.id];
+    const toArea = areas[idx];
+    const sync = await syncCrudWrite(()=>window.RC.createPositionRequest({
+      staffId: s.id, fromAreaId, toAreaId: toArea.id, reason,
+      requestedBy: authState.account.id, staffName: s.name, toAreaName: toArea.name,
+    }));
+    if(sync.ok){
+      if(!s.positionRequests) s.positionRequests=[];
+      s.positionRequests.push({ id: sync.result.id, date: todayLabel(), fromArea: fromAreaId, toArea: toArea.id, reason, status:'pending' });
+      logDailyEvent('move', s.id, fromAreaId, toArea.id, 'Position request submitted');
+      saveState();
+    }
+    openModal({type:'staff-manager',editId:s.id,staffTab:'stats'}); render();
+    showToast(sync.ok?'Request submitted for review':`Could not submit — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+    refreshPositionReqBadgeCounts();
   });
 
   if(activeModal.type==='staff-manager'){
@@ -20218,6 +20320,48 @@ function attachHandlers(){
     });
   }
 
+  // --- pending position requests (aggregate review queue) ---
+  if(activeModal.type==='pending-position-requests'){
+    document.querySelectorAll('[data-approve-pos-req]').forEach(el=>el.addEventListener('click', async ()=>{
+      const requestId = el.dataset.approvePosReq;
+      const staffId = el.dataset.approvePosStaff;
+      const areaId = el.dataset.approvePosArea;
+      const staffName = el.dataset.approvePosStaffName;
+      const areaName = el.dataset.approvePosAreaName;
+      // Re-check capacity against current state — the request could have
+      // gone stale (area filled up some other way) since it was logged.
+      const area = getAreaById(areaId);
+      if(area && activeInArea(areaId, staffId).length >= area.capacity){
+        showToast(`${areaName} is already full`, 'rust');
+        openPendingPositionRequests();
+        return;
+      }
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
+        requestId, status:'approved', reviewerId:authState.account.id,
+        staffId, toAreaId:areaId, staffName, toAreaName:areaName,
+      }));
+      if(sync.ok){
+        state.assignments[staffId] = areaId;
+        saveState();
+      }
+      showToast(sync.ok ? `${staffName}'s request approved ✓` : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshPositionReqBadgeCounts();
+      if(sync.ok) openPendingPositionRequests(); else el.disabled = false;
+    }));
+    document.querySelectorAll('[data-deny-pos-req]').forEach(el=>el.addEventListener('click', async ()=>{
+      const requestId = el.dataset.denyPosReq;
+      const staffId = el.dataset.denyPosStaff;
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
+        requestId, status:'denied', reviewerId:authState.account.id, staffId,
+      }));
+      showToast(sync.ok ? 'Request denied' : `Could not deny — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshPositionReqBadgeCounts();
+      if(sync.ok) openPendingPositionRequests(); else el.disabled = false;
+    }));
+  }
+
   // --- account grant / add form ---
   if(activeModal.type==='account-grant-form'){
     const m = activeModal;
@@ -20988,6 +21132,21 @@ function mapSupabaseBoard(board){
     langCertsByStaff[row.staff_id].push(row.language_id);
   });
 
+  // Position-change requests (0029_position_requests.sql) — kept nested on
+  // each staff record as `.positionRequests`, same shape the local-only
+  // version used, so the Stats-tab list/approve/deny UI barely had to
+  // change. `id` is now a real uuid instead of the submission date doubling
+  // as a pseudo-id.
+  const positionRequestsByStaff = {};
+  (board.positionRequests||[]).forEach(row=>{
+    if(!positionRequestsByStaff[row.staff_id]) positionRequestsByStaff[row.staff_id] = [];
+    positionRequestsByStaff[row.staff_id].push({
+      id: row.id, date: (row.created_at||'').slice(0,10),
+      fromArea: row.from_area_id || null, toArea: row.to_area_id,
+      reason: row.reason || '', status: row.status,
+    });
+  });
+
   const staff = (board.staff||[]).map(s=>({
     id: s.id,
     name: s.name,
@@ -21008,6 +21167,7 @@ function mapSupabaseBoard(board){
     counterCert: !!s.counter_cert,
     hireDate: s.hire_date || '',
     languageCerts: langCertsByStaff[s.id] || [],
+    positionRequests: positionRequestsByStaff[s.id] || [],
   }));
 
   const assignments = {};
@@ -21231,6 +21391,7 @@ async function bootApp(){
 
   refreshEvalBadgeCounts(); // advisory nav badge — doesn't block boot
   refreshReassignBadgeCounts();
+  refreshPositionReqBadgeCounts();
 }
 
 // ============ LIVE SYNC (Supabase Realtime) ============
@@ -21265,6 +21426,7 @@ async function runRealtimeRefresh(){
     saveState();
     render();
     refreshReassignBadgeCounts(); // may bring its own banner toast — see above
+    refreshPositionReqBadgeCounts();
   }catch(e){
     console.warn('Realtime board refresh failed:', e && e.message);
   }
