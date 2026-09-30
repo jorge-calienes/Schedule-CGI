@@ -8577,6 +8577,13 @@ function render(){
       _prevModalType = activeModal.type;
     }
   }
+  // A tour step can open a modal directly (before() calling openModal()) —
+  // positionTourOverlay() above can measure the target before the modal's
+  // own layout (bottom-sheet on mobile, pop-in transform on desktop) has
+  // settled, and it can take a couple hundred ms to. Re-measure a few times
+  // over that window so the spotlight/tooltip end up on the real final
+  // position rather than wherever the target started.
+  if(tourState) [50,150,300].forEach(ms=>setTimeout(()=>{ if(tourState) positionTourOverlay(); }, ms));
 
   // restore scroll after DOM rebuild — use requestAnimationFrame for reliability
   const bw = document.querySelector('.board-wrap');
@@ -8658,10 +8665,18 @@ const TOUR_STEPS = [
     body: "Create new staff profiles or edit existing ones — home area, shift, certifications, language skills, and their rotation/experience history all live here.",
     selector: '#nav-manage-staff',
     before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Time off, late arrivals & early leaves',
+    body: "Every staff profile has its own Time tab — everyone's day(s) off, late arrivals, and early leaves in one place, no longer buried in Rotation. Consecutive days off merge into a single range automatically, History has a date-range filter so it doesn't dump someone's whole record on screen, and you can edit or remove any entry inline without leaving the profile.",
+    selector: '[data-staff-tab="time"]',
+    before(){ activeModal=null; navDrawerOpen=false; openModal({type:'staff-manager', editId: state.staff.find(s=>s.active!==false)?.id, staffTab:'time'}); } },
   { title: 'Import from Excel',
     body: "Bulk-load a new roster, or mark which staff already have experience in which areas from before this system was tracking rotations — both use a downloadable template.",
     selector: '#nav-import-data',
     before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Bulk-import attendance records',
+    body: "Already tracking tardies, early leaves, and approved time off somewhere else, like Microsoft Access? Upload that export here instead of entering everything one at a time — it matches names against your roster (tolerating messy formatting), previews every row before anything is saved, and creates them all in one go.",
+    selector: '[data-import-pick="attendance"]',
+    before(){ activeModal=null; navDrawerOpen=false; openModal({type:'import-picker'}); } },
   { title: 'Time management',
     body: "Define the shift blocks, lunch time labels, and break time labels staff get assigned from — the building blocks the Breaks tab and staff profiles both pull from.",
     selector: '#nav-time-management',
@@ -8690,6 +8705,10 @@ const TOUR_STEPS = [
     body: "A focused monthly view of call-outs, late arrivals, and left-early events per staff member, for whatever period you pick.",
     selector: '#nav-attendance-report',
     before(){ activeModal=null; navDrawerOpen=true; } },
+  { title: 'Export a period to Outlook',
+    body: "Whatever period you're viewing here — a month, a quarter, a custom range — exports as one calendar file covering everyone in it, so those events land on a shared calendar without re-entering them by hand. Only the type (scheduled leave, late arrival, left early) goes into it — not the personal reason, except a clock time if the note has one.",
+    selector: '#ar-export-ics',
+    before(){ activeModal=null; navDrawerOpen=false; openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); } },
   { title: "Export today's changes",
     body: "One click drafts an email summarizing today's call-outs and moves — handy for keeping the next shift's supervisor in the loop. \"Export today to Outlook\" (right below it) does the same as a calendar event instead.",
     selector: '#nav-email-changes',
