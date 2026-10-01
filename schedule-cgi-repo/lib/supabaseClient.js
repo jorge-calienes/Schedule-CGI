@@ -188,7 +188,7 @@ export async function loadBoard() {
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
     { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
-    { data: positionRequests },
+    { data: positionRequests }, { data: proficiencyRatings }, { data: teamLeadCoverageEvents },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -213,12 +213,14 @@ export async function loadBoard() {
     supabase.from('active_rotation').select('*').maybeSingle(),
     supabase.from('temp_moves').select('*'),
     supabase.from('position_requests').select('*').order('created_at'),
+    supabase.from('proficiency_ratings').select('*').order('created_at'),
+    supabase.from('team_lead_coverage_events').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, positions, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
-    attendanceEvents, activeRotation, tempMoves, positionRequests,
+    attendanceEvents, activeRotation, tempMoves, positionRequests, proficiencyRatings, teamLeadCoverageEvents,
   };
 }
 
@@ -1293,6 +1295,46 @@ export async function fetchPendingPositionRequests() {
 }
 
 // ---------------------------------------------------------------------------
+// Proficiency ratings (0030_proficiency_ratings.sql). A durable append-only
+// log, not a status workflow like reassignment/position requests — every
+// caller (saveAreaRating() in index.html) already treats this as "add one
+// more rating event, recompute the latest composite score from the whole
+// history", so this is a plain insert with no review/decide step of its
+// own. Fire-and-forget from the caller's side (syncBoardWrite), same as a
+// board move, since it rides alongside an already-awaited action (Rotate
+// Now's rotation-period creation, or the flow-feedback modal).
+// ---------------------------------------------------------------------------
+
+export async function createProficiencyRating({ staffId, areaId, period, teamLeadRating, teamLeadId, teamLeadNote, supervisorRating, supervisorId, supervisorApproved, overrideReason }) {
+  const { error } = await supabase.from('proficiency_ratings').insert({
+    staff_id: staffId, area_id: areaId, period: period || null,
+    team_lead_rating: teamLeadRating || 0, team_lead_id: teamLeadId || null, team_lead_note: teamLeadNote || null,
+    supervisor_rating: supervisorRating || 0, supervisor_id: supervisorId || null,
+    supervisor_approved: !!supervisorApproved, override_reason: overrideReason || null,
+  });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Team lead coverage events (0031_team_lead_coverage_events.sql) — auto-
+// logged when a team lead is quick-marked out and no other team lead in
+// their department is free to cover. One row per area (area_id is the
+// primary key), matching the caller's own "only the first time" guard in
+// index.html exactly — ignoreDuplicates makes a second insert for the same
+// area a silent no-op instead of a constraint-violation error, covering
+// the case where local state hasn't synced yet on a second device.
+// ---------------------------------------------------------------------------
+
+export async function createTeamLeadCoverageEvent({ areaId, outLeadId, coverLeadId, actingAccountId }) {
+  const { error } = await supabase.from('team_lead_coverage_events')
+    .upsert({
+      area_id: areaId, out_lead_id: outLeadId, cover_lead_id: coverLeadId || null,
+      event_date: new Date().toISOString().slice(0, 10), created_by: actingAccountId || null,
+    }, { onConflict: 'area_id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
 // Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
 // (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
 // visibility (eval_select: managers see everyone, team leads only their own
@@ -1351,7 +1393,7 @@ const REALTIME_TABLES = [
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
   'attendance_events', 'active_rotation', 'temp_moves', 'reassignment_requests',
-  'position_requests',
+  'position_requests', 'proficiency_ratings', 'team_lead_coverage_events',
 ];
 
 let realtimeChannel = null;
@@ -1421,6 +1463,8 @@ window.RC = {
   createPositionRequest,
   reviewPositionRequest,
   fetchPendingPositionRequests,
+  createProficiencyRating,
+  createTeamLeadCoverageEvent,
   fetchAuditLog,
   subscribeToBoardChanges,
   unsubscribeFromBoardChanges,
