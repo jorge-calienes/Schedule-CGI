@@ -13317,7 +13317,7 @@ function renderAccountGrantFormModal(m){
     <div class="modal-body">
       <div class="field">
         <label>Name</label>
-        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}" ${mode!=='create'?'disabled':''}/>
+        <input type="text" id="grant-name-input" placeholder="Full name" value="${escapeHtml(m.name)}"/>
       </div>
       <div class="field">
         <label>Role</label>
@@ -20541,8 +20541,9 @@ function attachHandlers(){
       on('account-grant-done', ()=>openManageAccounts());
     } else {
       const nameInput = document.getElementById('grant-name-input');
-      if(nameInput && !m.accountId) nameInput.addEventListener('input', ()=>{
+      if(nameInput) nameInput.addEventListener('input', ()=>{
         activeModal.name = nameInput.value;
+        refreshSubmitState();
       });
       const roleSel = document.getElementById('grant-role-input');
       if(roleSel) roleSel.addEventListener('change', ()=>{
@@ -20586,7 +20587,7 @@ function attachHandlers(){
             if(!reqResult.accountId) throw new Error(reqResult.message || 'Could not create that account — a person with that name may already exist.');
             accountId = reqResult.accountId;
           }
-          await window.RC.grantAccess({accountId, role, assignedAreaIds, pin: pin||undefined});
+          await window.RC.grantAccess({accountId, role, assignedAreaIds, pin: pin||undefined, name});
           openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaIds, pin, result:true});
         }catch(e){
           openModal({...m, name, role, assignedAreaIds, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
