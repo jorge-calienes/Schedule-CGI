@@ -15821,7 +15821,14 @@ function attachHandlers(){
         const _aId=state.assignments[sid];
         if(!state.teamLeadCoverage[_aId]){
           const _alt=state.staff.filter(x=>x.id!==sid&&x.isTeamLead&&x.active!==false&&!state.callouts[x.id]&&x.department===_stl.department);
-          state.teamLeadCoverage[_aId]={outLeadId:sid,date:todayLabel(),coverLeadId:_alt[0]?.id||null,status:'pending'};
+          const _coverLeadId=_alt[0]?.id||null;
+          state.teamLeadCoverage[_aId]={outLeadId:sid,date:todayLabel(),coverLeadId:_coverLeadId,status:'pending'};
+          // Was local-only — same bug class state.coverage was in before it
+          // got synced: this event never showed up in the printed report
+          // pulled up on a different device.
+          syncBoardWrite(()=>window.RC.createTeamLeadCoverageEvent({
+            areaId:_aId, outLeadId:sid, coverLeadId:_coverLeadId, actingAccountId:authState.account.id,
+          }), 'team lead coverage');
         }
       }
       syncBoardWrite(()=>window.RC.setCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_stl?.name}), 'callout');
@@ -21368,7 +21375,19 @@ function mapSupabaseBoard(board){
     });
   });
 
-  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta, proficiency };
+  // Team lead coverage events (0031_team_lead_coverage_events.sql) — one
+  // row per area, same {areaId: {outLeadId, date, coverLeadId, status}}
+  // shape the local-only version used (only ever read by the printed
+  // report's "Team lead coverage events" table).
+  const teamLeadCoverage = {};
+  (board.teamLeadCoverageEvents||[]).forEach(row=>{
+    teamLeadCoverage[row.area_id] = {
+      outLeadId: row.out_lead_id, coverLeadId: row.cover_lead_id || null,
+      date: row.event_date, status: row.status || 'pending',
+    };
+  });
+
+  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta, proficiency, teamLeadCoverage };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -21443,6 +21462,7 @@ function applyMappedBoard(mapped){
   state.coverage = mapped.coverage;
   state.tempMoves = mapped.tempMoves;
   state.proficiency = mapped.proficiency;
+  state.teamLeadCoverage = mapped.teamLeadCoverage;
   // Only overwrite the in-progress rotation's window from the server once
   // someone has actually saved one — an empty active_rotation table (fresh
   // project, or before anyone has hit "Rotate Now" yet) should leave the

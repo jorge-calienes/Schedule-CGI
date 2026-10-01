@@ -188,7 +188,7 @@ export async function loadBoard() {
     { data: rotationFlows }, { data: rotationFlowStages }, { data: timeOff }, { data: blockedPairs },
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
     { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
-    { data: positionRequests }, { data: proficiencyRatings },
+    { data: positionRequests }, { data: proficiencyRatings }, { data: teamLeadCoverageEvents },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -214,12 +214,13 @@ export async function loadBoard() {
     supabase.from('temp_moves').select('*'),
     supabase.from('position_requests').select('*').order('created_at'),
     supabase.from('proficiency_ratings').select('*').order('created_at'),
+    supabase.from('team_lead_coverage_events').select('*'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, positions, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
-    attendanceEvents, activeRotation, tempMoves, positionRequests, proficiencyRatings,
+    attendanceEvents, activeRotation, tempMoves, positionRequests, proficiencyRatings, teamLeadCoverageEvents,
   };
 }
 
@@ -1315,6 +1316,25 @@ export async function createProficiencyRating({ staffId, areaId, period, teamLea
 }
 
 // ---------------------------------------------------------------------------
+// Team lead coverage events (0031_team_lead_coverage_events.sql) — auto-
+// logged when a team lead is quick-marked out and no other team lead in
+// their department is free to cover. One row per area (area_id is the
+// primary key), matching the caller's own "only the first time" guard in
+// index.html exactly — ignoreDuplicates makes a second insert for the same
+// area a silent no-op instead of a constraint-violation error, covering
+// the case where local state hasn't synced yet on a second device.
+// ---------------------------------------------------------------------------
+
+export async function createTeamLeadCoverageEvent({ areaId, outLeadId, coverLeadId, actingAccountId }) {
+  const { error } = await supabase.from('team_lead_coverage_events')
+    .upsert({
+      area_id: areaId, out_lead_id: outLeadId, cover_lead_id: coverLeadId || null,
+      event_date: new Date().toISOString().slice(0, 10), created_by: actingAccountId || null,
+    }, { onConflict: 'area_id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
 // Staff performance profile (Phase 2 mockup screen 4) and Team dashboard
 // (screen 5) — read-only aggregations over `evaluations`. RLS already scopes
 // visibility (eval_select: managers see everyone, team leads only their own
@@ -1373,7 +1393,7 @@ const REALTIME_TABLES = [
   'rotation_flow_stages', 'time_off', 'blocked_pairs', 'coverage_assignments',
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
   'attendance_events', 'active_rotation', 'temp_moves', 'reassignment_requests',
-  'position_requests', 'proficiency_ratings',
+  'position_requests', 'proficiency_ratings', 'team_lead_coverage_events',
 ];
 
 let realtimeChannel = null;
@@ -1444,6 +1464,7 @@ window.RC = {
   reviewPositionRequest,
   fetchPendingPositionRequests,
   createProficiencyRating,
+  createTeamLeadCoverageEvent,
   fetchAuditLog,
   subscribeToBoardChanges,
   unsubscribeFromBoardChanges,
