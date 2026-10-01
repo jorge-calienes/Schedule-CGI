@@ -7823,6 +7823,15 @@ function saveAreaRating(staffId, areaId, {period, teamLeadRating, teamLeadId, te
     ? Math.round((scores.reduce((a,b)=>a+b,0)/scores.length)*10)/10
     : 0;
   saveState();
+  // Was local-only (saveState() into localStorage, nothing else) — same bug
+  // class state.coverage was in before it got synced: a rating given on one
+  // device/kiosk was invisible everywhere else. Fire-and-forget, same as a
+  // board move riding alongside an already-awaited action (Rotate Now's
+  // rotation-period creation, or the flow-feedback modal's block action).
+  syncBoardWrite(()=>window.RC.createProficiencyRating({
+    staffId, areaId, period, teamLeadRating, teamLeadId, teamLeadNote,
+    supervisorRating, supervisorId, supervisorApproved, overrideReason,
+  }), 'proficiency rating');
 }
 
 // should this staff member be blocked from advancing based on their latest rating?
@@ -21334,7 +21343,32 @@ function mapSupabaseBoard(board){
     tempMoves[row.staff_id] = { returnToAreaId: row.return_to_area_id || null, date: row.started_date, scope: row.scope || 'day' };
   });
 
-  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta };
+  // Proficiency ratings (0030_proficiency_ratings.sql) — same nested
+  // {staffId: {areaId: {rating, ratings:[...]}}} shape saveAreaRating()
+  // already builds locally, just read back from the server instead. Rows
+  // come back ordered by created_at (see loadBoard()), so the last entry
+  // pushed per (staff, area) is the latest — the composite `rating` is
+  // recomputed from it the same way saveAreaRating() does, rather than
+  // stored as its own column.
+  const proficiency = {};
+  (board.proficiencyRatings||[]).forEach(row=>{
+    if(!proficiency[row.staff_id]) proficiency[row.staff_id] = {};
+    if(!proficiency[row.staff_id][row.area_id]) proficiency[row.staff_id][row.area_id] = {rating:0, ratings:[]};
+    proficiency[row.staff_id][row.area_id].ratings.push({
+      period: row.period || '', teamLeadRating: row.team_lead_rating||0, teamLeadId: row.team_lead_id||'',
+      teamLeadNote: row.team_lead_note||'', supervisorRating: row.supervisor_rating||0, supervisorId: row.supervisor_id||'',
+      supervisorApproved: !!row.supervisor_approved, overrideReason: row.override_reason||'',
+    });
+  });
+  Object.values(proficiency).forEach(byArea=>{
+    Object.values(byArea).forEach(entry=>{
+      const last = entry.ratings[entry.ratings.length-1];
+      const scores = [last.teamLeadRating, last.supervisorRating].filter(r=>r>0);
+      entry.rating = scores.length ? Math.round((scores.reduce((a,b)=>a+b,0)/scores.length)*10)/10 : 0;
+    });
+  });
+
+  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta, proficiency };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -21408,6 +21442,7 @@ function applyMappedBoard(mapped){
   state.blocks = mapped.blocks;
   state.coverage = mapped.coverage;
   state.tempMoves = mapped.tempMoves;
+  state.proficiency = mapped.proficiency;
   // Only overwrite the in-progress rotation's window from the server once
   // someone has actually saved one — an empty active_rotation table (fresh
   // project, or before anyone has hit "Rotate Now" yet) should leave the
