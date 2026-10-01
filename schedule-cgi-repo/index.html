@@ -9366,7 +9366,7 @@ function renderNavDrawer(){
         return `<button class="nav-item" id="nav-experience-gaps"><span class="nav-item-icon">🧭</span>Experience gaps${gapsCount>0?`<span class="nav-item-badge">${gapsCount}</span>`:''}</button>`;
       })()}
       <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
-      <button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>` : ''}
       <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
