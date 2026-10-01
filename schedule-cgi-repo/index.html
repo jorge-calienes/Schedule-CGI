@@ -17900,6 +17900,32 @@ function attachHandlers(){
     authState = { status:'signed-out', name:'', pin:'', error:'', account:null };
     state.loaded = false;
     _personalAreaOrderCache = null; // next sign-in may be a different team lead
+    // Everything below is plain in-memory UI state, not tied to the account
+    // that was just signed out — on a shared/kiosk browser (no page reload
+    // between sign-out and the next sign-in), it would otherwise carry
+    // straight into the next person's session. Concretely: whoever signs in
+    // next landed straight inside a leftover "Change my PIN" modal (or
+    // whatever modal happened to be open) because activeModal here was
+    // never reset — selectedStaffId/swapMode are worse, since a stale one
+    // could attribute an accidental move/swap to the wrong account.
+    activeModal = null;
+    _prevModalType = null;
+    _prevStaffManagerTab = null;
+    _prevStaffManagerEditId = undefined;
+    _prevViewMode = null;
+    _prevChipAreas = {};
+    _prevAreaCounts = {};
+    viewMode = 'board';
+    navDrawerOpen = false;
+    drawerOpen = false;
+    selectedStaffId = null;
+    swapMode = null;
+    tempMoveScope = null;
+    chipMenuOpen = null;
+    boardSearch = '';
+    searchExpanded = false;
+    _lastSearchScrollQuery = null;
+    tourState = null;
     render();
   });
 
