@@ -1,6 +1,6 @@
 // POST /api/accounts/grant
 //   { accountId, role: "team_lead" | "supervisor" | "admin",
-//     assignedAreaIds: ["<uuid>", ...] | [], pin: "1234" }
+//     assignedAreaIds: ["<uuid>", ...] | [], pin: "1234", name: "Rafael Ortiz" }
 //
 // Called from the "Manage accounts" screen. Requires the CALLER to already
 // be signed in as an admin — we re-check that server-side against their
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     const caller = await requireAdmin(supabaseAdmin, req);
     if (!caller) return res.status(403).json({ error: 'Admin access required.' });
 
-    const { accountId, role, assignedAreaIds, pin } = req.body || {};
+    const { accountId, role, assignedAreaIds, pin, name } = req.body || {};
     if (!accountId || !role) {
       return res.status(400).json({ error: 'accountId and role are required.' });
     }
@@ -58,10 +58,23 @@ export default async function handler(req, res) {
     if (role === 'team_lead' && !(Array.isArray(assignedAreaIds) && assignedAreaIds.length > 0)) {
       return res.status(400).json({ error: 'Team leads need at least one assigned area.' });
     }
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (name !== undefined && trimmedName.length < 2) {
+      return res.status(400).json({ error: 'Enter a full name.' });
+    }
 
     const { data: pending, error: fetchErr } = await supabaseAdmin
       .from('accounts').select('id, name, user_id, status').eq('id', accountId).single();
     if (fetchErr || !pending) return res.status(404).json({ error: 'Account not found.' });
+
+    // Same case-insensitive collision check as accounts/request.js, just
+    // scoped to exclude the row being renamed — otherwise saving with no
+    // changes at all would trip over itself.
+    if (trimmedName && trimmedName.toLowerCase() !== pending.name.toLowerCase()) {
+      const { data: collision } = await supabaseAdmin
+        .from('accounts').select('id').ilike('name', trimmedName).neq('id', accountId).maybeSingle();
+      if (collision) return res.status(400).json({ error: 'An account with that name already exists.' });
+    }
 
     // Editing an already-active account (role/area change, or resetting the
     // PIN) can skip the PIN — only a pending/revoked → active transition
@@ -93,6 +106,7 @@ export default async function handler(req, res) {
         assigned_area_ids: role === 'team_lead' ? assignedAreaIds : [],
         approved_at: new Date().toISOString(),
         approved_by: caller.id,
+        ...(trimmedName ? { name: trimmedName } : {}),
       })
       .eq('id', accountId);
     if (updateErr) return res.status(500).json({ error: 'Could not activate account.' });
@@ -102,15 +116,17 @@ export default async function handler(req, res) {
       if (pinErr) return res.status(500).json({ error: 'Account saved but the PIN could not be set — try again.' });
     }
 
+    const renamed = trimmedName && trimmedName !== pending.name;
+    const finalName = renamed ? trimmedName : pending.name;
     await supabaseAdmin.from('audit_log').insert({
       actor_id: caller.id,
       action: 'account_grant',
-      description: `${caller.name} ${wasActive ? 'updated' : 'granted'} ${role} access for ${pending.name}${pin ? ' (PIN reset)' : ''}`,
-      metadata: { accountId, role, assignedAreaIds, pinReset: !!pin },
+      description: `${caller.name} ${wasActive ? 'updated' : 'granted'} ${role} access for ${pending.name}${renamed ? ` (renamed to ${trimmedName})` : ''}${pin ? ' (PIN reset)' : ''}`,
+      metadata: { accountId, role, assignedAreaIds, pinReset: !!pin, renamedFrom: renamed ? pending.name : undefined },
     });
 
     return res.status(200).json({
-      message: wasActive ? `${pending.name}'s account was updated.` : `${pending.name} can now sign in.`,
+      message: wasActive ? `${finalName}'s account was updated.` : `${finalName} can now sign in.`,
       pinReset: !!pin,
     });
   } catch (e) {
