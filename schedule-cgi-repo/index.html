@@ -6234,6 +6234,53 @@ button{font-family:var(--sans);cursor:pointer;}
 .tour-btn-back{background:transparent;color:var(--c-text-2);padding-left:0;}
 .tour-btn-back:disabled{visibility:hidden;}
 .tour-btn-next{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary,#fff);}
+
+/* ── App-wide micro-motion pass ──────────────────────────────────────
+   render() (and every modal/view renderer under it) rebuilds its whole
+   subtree from a template string on every state change — a brand-new
+   DOM node has no "before" frame, so a plain `transition:` on a class
+   that's already baked into the new node never animates. Everything
+   below uses `animation:` triggered by a one-shot class instead (the
+   JS side computes "did this actually just change since the last
+   render?" and tags only that render with the class), the same
+   technique the existing modal-pop/tab-slide gating already uses. */
+.main-view-slot{flex:1;display:flex;flex-direction:column;min-height:0;}
+.main-view-slot.view-switch-in{animation:view-switch-in .18s var(--ease-out) both;}
+@keyframes view-switch-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+.loading-screen{animation:loading-fade-in .25s var(--ease-out) both,loading-pulse 1.4s ease-in-out .25s infinite;}
+@keyframes loading-fade-in{from{opacity:0;}to{opacity:1;}}
+@keyframes loading-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+
+.chip.chip-enter{animation:chip-enter .22s cubic-bezier(.34,1.2,.64,1);}
+@keyframes chip-enter{from{opacity:0;transform:scale(.92) translateY(-4px);}to{opacity:1;transform:scale(1) translateY(0);}}
+
+.area-count.count-pulse{animation:count-pulse .3s ease;}
+@keyframes count-pulse{0%{transform:scale(1);}35%{transform:scale(1.22);}100%{transform:scale(1);}}
+
+.chip-act:active,.chip-act-btn:active{transform:scale(.94);}
+.chip-act,.chip-act-btn{transition:transform .1s;}
+
+/* No fix needed for .sw-track/.sw-thumb/.sw-reveal (staff-manager toggle
+   switches): their click handlers deliberately mutate the live DOM node's
+   classes directly instead of calling render() (see the "switches: ALL
+   switches persist into activeModal" block in attachHandlers()), exactly
+   so the plain `transition:` rules above already play correctly — one of
+   the few spots in this app that isn't subject to the render()-kills-
+   transitions problem the rest of this pass works around. */
+
+/* Queue rows (pending reassignment/position requests) — dimmed the
+   instant Approve/Deny is tapped, imperatively via JS on the live node
+   rather than through render(), so this is a genuine `transition:` (the
+   node isn't being recreated) that reads as "working" through the
+   network round-trip before the list refreshes. */
+.eval-history-row{transition:opacity .15s,transform .15s;}
+.eval-history-row.row-busy{opacity:.45;transform:scale(.98);pointer-events:none;}
+
+@media(prefers-reduced-motion:reduce){
+  .main-view-slot.view-switch-in,.loading-screen,.chip.chip-enter,.area-count.count-pulse{animation:none;}
+  .chip-act:active,.chip-act-btn:active{transform:none;}
+}
 </style>
 </head>
 <body>
@@ -8418,6 +8465,15 @@ let boardLoadedFromServer = false;
 let _prevModalType = null; // tracks last-rendered modal type, so we only re-play the modal-pop entrance animation on a genuinely new modal, not on internal updates (tab switch, toggle, search, etc.)
 let _prevStaffManagerTab = null; // tracks last-rendered staff-manager tab, so we know direction + whether to slide
 let _prevStaffManagerEditId = undefined;
+// Micro-motion one-shot trackers — same "remember what we last rendered,
+// diff against this render, tag only the real change" pattern as
+// _prevModalType/_prevStaffManagerTab above, extended to the board so its
+// CSS animations (which need a one-shot class, not a dead `transition:`,
+// since render() recreates every node) only fire when something actually
+// changed.
+let _prevViewMode = null;       // last-rendered viewMode, for the view-switch-in fade
+let _prevChipAreas = {};        // staffId -> areaId, for the chip-enter pop when someone lands in a new area
+let _prevAreaCounts = {};       // areaId -> present headcount, for the capacity-badge pulse
 let viewMode = 'board'; // 'board' | 'overview'
 let drawerOpen = false; // mobile-only: whether the pool sidebar overlay is open
 let sidebarForceExpanded = false; // user manually pinned the sidebar open despite an empty pool
@@ -8609,6 +8665,12 @@ function render(){
   const _mbOld = document.querySelector('.modal-body');
   const _modalScroll = _mbOld?.scrollTop || 0;
 
+  // Only play the view-switch fade when viewMode actually changed since the
+  // last render — board/overview/etc re-render constantly for unrelated
+  // reasons (every tap, every toggle), and replaying an entrance animation
+  // on all of those would just be a constant flicker.
+  const _viewJustSwitched = viewMode !== _prevViewMode;
+  _prevViewMode = viewMode;
   const mainContent = (mainViews[viewMode] || renderBoard)();
   root.innerHTML = `
     ${renderNavDrawer()}
@@ -8634,7 +8696,7 @@ function render(){
       ${dragModes && drawerOpen ? '<div class="drawer-scrim" id="drawer-scrim"></div>' : ''}
       ${viewMode==='board' ? renderSidebar() : ''}
       ${viewMode==='supervisors' ? renderSupervisorSidebar() : ''}
-      ${mainContent}
+      <div class="main-view-slot ${_viewJustSwitched?'view-switch-in':''}">${mainContent}</div>
     </div>
     ${activeModal ? renderModal() : ''}
     ${tourState ? renderTourOverlay() : ''}
@@ -9642,6 +9704,13 @@ function ciaBtn(classes, staffId, icon, label, title){
 
 function renderChip(s){
   const areaId   = state.assignments[s.id];
+  // Entrance pop when this chip has just landed in a new area since the
+  // last render (move, swap, undo/restore, rotate-now, coverage, etc. all
+  // funnel through here) — skipped on first paint, when there's no prior
+  // snapshot to compare against yet.
+  const _prevArea = _prevChipAreas[s.id];
+  const justMoved = areaId && _prevArea !== undefined && _prevArea !== areaId;
+  _prevChipAreas[s.id] = areaId;
   const area     = areaId ? getAreaById(areaId) : null;
   const isOut    = !!state.callouts[s.id];
   const isFixed  = !!(area?.fixed);  // fixed areas never rotate — no flags
@@ -9669,7 +9738,7 @@ function renderChip(s){
   const leftEarlyEvent = (state.attendanceEvents||[]).find(e=>e.staffId===s.id && e.eventType==='left_early' && e.eventDate===today);
   const readOnly = isTeamLeadRole();
   return `
-  <div class="chip ${flagged?'flagged':''} ${(isOut||isScheduled)?'out':''} ${s.isTeamLead?'lead':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''} ${dimmed?'search-dim':''} ${searched?'search-match':''} ${isCovering?'covering':''}" draggable="${readOnly?'false':'true'}" data-staff-id="${s.id}" title="${escapeHtml(s.name)}${s.tdisNumber?' · TDIS '+escapeHtml(s.tdisNumber):''}">
+  <div class="chip ${flagged?'flagged':''} ${(isOut||isScheduled)?'out':''} ${s.isTeamLead?'lead':''} ${isSelected?'selected-for-move':''} ${isSwapFirst?'swap-first':''} ${isSwapTarget?'swap-target':''} ${dimmed?'search-dim':''} ${searched?'search-match':''} ${isCovering?'covering':''} ${justMoved?'chip-enter':''}" draggable="${readOnly?'false':'true'}" data-staff-id="${s.id}" title="${escapeHtml(s.name)}${s.tdisNumber?' · TDIS '+escapeHtml(s.tdisNumber):''}">
     ${isSwapTarget?'<div class="chip-swap-target-row">⇄ Tap to swap here</div>':''}
     <div class="chip-row-header">
       <div class="chip-name-wrap">
@@ -9803,6 +9872,11 @@ function renderAreaCol(area){
   // against capacity (was showing e.g. "4/3" when only 3 were really there).
   const members = staffInArea(area.id);
   const present = activeInArea(area.id).length;
+  // Pulse the count badge only when it actually changed since the last
+  // render — this column re-renders for lots of reasons that don't touch
+  // its headcount, so gate on a real change rather than every render.
+  const countChanged = _prevAreaCounts[area.id] !== undefined && _prevAreaCounts[area.id] !== present;
+  _prevAreaCounts[area.id] = present;
   const over = present > area.capacity;
   const under = isUnderStaffed(area.id);
   const readOnly = isTeamLeadRole();
@@ -9830,7 +9904,7 @@ function renderAreaCol(area){
     <div class="area-head" draggable="${canDrag?'true':'false'}" data-drag-area="${area.id}" data-drag-dept="${area.department}" data-drag-personal="${isLead?'true':'false'}" title="${dragTitle}">
       <div class="area-name"><span class="area-drag-handle">⠿</span><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${isMine?'<span class="lead-mine-badge">Yours</span>':''}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}${under?'<span class="coverage-gap-badge" title="Coverage gap">⚠</span>':''}</div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <span class="area-count ${over?'over':under?'under':present>0?'ok':''}">${present}/${area.capacity}</span>
+        <span class="area-count ${over?'over':under?'under':present>0?'ok':''} ${countChanged?'count-pulse':''}">${present}/${area.capacity}</span>
         ${readOnly ? '' : `<button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>`}
       </div>
     </div>
@@ -9883,6 +9957,8 @@ function renderOverviewDept(g){
 function renderOverviewArea(area){
   const members = staffInArea(area.id);
   const present = activeInArea(area.id).length;
+  const countChanged = _prevAreaCounts[area.id] !== undefined && _prevAreaCounts[area.id] !== present;
+  _prevAreaCounts[area.id] = present;
   const over = present > area.capacity;
   const readOnly = isTeamLeadRole();
   // Same rule as the board's area-drop: a fixed area only accepts a tap
@@ -9894,7 +9970,7 @@ function renderOverviewArea(area){
     <div class="ov-area-head" style="border-color:${area.color}">
       <span class="area-swatch" style="background:${area.color}"></span>
       <span class="ov-area-name">${escapeHtml(area.name)}</span>
-      <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
+      <span class="area-count ${over?'over':''} ${countChanged?'count-pulse':''}">${present}/${area.capacity}</span>
     </div>
     ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="${area.id}">Move here</button>`:''}
     ${members.length===0 ? '<div class="ov-empty">No one placed</div>' : members.map(s=>renderOverviewRow(s, area.id)).join('')}
@@ -10333,6 +10409,8 @@ function renderFixedAreaCol(area){
   // same present-vs-assigned distinction as renderAreaCol() above
   const members = staffInArea(area.id);
   const present = activeInArea(area.id).length;
+  const countChanged = _prevAreaCounts[area.id] !== undefined && _prevAreaCounts[area.id] !== present;
+  _prevAreaCounts[area.id] = present;
   const over = present > area.capacity;
   // fixed areas: never show as tap-to-move target for other staff
   // but do allow receiving staff as backup (drag/tap from outside works)
@@ -10344,7 +10422,7 @@ function renderFixedAreaCol(area){
       <div class="area-name"><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;">
         <span class="fixed-badge">Fixed</span>
-        <span class="area-count ${over?'over':''}">${present}/${area.capacity}</span>
+        <span class="area-count ${over?'over':''} ${countChanged?'count-pulse':''}">${present}/${area.capacity}</span>
         <button class="area-menu-btn" data-edit-area="${area.id}">⋯</button>
       </div>
     </div>
@@ -10367,13 +10445,16 @@ function renderSupervisorBoard(){
 
 function renderSupervisorCol(sv){
   const members = staffUnderSupervisor(sv.id);
+  const svCountKey = 'sv:'+sv.id;
+  const countChanged = _prevAreaCounts[svCountKey] !== undefined && _prevAreaCounts[svCountKey] !== members.length;
+  _prevAreaCounts[svCountKey] = members.length;
   const isTapTarget = !!selectedStaffId && getStaffById(selectedStaffId)?.supervisorId !== sv.id;
   return `
   <div class="area-col" style="--area-color:${sv.color}">
     <div class="area-head">
       <div class="area-name"><span class="area-swatch" style="background:${sv.color}"></span>${escapeHtml(sv.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <span class="area-count">${members.length}</span>
+        <span class="area-count ${countChanged?'count-pulse':''}">${members.length}</span>
         <button class="area-menu-btn" data-edit-supervisor="${sv.id}">⋯</button>
       </div>
     </div>
@@ -20315,6 +20396,7 @@ function attachHandlers(){
     document.querySelectorAll('[data-approve-eval]').forEach(el=>el.addEventListener('click', async ()=>{
       const id = el.dataset.approveEval, staffId = el.dataset.approveStaff;
       el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId:id, staffId, status:'approved', reviewNote:'', reviewerId:authState.account.id}));
       showToast(sync.ok ? 'Evaluation approved ✓' : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       refreshEvalBadgeCounts();
@@ -20330,6 +20412,7 @@ function attachHandlers(){
       if(!note){ showToast('Add a note so they know what to fix', 'rust'); return; }
       const evaluationId = btn.dataset.confirmReject, staffId = btn.dataset.confirmRejectStaff;
       btn.disabled = true;
+      btn.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewEvaluation({evaluationId, staffId, status:'needs_revision', reviewNote:note, reviewerId:authState.account.id}));
       showToast(sync.ok ? 'Sent back for revision' : `Could not send back — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       refreshEvalBadgeCounts();
@@ -20338,6 +20421,7 @@ function attachHandlers(){
     on('btn-approve-all-evals', async ()=>{
       const btn = document.getElementById('btn-approve-all-evals');
       btn.disabled = true;
+      document.querySelectorAll('.eval-history-row').forEach(r=>r.classList.add('row-busy'));
       const targets = (m.items||[]).slice();
       let okCount = 0, failCount = 0;
       for(const row of targets){
@@ -20370,6 +20454,7 @@ function attachHandlers(){
         return;
       }
       el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
       const returnToAreaId = state.assignments[candidateId] || null;
       const sync = await syncCrudWrite(()=>window.RC.reviewReassignment({
         requestId:id, status:'approved', reviewerId:authState.account.id, reviewNote:'',
@@ -20395,6 +20480,7 @@ function attachHandlers(){
       const requestId = btn.dataset.confirmDeny;
       const candidateId = btn.dataset.confirmDenyCandidate;
       btn.disabled = true;
+      btn.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewReassignment({
         requestId, status:'denied', reviewerId:authState.account.id, reviewNote:note||'', candidateStaffId:candidateId,
       }));
@@ -20421,6 +20507,7 @@ function attachHandlers(){
         return;
       }
       el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
         requestId, status:'approved', reviewerId:authState.account.id,
         staffId, toAreaId:areaId, staffName, toAreaName:areaName,
@@ -20437,6 +20524,7 @@ function attachHandlers(){
       const requestId = el.dataset.denyPosReq;
       const staffId = el.dataset.denyPosStaff;
       el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewPositionRequest({
         requestId, status:'denied', reviewerId:authState.account.id, staffId,
       }));
@@ -21515,6 +21603,20 @@ async function bootApp(){
   refreshEvalBadgeCounts(); // advisory nav badge — doesn't block boot
   refreshReassignBadgeCounts();
   refreshPositionReqBadgeCounts();
+
+  // loadState() rendered once already with local/seed data (which did get
+  // the view-switch-in fade, viewMode going null -> 'board'), but that's
+  // the placeholder — the board/history loads above each re-render with
+  // real data moments later and, since viewMode never actually changes
+  // across any of them, none replay the fade. Applying the class directly
+  // to whatever .main-view-slot exists right now still plays the
+  // animation (an `animation:` retriggers on a class being added, same as
+  // on insertion) — this is the first paint that actually matters, so it
+  // gets one fade-in after the dust from however many quick renders above
+  // settles, instead of chasing which specific render is "last".
+  requestAnimationFrame(()=>{
+    document.querySelector('.main-view-slot:not(.view-switch-in)')?.classList.add('view-switch-in');
+  });
 }
 
 // ============ LIVE SYNC (Supabase Realtime) ============
