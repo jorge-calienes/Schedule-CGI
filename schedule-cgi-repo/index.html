@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rotation Control</title>
+
+<!-- PWA: installable home-screen app, no store, no fee. manifest.json
+     covers Android/Chrome; iOS Safari ignores most of it and needs its
+     own apple-* meta tags + a plain (non-manifest) touch icon instead. -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#2F5FA8">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Schedule">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -8505,6 +8517,38 @@ const openPriorExpStaffIds = new Set(); // staffIds whose "Prior area experience
 let tourState = null; // {stepIndex} while the app tour is active, else null
 let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
 
+// ── PWA install prompt ──────────────────────────────────────────────────
+// Chrome/Edge/Android fire beforeinstallprompt and hand us a prompt() we
+// can trigger from our own "Install app" nav item instead of waiting for
+// the browser's own (easy to miss) address-bar icon. iOS Safari never
+// fires this event at all — there's no programmatic install API there,
+// only the manual Share -> Add to Home Screen flow, so isIOS() below
+// routes those browsers to an instructions modal instead.
+let deferredInstallPrompt = null;
+let appInstalled = false;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  render();
+});
+window.addEventListener('appinstalled', ()=>{
+  appInstalled = true;
+  deferredInstallPrompt = null;
+  render();
+});
+function isRunningStandalone(){
+  return window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone === true;
+}
+function isIOS(){
+  // iPadOS 13+ reports as "MacIntel" in the UA, indistinguishable from a
+  // real Mac except that a Mac has no touch points at all.
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function canOfferInstall(){
+  return !isRunningStandalone() && !appInstalled && (!!deferredInstallPrompt || isIOS());
+}
+
 // ── Theme ────────────────────────────────────────────────────────────────
 let themeMode = 'light'; // 'light' | 'dark' — persisted in localStorage, applied to <html data-theme>
 try{ themeMode = localStorage.getItem('rc-theme')==='dark' ? 'dark' : 'light'; }catch(e){}
@@ -9332,6 +9376,7 @@ function renderNavDrawer(){
       <div class="nav-drawer-section">Board</div>
       <button class="nav-item" id="nav-request-coverage"><span class="nav-item-icon">🙋</span>Request coverage${leadGapCount>0?`<span class="nav-item-badge">${leadGapCount}</span>`:''}</button>
       <div class="nav-divider"></div>
+      ${canOfferInstall()?'<button class="nav-item" id="nav-install-app"><span class="nav-item-icon">📲</span>Install app</button>':''}
       <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
     </nav>`;
@@ -9386,6 +9431,7 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
+      ${canOfferInstall()?'<button class="nav-item" id="nav-install-app"><span class="nav-item-icon">📲</span>Install app</button>':''}
       <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
@@ -10592,7 +10638,8 @@ function closeModal(){ activeModal = null; _prevModalType = null; _prevStaffMana
 function renderModal(){
   const m = activeModal;
   let inner = '';
-  if(m.type==='placement-conflict') inner = renderPlacementConflictModal(m);
+  if(m.type==='install-app-help') inner = renderInstallAppModal(m);
+  else if(m.type==='placement-conflict') inner = renderPlacementConflictModal(m);
   else if(m.type==='team-lead-warning') inner = renderTeamLeadWarningModal(m);
   else if(m.type==='capacity-full') inner = renderCapacityFullModal(m);
   else if(m.type==='cert-block') inner = renderCertBlockModal(m);
@@ -13357,6 +13404,29 @@ function renderAccountGrantFormModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="grant-cancel-btn">Cancel</button>
       <button class="btn btn-primary" id="grant-submit-btn" ${canSubmit?'':'disabled'} style="margin-left:auto;">${m.saving?'Saving…':copy.submit}</button>
+    </div>
+  </div>`;
+}
+
+// --- Install app (iOS/unsupported-browser fallback — Chrome/Edge/Android
+//     get the real native install prompt instead and never see this) ---
+function renderInstallAppModal(m){
+  return `
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <div><h2>Install app</h2><p>Add this to your home screen for one-tap access, just like a regular app.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <ol style="margin:0;padding-left:20px;line-height:1.9;font-size:15px;">
+        <li>Tap the <b>Share</b> button <span style="font-family:var(--mono);">⬆️</span> in Safari's toolbar</li>
+        <li>Scroll down and tap <b>Add to Home Screen</b></li>
+        <li>Tap <b>Add</b> in the top right</li>
+      </ol>
+      <div class="small-muted" style="margin-top:14px;">That's it — the icon on your home screen opens straight to the board, full-screen, no browser bar.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="install-app-done" style="margin-left:auto;">Got it</button>
     </div>
   </div>`;
 }
@@ -17893,6 +17963,19 @@ function attachHandlers(){
   on('nav-manage-languages',    ()=>{ closeNav(); openModal({type:'languages-manager'}); });
   on('nav-manage-positions',    ()=>{ closeNav(); openModal({type:'positions-manager'}); });
   on('nav-change-pin',          ()=>{ closeNav(); openModal({type:'change-pin'}); });
+  on('nav-install-app', async ()=>{
+    closeNav();
+    if(deferredInstallPrompt){
+      const promptEvent = deferredInstallPrompt;
+      deferredInstallPrompt = null; // a captured prompt is good for one use only
+      promptEvent.prompt();
+      try{ await promptEvent.userChoice; }catch(e){}
+      render();
+    } else {
+      openModal({type:'install-app-help'});
+    }
+  });
+  on('install-app-done', closeModal);
   on('nav-sign-out', async ()=>{
     closeNav();
     if(window.RC && typeof window.RC.unsubscribeFromBoardChanges==='function'){
@@ -21715,6 +21798,19 @@ async function runRealtimeRefresh(){
   authState.status = 'signed-out';
   render();
 })();
+</script>
+<script>
+// PWA service worker — purely installability + a same-origin network-blip
+// fallback (see sw.js's own comments for exactly what it does and doesn't
+// touch). Registered fire-and-forget: a failure here (unsupported browser,
+// blocked by some proxy) should never block the app itself from loading.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js').catch(e=>{
+      console.warn('Service worker registration failed:', e && e.message);
+    });
+  });
+}
 </script>
 </body>
 </html>
