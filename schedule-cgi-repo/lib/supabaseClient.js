@@ -41,15 +41,31 @@ export async function signInWithPin(name, pin) {
   // expected pattern" SyntaxError seen on iOS Safari, not something this
   // app's own code throws) needs the phase to know whether it's the network
   // call, the response parsing, or the local Supabase session creation.
+  //
+  // Retrying only wraps this one fetch(), and only for the network-level
+  // failure case ("Failed to fetch" — the request never reached the server
+  // at all, or the response never came back), not a response the server
+  // did return. On a dropped wifi connection — common on building networks
+  // with thick walls/shielding — one blip used to mean the person had to
+  // notice it failed and tap Sign in again themselves; now it's retried
+  // automatically before giving up. Safe to retry blindly: a prior attempt
+  // that never reached the server touched no state at all, and one that
+  // did but whose response got lost just repeats a sign-in the person
+  // would have redone by hand anyway (an eventual wrong-PIN rejection
+  // still counts once against the 5-strikes lockout either way).
   let res;
-  try {
-    res = await fetch('/api/auth/pin-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, pin }),
-    });
-  } catch (e) {
-    throw new Error(`[fetch] ${e && e.message || e}`);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await fetch('/api/auth/pin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, pin }),
+      });
+      break;
+    } catch (e) {
+      if (attempt >= 3) throw new Error(`[fetch] ${e && e.message || e}`);
+      await new Promise(r => setTimeout(r, attempt * 800));
+    }
   }
 
   let body;

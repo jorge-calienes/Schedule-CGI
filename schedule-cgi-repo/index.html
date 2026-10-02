@@ -7196,7 +7196,7 @@ function renderSignInScreen(){
       </div>
 
       <button type="button" id="rc-signin-submit" class="rc-signin-submit-btn" ${submitting?'disabled':''}>
-        ${submitting ? 'Signing in…' : 'Sign in'}
+        ${submitting ? (authState.submittingSlow ? 'Still trying…' : 'Signing in…') : 'Sign in'}
       </button>
       ${submitting?'':'<button type="button" id="rc-toggle-request" style="background:none;border:none;color:var(--md-sys-color-primary);text-decoration:underline;cursor:pointer;font-size:13px;margin-top:14px;padding:8px;">Don\'t have access yet? Request it</button>'}
     </div>
@@ -7302,19 +7302,31 @@ async function attemptSignIn(){
   authState.status = 'submitting';
   authState.error = '';
   authState.errorDetail = '';
+  authState.submittingSlow = false;
   render();
+  // signInWithPin() already retries a dropped connection a couple times
+  // under the hood — on a flaky building network that can add several
+  // seconds before it either succeeds or gives up. Without this, "Signing
+  // in…" looks identical whether it's about to finish or already stuck,
+  // which is exactly when someone starts tapping the button again. Timer
+  // is cleared in every exit path below, not just the slow one.
+  const slowTimer = setTimeout(()=>{ authState.submittingSlow = true; render(); }, 4000);
   try{
     const account = await window.RC.signInWithPin(name, authState.pin);
+    clearTimeout(slowTimer);
     authState.account = account;
     authState.status = 'signed-in';
     authState.pin = '';
     authState.error = '';
     authState.errorDetail = '';
+    authState.submittingSlow = false;
     await bootApp();
   }catch(e){
+    clearTimeout(slowTimer);
     console.error('Sign-in failed:', e);
     authState.status = 'signed-out';
     authState.pin = '';
+    authState.submittingSlow = false;
     authState.error = friendlySignInError(e);
     // Small, muted technical detail shown under the friendly message —
     // not for the average user, just so a screenshot is enough to diagnose
