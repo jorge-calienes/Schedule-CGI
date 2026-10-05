@@ -11382,6 +11382,17 @@ function renderStaffManagerModal(m){
     // open, since editing/removing one day out of a merged range needs the
     // individual record, not the summary.
     const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    // "Consecutive" has to mean touching OR overlapping, not just exactly
+    // back-to-back — a bulk import or a manually-added range can easily
+    // produce two rows like Oct 13→15 and Oct 15→16 (sharing the 15th)
+    // that are obviously one continuous block but never satisfied the old
+    // nextDay(last.end)===start equality check, since the second row's
+    // start isn't the day AFTER last.end, it's last.end itself (or
+    // earlier). start<=nextDay(last.end) catches both shapes; the group's
+    // end has to take the later of the two dates (string-comparable since
+    // both are ISO yyyy-mm-dd), not just overwrite with whichever record
+    // happened to sort in — a later-sorted row can still end earlier than
+    // one already absorbed into the group.
     const groupConsecutive = rows => {
       const sorted = rows.slice().sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
       const groups = [];
@@ -11390,8 +11401,8 @@ function renderStaffManagerModal(m){
         const end   = r.kind==='timeoff' ? r.endDate   : r.eventDate;
         const note  = (r.kind==='timeoff' ? r.label : r.note) || '';
         const last = groups[groups.length-1];
-        if(r.kind==='timeoff' && last && last.kind==='timeoff' && nextDay(last.end)===start && !r.coverageStaffId){
-          last.end = end;
+        if(r.kind==='timeoff' && last && last.kind==='timeoff' && start<=nextDay(last.end) && !r.coverageStaffId){
+          if(end > last.end) last.end = end;
           last.items.push(r);
           if(note !== last.note) last.mixedNotes = true;
         } else {
@@ -11406,13 +11417,18 @@ function renderStaffManagerModal(m){
       const groupKey = `${g.kind}|${g.start}|${g.end}`;
       const expanded = !!(m.expandedTimeGroups||{})[groupKey];
       const dateText = escapeHtml(g.start)+' → '+escapeHtml(g.end);
+      // Calendar span of the merged range, not the record count — once
+      // overlapping rows (not just exactly-adjacent ones) can merge, the
+      // two numbers aren't the same thing anymore (e.g. two 1-day-
+      // overlapping rows span 3 calendar days but are only 2 records).
+      const spanDays = Math.round((new Date(g.end+'T00:00:00') - new Date(g.start+'T00:00:00')) / 86400000) + 1;
       return `<div>
         <div class="pm-row" style="align-items:flex-start;cursor:pointer;" data-tt-group-toggle="${escapeHtml(groupKey)}">
           <span class="pm-row-label" style="display:flex;align-items:flex-start;gap:10px;">
             <span class="pm-icon-badge ${meta.cls}" style="width:28px;height:28px;min-width:28px;font-size:13px;">${meta.icon}</span>
             <span>
               <span class="time-off-dates">${dateText}</span>
-              <span class="small-muted" style="font-size:11px;"> · ${g.items.length} days</span>
+              <span class="small-muted" style="font-size:11px;"> · ${spanDays} days</span>
               ${g.note && !g.mixedNotes?'<br><span class="time-off-note small-muted">'+escapeHtml(g.note)+'</span>':''}
             </span>
           </span>
