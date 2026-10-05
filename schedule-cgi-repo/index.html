@@ -11963,17 +11963,24 @@ function buildDailyChangesEmail(){
   lines.push('', 'LATE ARRIVALS', ...listOrNone(lateRows));
   lines.push('', 'LEAVING EARLY', ...listOrNone(earlyRows));
 
-  lines.push('', 'COVERAGE');
+  // Waived call-outs ("no coverage needed") aren't a reassignment at all —
+  // nothing changed for anyone, so they're noise here, not a line item.
+  // Coverer-first ("who's doing the covering") reads better than out-
+  // person-first for someone scanning who's standing where right now;
+  // the out person's own name still appears, just tagged "(out)" instead
+  // of leading the line.
+  lines.push('', 'REASSIGNMENTS');
+  const visibleRows = rows.filter(r=>!r.waived);
   if(rows.length===0){
     lines.push('No call-outs today — no coverage needed.');
+  } else if(visibleRows.length===0){
+    lines.push('No reassignments needed today.');
   } else {
-    rows.forEach(r=>{
+    visibleRows.forEach(r=>{
       lines.push((r.area?r.area.name:'No area')+':');
-      lines.push('  '+r.s.name+' → '+(r.waived
-        ? 'No coverage needed'
-        : r.coverer
-          ? 'Covered by '+r.coverer.name+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
-          : 'NEEDS COVERAGE'));
+      lines.push('  '+(r.coverer
+        ? r.coverer.name+' → covering '+r.s.name+' (out)'+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
+        : 'NEEDS COVERAGE → '+r.s.name+' (out)'));
       lines.push('');
     });
     const pending = rows.filter(r=>!r.coverer && !r.waived && r.area).length;
