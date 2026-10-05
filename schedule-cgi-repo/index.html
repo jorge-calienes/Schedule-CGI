@@ -11965,10 +11965,14 @@ function buildDailyChangesEmail(){
 
   // Waived call-outs ("no coverage needed") aren't a reassignment at all —
   // nothing changed for anyone, so they're noise here, not a line item.
-  // Coverer-first ("who's doing the covering") reads better than out-
-  // person-first for someone scanning who's standing where right now;
-  // the out person's own name still appears, just tagged "(out)" instead
-  // of leading the line.
+  // The out person's own name is dropped too (for the covered case) —
+  // NOT PRESENT TODAY above already named them, so repeating it here was
+  // redundant. A flat "{coverer} ({home}) → {area}" line answers the
+  // actually-useful question — where's everyone standing right now — in
+  // one glance, no per-area grouping needed since the destination area is
+  // already in the line. The one case that still names the out person is
+  // NEEDS COVERAGE, since there's no coverer name to show instead and
+  // knowing who's missing is the one piece of real info left to give.
   lines.push('', 'REASSIGNMENTS');
   const visibleRows = rows.filter(r=>!r.waived);
   if(rows.length===0){
@@ -11977,14 +11981,13 @@ function buildDailyChangesEmail(){
     lines.push('No reassignments needed today.');
   } else {
     visibleRows.forEach(r=>{
-      lines.push((r.area?r.area.name:'No area')+':');
-      lines.push('  '+(r.coverer
-        ? r.coverer.name+' → covering '+r.s.name+' (out)'+(r.covererFromArea?' (from '+r.covererFromArea.name+')':'')
-        : 'NEEDS COVERAGE → '+r.s.name+' (out)'));
-      lines.push('');
+      const areaName = r.area ? r.area.name : 'No area';
+      lines.push(r.coverer
+        ? r.coverer.name+(r.covererFromArea?' ('+r.covererFromArea.name+')':'')+' → '+areaName
+        : r.s.name+' ('+areaName+') → NEEDS COVERAGE');
     });
     const pending = rows.filter(r=>!r.coverer && !r.waived && r.area).length;
-    lines.push(pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
+    lines.push('', pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
   }
 
   lines.push('', 'REASSIGNMENTS (today only)');
