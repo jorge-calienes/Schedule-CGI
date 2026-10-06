@@ -4749,6 +4749,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .timeoff-split-icon{font-size:20px;}
 .to-summary-pill{font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;padding:4px 12px;border-radius:var(--md-sys-shape-corner-full);background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);}
 .to-summary-pill.warn{background:#FFF3E0;color:#E65100;}
+:root[data-theme="dark"] .to-summary-pill.warn{background:#3A2E12;color:#FFC46A;}
 
 /* Split body: calendar | list */
 .timeoff-split-body{
@@ -4869,51 +4870,86 @@ button{font-family:var(--sans);cursor:pointer;}
 /* ── List view ── */
 .to-list-wrap{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--md-space-3) var(--md-space-4) var(--md-space-5);}
 .to-section-head{
-    display:flex;align-items:center;justify-content:space-between;
+    display:flex;align-items:center;gap:10px;
     font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
-    padding:var(--md-space-2) var(--md-space-4);
-    border-radius:var(--md-sys-shape-corner-small);
-    margin-bottom:var(--md-space-3);
-  }
-.to-section-head.warn{background:#FFF3E0;color:#E65100;}
-.to-section-head.ok{background:#E8F5E9;color:#1B5E20;}
-
-.to-list-card{
-    background:var(--md-sys-color-surface-container-lowest);
-    border:1px solid var(--md-sys-color-outline-variant);
+    padding:10px var(--md-space-4);
     border-radius:var(--md-sys-shape-corner-medium);
     margin-bottom:var(--md-space-3);
-    overflow:hidden;
-    transition:box-shadow .15s;
+    box-shadow:0 1px 2px rgba(0,0,0,.04);
   }
-.to-list-card:hover{box-shadow:var(--md-sys-elevation-1);}
+.to-section-head-icon{
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    width:22px;height:22px;border-radius:50%;font-size:12px;
+  }
+.to-section-head.warn{background:#FFF3E0;color:#E65100;}
+.to-section-head.warn .to-section-head-icon{background:#FFE0B2;}
+.to-section-head.ok{background:#E8F5E9;color:#1B5E20;}
+.to-section-head.ok .to-section-head-icon{background:#C8E6C9;}
+:root[data-theme="dark"] .to-section-head.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .to-section-head.warn .to-section-head-icon{background:#4E3D18;}
+:root[data-theme="dark"] .to-section-head.ok{background:#163821;color:#8FE0A5;}
+:root[data-theme="dark"] .to-section-head.ok .to-section-head-icon{background:#1E4A2B;}
+
+.to-list-card{
+    position:relative;
+    background:var(--md-sys-color-surface-container-lowest);
+    border:1px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-large);
+    margin-bottom:var(--md-space-3);
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.05);
+    transition:box-shadow .15s,transform .15s,border-color .15s;
+  }
+.to-list-card::before{
+    content:'';position:absolute;top:0;left:0;bottom:0;width:4px;
+    background:var(--md-sys-color-outline-variant);
+  }
+.to-list-card.needs-cov::before{background:#F57C00;}
+.to-list-card.has-cov::before{background:#2E7D32;}
+.to-list-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.09);transform:translateY(-1px);}
 .to-list-card.active{border-color:var(--md-sys-color-primary);}
+:root[data-theme="dark"] .to-list-card{box-shadow:0 1px 3px rgba(0,0,0,.3);}
+:root[data-theme="dark"] .to-list-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.4);}
 
 /* header stacks vertically: top row is name + date/Edit/✕ together on one
      line, chips (TDIS/AGS/area/Now/reason) wrap on their own line below —
      instead of the name+chips and the date+actions competing for the same
      row and unpredictably wrapping apart on narrow screens. */
 .to-card-header{
-    display:flex;flex-direction:column;gap:6px;
-    padding:var(--md-space-3) var(--md-space-4);
+    display:flex;flex-direction:column;gap:7px;
+    padding:var(--md-space-3) var(--md-space-4) var(--md-space-3) calc(var(--md-space-4) + 4px);
     border-bottom:1px solid var(--md-sys-color-outline-variant);
   }
 .to-card-toprow{display:flex;align-items:center;justify-content:space-between;gap:var(--md-space-2);}
-.to-card-name-wrap{display:flex;align-items:center;gap:6px;min-width:0;}
-.to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.to-card-name-wrap{display:flex;align-items:center;gap:7px;min-width:0;}
+.to-list-name{font-weight:700;font-size:var(--md-sys-typescale-body-large-size);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .to-card-actions{display:flex;align-items:center;gap:var(--md-space-2);flex-shrink:0;}
 .to-card-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .to-active-pill{font-size:10px;font-weight:700;color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
-.to-card-dates{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
+.to-card-dates{
+    font-size:var(--md-sys-typescale-body-small-size);font-weight:700;
+    color:var(--md-sys-color-on-surface-variant);white-space:nowrap;
+    background:var(--md-sys-color-surface-container-high);
+    padding:3px 9px;border-radius:var(--md-sys-shape-corner-full);
+  }
 .to-card-bdays{font-size:10.5px;font-weight:700;color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-variant,#EEF1F4);border-radius:6px;padding:2px 6px;white-space:nowrap;}
 .to-card-reason{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);padding:2px 8px;border-radius:var(--md-sys-shape-corner-full);}
+.to-group-chevron{
+    display:flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:50%;flex-shrink:0;
+    font-size:11px;color:var(--md-sys-color-on-surface-variant);
+    background:var(--md-sys-color-surface-container-high);
+    transition:background .15s,transform .15s;
+  }
+.to-card-header:hover .to-group-chevron{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);}
 
-.to-card-coverage{padding:var(--md-space-3) var(--md-space-4);}
+.to-card-coverage{padding:var(--md-space-3) var(--md-space-4) var(--md-space-3) calc(var(--md-space-4) + 4px);}
 
 /* Best-fit suggestion cards — a horizontal row of compact cards. */
 .to-suggestion-label{font-size:var(--md-sys-typescale-body-small-size);font-weight:600;color:var(--md-sys-color-on-surface-variant);margin-bottom:var(--md-space-2);}
 .to-suggestion-row{display:flex;align-items:stretch;gap:var(--md-space-2);flex-wrap:wrap;}
 .to-sug-card{
+    position:relative;
     display:flex;flex-direction:column;align-items:center;gap:2px;
     background:var(--md-sys-color-surface-container-low);
     border:1.5px solid var(--md-sys-color-outline-variant);
@@ -4922,9 +4958,20 @@ button{font-family:var(--sans);cursor:pointer;}
     min-width:72px;
     cursor:pointer;
     font-family:var(--sans);
-    transition:border-color .15s,background .15s;
+    transition:border-color .15s,background .15s,transform .15s;
   }
-.to-sug-card:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+.to-sug-card:hover{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);transform:translateY(-1px);}
+.to-sug-card.top-pick{border-color:#C9A227;background:linear-gradient(180deg,#FFF9E6,var(--md-sys-color-surface-container-low) 70%);}
+.to-sug-card.top-pick:hover{background:linear-gradient(180deg,#FFF3CC,var(--md-sys-color-primary-container) 70%);}
+.to-sug-top-badge{
+    position:absolute;top:-8px;left:50%;transform:translateX(-50%);
+    font-size:9px;font-weight:700;letter-spacing:.02em;white-space:nowrap;
+    color:#6B5000;background:#FFD54F;
+    padding:1px 7px;border-radius:var(--md-sys-shape-corner-full);
+    box-shadow:0 1px 2px rgba(0,0,0,.15);
+  }
+:root[data-theme="dark"] .to-sug-card.top-pick{border-color:#C9A227;background:linear-gradient(180deg,#352B0E,var(--md-sys-color-surface-container-low) 70%);}
+:root[data-theme="dark"] .to-sug-top-badge{color:#3A2E05;background:#E0B83D;}
 .to-sug-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
 .to-sug-exp{font-size:10px;font-weight:700;white-space:nowrap;}
 .to-sug-times{font-size:9px;color:var(--md-sys-color-on-surface-variant);}
@@ -4979,9 +5026,17 @@ button{font-family:var(--sans);cursor:pointer;}
 
 /* Coverage assigned badge */
 .to-cov-badge{display:flex;align-items:center;gap:var(--md-space-2);background:#E8F5E9;border-radius:var(--md-sys-shape-corner-small);padding:var(--md-space-2) var(--md-space-3);}
-.to-cov-icon{color:#2E7D32;font-size:16px;font-weight:700;flex-shrink:0;}
+.to-cov-icon{
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    width:20px;height:20px;border-radius:50%;
+    background:#2E7D32;color:#fff;font-size:11px;font-weight:700;
+  }
 .to-cov-name{font-weight:700;font-size:var(--md-sys-typescale-body-medium-size);color:#1B5E20;}
 .to-cov-label{font-size:var(--md-sys-typescale-body-small-size);color:#388E3C;}
+:root[data-theme="dark"] .to-cov-badge{background:#163821;}
+:root[data-theme="dark"] .to-cov-icon{background:#4CAF50;color:#102414;}
+:root[data-theme="dark"] .to-cov-name{color:#8FE0A5;}
+:root[data-theme="dark"] .to-cov-label{color:#6FBF7F;}
 .to-no-area{font-size:var(--md-sys-typescale-body-small-size);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
 
 /* Empty state */
@@ -8036,24 +8091,26 @@ function rankCandidatesForArea(areaId, excludeStaffIds){
       const repeat = isRepeatArea(s.id, areaId);
       const sinceWorked = periodsSinceWorked(s.id, areaId);
       const timesWorked = timesWorkedArea(s.id, areaId);
+      const rating = getAreaRating(s.id, areaId);
       const manualPrior = hasManualPriorExperience(s.id, areaId);
       const hasExperience = sinceWorked !== Infinity || manualPrior;
       const wouldDisplaceLead = isTeamLeadDisplaced(s.id, areaId);
-      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, hasExperience, manualPrior, currentArea: state.assignments[s.id], wouldDisplaceLead};
+      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, rating, hasExperience, manualPrior, currentArea: state.assignments[s.id], wouldDisplaceLead};
     })
     .sort((a,b)=>{
       // avoid pulling team leads off their own area first; then fewer conflicts;
-      // then prefer staff who've worked this area before — via real rotation
-      // history (most recent first, then most times worked) or a manually-
-      // marked prior-experience flag (ranks after any real-history match,
-      // since we don't know how recent it was) — since they need the least
-      // re-training to cover it well; people with neither rank last.
+      // then prefer staff who've worked this area before — ranked by most
+      // rotations in it and their best evaluation rating there, recency only
+      // breaking remaining ties — or a manually-marked prior-experience flag
+      // (ranks after any real-history match, since we don't know how recent
+      // or how well-rated it was); people with neither rank last.
       if((a.wouldDisplaceLead?1:0) !== (b.wouldDisplaceLead?1:0)) return (a.wouldDisplaceLead?1:0)-(b.wouldDisplaceLead?1:0);
       if(a.conflicts.length!==b.conflicts.length) return a.conflicts.length-b.conflicts.length;
       if(a.hasExperience !== b.hasExperience) return a.hasExperience ? -1 : 1;
       if(a.hasExperience && b.hasExperience){
-        if(a.sinceWorked!==b.sinceWorked) return a.sinceWorked-b.sinceWorked; // smaller gap = worked it more recently = better fit
-        if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more times worked = more familiar
+        if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more rotations in this area = more familiar
+        if(a.rating!==b.rating) return b.rating-a.rating; // higher evaluation rating = better fit
+        if(a.sinceWorked!==b.sinceWorked) return a.sinceWorked-b.sinceWorked; // smaller gap = worked it more recently = tiebreaker
       }
       if((a.currentArea?1:0) !== (b.currentArea?1:0)) return (a.currentArea?1:0)-(b.currentArea?1:0);
       return a.staff.name.localeCompare(b.staff.name);
@@ -8513,6 +8570,7 @@ let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
+let timeOffExpandedGroups = {}; // {groupKey: true} — which merged multi-day Time Off list cards are expanded to show their individual days
 const openPriorExpStaffIds = new Set(); // staffIds whose "Prior area experience" <details> is expanded — persists across re-renders while checking boxes, scoped per staff (and shared across the two modals that both show this section) so opening it for one person doesn't leave it pre-expanded for the next
 let tourState = null; // {stepIndex} while the app tour is active, else null
 let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
@@ -9110,22 +9168,32 @@ function renderCoverageSuggestions(r){
   if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
   const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
   const others = state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  // r.ids covers every merged day (see groupByStaff in renderTimeOffView) so
+  // picking a coverage person for a multi-day request covers the whole span,
+  // not just its first day. Plain single-entry callers never set r.ids.
+  const assignIds = (r.ids||[r.id]).join(',');
+  // Flag index 0 as the top pick only when it's a genuinely better-ranked
+  // option (some real experience/rating) among more than one choice —
+  // otherwise the badge would just be noise on an all-"No exp." list.
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
   <div class="to-suggestion-row">
-    ${suggestions.map(s=>`
-      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
+    ${suggestions.map((s,i)=>{
+      const isTop = i===0 && suggestions.length>1 && (s.timesWorked>0 || s.rating>0);
+      return `
+      <button class="to-sug-card${isTop?' top-pick':''}" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${assignIds}" data-to-assign-cov="${s.staff.id}">
+        ${isTop?`<span class="to-sug-top-badge">★ Top pick</span>`:''}
         <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
         <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
         ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
-      </button>`).join('')}
+      </button>`;}).join('')}
   </div>
   ${others.length>0?`
   <details class="to-others-details">
     <summary class="to-others-bar">Others <span class="to-others-count">${others.length}</span></summary>
     <div class="to-others-list">
       ${others.map(s=>`
-        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.id}">
+        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${assignIds}" data-to-assign-cov="${s.id}">
           <span class="to-sug-avatar">${escapeHtml(s.name.charAt(0))}</span>
           <span class="to-sug-row-name">${escapeHtml(s.name)}</span>
         </button>`).join('')}
@@ -9235,12 +9303,40 @@ function renderTimeOffView(){
 
   // ── LIST ──────────────────────────────────────────────────────────
   const renderList = () => {
-    const renderCard = (r) => {
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+
+    // Merge one staff member's consecutive/overlapping time-off records into
+    // a single row — otherwise a week requested as separate daily entries
+    // shows that person's name once per day instead of once for the span.
+    const groupByStaff = (rows) => {
+      const sorted = rows.slice().sort((a,b)=>a.startDate.localeCompare(b.startDate));
+      const groups = [];
+      sorted.forEach(r=>{
+        const last = groups[groups.length-1];
+        const sameCov = (last?.covStaff?.id||null) === (r.covStaff?.id||null);
+        const sameArea = (last?.area?.id||null) === (r.area?.id||null);
+        if(last && last.staff.id===r.staff.id && sameCov && sameArea && r.startDate<=nextDay(last.endDate)){
+          if(r.endDate > last.endDate) last.endDate = r.endDate;
+          if(r.label !== last.label) last.mixedLabels = true;
+          last.ids.push(r.id);
+          last.items.push(r);
+        } else {
+          groups.push({...r, ids:[r.id], items:[r], mixedLabels:false});
+        }
+      });
+      return groups;
+    };
+
+    const renderCard = (g) => {
+      const r = g; // merged representative — startDate/endDate already span the whole group
       const isActive  = r.startDate<=today && r.endDate>=today;
       const areaColor = r.area?.color||'#aaa';
+      const isGroup   = g.items.length>1;
+      const groupKey  = `${r.staff.id}|${r.startDate}|${r.endDate}`;
+      const expanded  = !!timeOffExpandedGroups[groupKey];
       return `
-      <div class="to-list-card ${isActive?'active':''}">
-        <div class="to-card-header">
+      <div class="to-list-card ${isActive?'active':''} ${r.covStaff?'has-cov':'needs-cov'}">
+        <div class="to-card-header" ${isGroup?`data-to-group-toggle="${escapeHtml(groupKey)}" style="cursor:pointer;"`:''}>
           <div class="to-card-toprow">
             <div class="to-card-name-wrap">
               <span class="area-dot" style="background:${areaColor}"></span>
@@ -9252,8 +9348,10 @@ function renderTimeOffView(){
                 const bDays = businessDaysBetween(r.startDate, r.endDate);
                 return r.startDate!==r.endDate ? `<span class="to-card-bdays" title="Weekdays only — weekends aren't counted">${bDays} day${bDays===1?'':'s'}</span>` : '';
               })()}
-              <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
-              <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
+              ${isGroup
+                ? `<span class="to-group-chevron">${expanded?'▾':'▸'}</span>`
+                : `<button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
+                   <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>`}
             </div>
           </div>
           <div class="to-card-chips">
@@ -9261,24 +9359,36 @@ function renderTimeOffView(){
             ${r.staff.isSubcontractor?'<span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}
             ${r.area?`<span class="to-entry-area" style="background:${areaColor}18;color:${areaColor};border:1px solid ${areaColor}40;">${escapeHtml(r.area.name)}</span>`:'<span class="to-entry-area unassigned">No area</span>'}
             ${isActive?'<span class="to-active-pill">● Now</span>':''}
-            ${r.label?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
+            ${isGroup?`<span class="to-card-reason">${g.items.length} requests</span>`:''}
+            ${r.label && !g.mixedLabels?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
           </div>
         </div>
+        ${isGroup && expanded ? `
+        <div style="margin:0 var(--md-space-4) 0 calc(var(--md-space-4) + 4px);border-left:2px solid var(--md-sys-color-outline-variant,#ddd);padding-left:10px;">
+          ${g.items.map(it=>`
+            <div class="to-card-toprow" style="padding:6px 0;">
+              <span class="small-muted" style="font-size:13px;">${it.startDate===it.endDate?it.startDate:it.startDate+' → '+it.endDate}${it.label?' · '+escapeHtml(it.label):''}</span>
+              <div class="to-card-actions">
+                <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${it.staff.id}" data-to-edit-id="${it.id}">Edit</button>
+                <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${it.staff.id}" data-to-delete-id="${it.id}">✕</button>
+              </div>
+            </div>`).join('')}
+        </div>`:''}
         <div class="to-card-coverage">
           ${r.covStaff
             ? `<div class="to-cov-badge">
                 <span class="to-cov-icon">✓</span>
                 <span class="to-cov-name">${escapeHtml(r.covStaff.name)}</span>
                 <span class="to-cov-label">covering</span>
-                <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${r.id}" data-to-staff="${r.staff.id}">Remove</button>
+                <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${g.ids.join(',')}" data-to-staff="${r.staff.id}">Remove</button>
               </div>`
             : renderCoverageSuggestions(r)}
         </div>
       </div>`;
     };
 
-    const needsCovList = upcoming.filter(r=>!r.covStaff);
-    const hasCovList   = upcoming.filter(r=>!!r.covStaff);
+    const needsCovList = groupByStaff(upcoming.filter(r=>!r.covStaff));
+    const hasCovList   = groupByStaff(upcoming.filter(r=>!!r.covStaff));
 
     if(upcoming.length===0) return `
       <div class="to-empty-state">
@@ -9291,12 +9401,14 @@ function renderTimeOffView(){
     <div class="to-list-wrap">
       ${needsCovList.length>0?`
         <div class="to-section-head warn">
-          <span>⚠ ${needsCovList.length} need${needsCovList.length===1?'s':''} coverage</span>
+          <span class="to-section-head-icon">⚠</span>
+          <span>${needsCovList.length} need${needsCovList.length===1?'s':''} coverage</span>
         </div>
         ${needsCovList.map(renderCard).join('')}`:''}
       ${hasCovList.length>0?`
         <div class="to-section-head ok" style="margin-top:${needsCovList.length?'var(--md-space-5)':'0'};">
-          <span>✓ ${hasCovList.length} covered</span>
+          <span class="to-section-head-icon">✓</span>
+          <span>${hasCovList.length} covered</span>
         </div>
         ${hasCovList.map(renderCard).join('')}`:''}
     </div>`;
@@ -17862,18 +17974,26 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
     on('btn-toggle-cal-expand', ()=>{ timeOffCalExpanded=!timeOffCalExpanded; render(); });
 
-    // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
-      const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
-      if(!sid||!rid||!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
+    // expand/collapse a merged multi-day card to show its individual days
+    document.querySelectorAll('[data-to-group-toggle]').forEach(el=>el.addEventListener('click',()=>{
+      const key = el.dataset.toGroupToggle;
+      timeOffExpandedGroups = {...timeOffExpandedGroups, [key]: !timeOffExpandedGroups[key]};
       render();
     }));
 
-    // remove coverage
+    // best-fit suggestion card clicks — toAssignId may be a comma-joined
+    // list of ids when the card represents a merged multi-day request
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+      const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
+      if(!sid||!rid||!covId) return;
+      applyTimeOffCoverageForIds(sid, rid.split(','), covId);
+      render();
+    }));
+
+    // remove coverage — same comma-joined-ids handling as above
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      removeTimeOffCoverage(sid, rid);
+      removeTimeOffCoverageForIds(sid, rid.split(','));
       render();
     }));
 
@@ -21207,6 +21327,28 @@ function removeTimeOffCoverage(sid, rid){
   delete entry.coverageStaffId;
   syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:null}), 'time off coverage');
   saveState();
+}
+
+// Same-staff consecutive time-off records get merged into one row in the
+// Time Off list (see groupByStaff in renderTimeOffView) so a multi-day
+// request only shows that person's name once. Picking (or removing) a
+// coverer for that merged row needs to apply to every day it represents,
+// not just the first — these wrap the single-id versions above for that.
+// Only the first id runs the full applyTimeOffCoverage() (today's-callout
+// check + the actual board move + the toast); the rest just link the same
+// coverer on their own record so the move/toast isn't repeated per day.
+function applyTimeOffCoverageForIds(sid, ids, covId){
+  ids.forEach((rid, i) => {
+    if(i===0){ applyTimeOffCoverage(sid, rid, covId); return; }
+    const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+    if(!entry) return;
+    entry.coverageStaffId = covId;
+    syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:covId}), 'time off coverage');
+  });
+  saveState();
+}
+function removeTimeOffCoverageForIds(sid, ids){
+  ids.forEach(rid => removeTimeOffCoverage(sid, rid));
 }
 
 // ── Scheduled time off helpers ──
