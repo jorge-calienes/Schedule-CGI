@@ -8036,24 +8036,26 @@ function rankCandidatesForArea(areaId, excludeStaffIds){
       const repeat = isRepeatArea(s.id, areaId);
       const sinceWorked = periodsSinceWorked(s.id, areaId);
       const timesWorked = timesWorkedArea(s.id, areaId);
+      const rating = getAreaRating(s.id, areaId);
       const manualPrior = hasManualPriorExperience(s.id, areaId);
       const hasExperience = sinceWorked !== Infinity || manualPrior;
       const wouldDisplaceLead = isTeamLeadDisplaced(s.id, areaId);
-      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, hasExperience, manualPrior, currentArea: state.assignments[s.id], wouldDisplaceLead};
+      return {staff:s, conflicts, repeat, sinceWorked, timesWorked, rating, hasExperience, manualPrior, currentArea: state.assignments[s.id], wouldDisplaceLead};
     })
     .sort((a,b)=>{
       // avoid pulling team leads off their own area first; then fewer conflicts;
-      // then prefer staff who've worked this area before — via real rotation
-      // history (most recent first, then most times worked) or a manually-
-      // marked prior-experience flag (ranks after any real-history match,
-      // since we don't know how recent it was) — since they need the least
-      // re-training to cover it well; people with neither rank last.
+      // then prefer staff who've worked this area before — ranked by most
+      // rotations in it and their best evaluation rating there, recency only
+      // breaking remaining ties — or a manually-marked prior-experience flag
+      // (ranks after any real-history match, since we don't know how recent
+      // or how well-rated it was); people with neither rank last.
       if((a.wouldDisplaceLead?1:0) !== (b.wouldDisplaceLead?1:0)) return (a.wouldDisplaceLead?1:0)-(b.wouldDisplaceLead?1:0);
       if(a.conflicts.length!==b.conflicts.length) return a.conflicts.length-b.conflicts.length;
       if(a.hasExperience !== b.hasExperience) return a.hasExperience ? -1 : 1;
       if(a.hasExperience && b.hasExperience){
-        if(a.sinceWorked!==b.sinceWorked) return a.sinceWorked-b.sinceWorked; // smaller gap = worked it more recently = better fit
-        if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more times worked = more familiar
+        if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more rotations in this area = more familiar
+        if(a.rating!==b.rating) return b.rating-a.rating; // higher evaluation rating = better fit
+        if(a.sinceWorked!==b.sinceWorked) return a.sinceWorked-b.sinceWorked; // smaller gap = worked it more recently = tiebreaker
       }
       if((a.currentArea?1:0) !== (b.currentArea?1:0)) return (a.currentArea?1:0)-(b.currentArea?1:0);
       return a.staff.name.localeCompare(b.staff.name);
