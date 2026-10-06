@@ -8513,6 +8513,7 @@ let chipMenuOpen  = null; // staffId whose chip menu is open
 let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
+let timeOffExpandedGroups = {}; // {groupKey: true} — which merged multi-day Time Off list cards are expanded to show their individual days
 const openPriorExpStaffIds = new Set(); // staffIds whose "Prior area experience" <details> is expanded — persists across re-renders while checking boxes, scoped per staff (and shared across the two modals that both show this section) so opening it for one person doesn't leave it pre-expanded for the next
 let tourState = null; // {stepIndex} while the app tour is active, else null
 let lastRotationSnapshot = null; // everything needed to undo the most recent Rotate Now this session — see undoLastRotation()
@@ -9110,11 +9111,15 @@ function renderCoverageSuggestions(r){
   if(!r.area) return '<span class="to-no-area">No area assigned — nothing to cover</span>';
   const suggestions = suggestCoverageFor(r.area.id, r.staff.id);
   const others = state.staff.filter(s=>s.id!==r.staff.id&&s.active!==false&&!state.callouts[s.id]&&!suggestions.find(sg=>sg.staff.id===s.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  // r.ids covers every merged day (see groupByStaff in renderTimeOffView) so
+  // picking a coverage person for a multi-day request covers the whole span,
+  // not just its first day. Plain single-entry callers never set r.ids.
+  const assignIds = (r.ids||[r.id]).join(',');
   return `
   <div class="to-suggestion-label">Best coverage picks for <b>${escapeHtml(r.area.name)}</b>:</div>
   <div class="to-suggestion-row">
     ${suggestions.map(s=>`
-      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.staff.id}">
+      <button class="to-sug-card" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${assignIds}" data-to-assign-cov="${s.staff.id}">
         <div class="to-sug-name">${escapeHtml(s.staff.name.split(' ')[0])}</div>
         <div class="to-sug-exp" style="color:${s.fitColor}">${s.fitLabel}</div>
         ${s.timesWorked>0?`<div class="to-sug-times">${s.timesWorked}×</div>`:''}
@@ -9125,7 +9130,7 @@ function renderCoverageSuggestions(r){
     <summary class="to-others-bar">Others <span class="to-others-count">${others.length}</span></summary>
     <div class="to-others-list">
       ${others.map(s=>`
-        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${r.id}" data-to-assign-cov="${s.id}">
+        <button class="to-sug-row" data-to-assign-staff="${r.staff.id}" data-to-assign-id="${assignIds}" data-to-assign-cov="${s.id}">
           <span class="to-sug-avatar">${escapeHtml(s.name.charAt(0))}</span>
           <span class="to-sug-row-name">${escapeHtml(s.name)}</span>
         </button>`).join('')}
@@ -9235,12 +9240,40 @@ function renderTimeOffView(){
 
   // ── LIST ──────────────────────────────────────────────────────────
   const renderList = () => {
-    const renderCard = (r) => {
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+
+    // Merge one staff member's consecutive/overlapping time-off records into
+    // a single row — otherwise a week requested as separate daily entries
+    // shows that person's name once per day instead of once for the span.
+    const groupByStaff = (rows) => {
+      const sorted = rows.slice().sort((a,b)=>a.startDate.localeCompare(b.startDate));
+      const groups = [];
+      sorted.forEach(r=>{
+        const last = groups[groups.length-1];
+        const sameCov = (last?.covStaff?.id||null) === (r.covStaff?.id||null);
+        const sameArea = (last?.area?.id||null) === (r.area?.id||null);
+        if(last && last.staff.id===r.staff.id && sameCov && sameArea && r.startDate<=nextDay(last.endDate)){
+          if(r.endDate > last.endDate) last.endDate = r.endDate;
+          if(r.label !== last.label) last.mixedLabels = true;
+          last.ids.push(r.id);
+          last.items.push(r);
+        } else {
+          groups.push({...r, ids:[r.id], items:[r], mixedLabels:false});
+        }
+      });
+      return groups;
+    };
+
+    const renderCard = (g) => {
+      const r = g; // merged representative — startDate/endDate already span the whole group
       const isActive  = r.startDate<=today && r.endDate>=today;
       const areaColor = r.area?.color||'#aaa';
+      const isGroup   = g.items.length>1;
+      const groupKey  = `${r.staff.id}|${r.startDate}|${r.endDate}`;
+      const expanded  = !!timeOffExpandedGroups[groupKey];
       return `
       <div class="to-list-card ${isActive?'active':''}">
-        <div class="to-card-header">
+        <div class="to-card-header" ${isGroup?`data-to-group-toggle="${escapeHtml(groupKey)}" style="cursor:pointer;"`:''}>
           <div class="to-card-toprow">
             <div class="to-card-name-wrap">
               <span class="area-dot" style="background:${areaColor}"></span>
@@ -9252,8 +9285,10 @@ function renderTimeOffView(){
                 const bDays = businessDaysBetween(r.startDate, r.endDate);
                 return r.startDate!==r.endDate ? `<span class="to-card-bdays" title="Weekdays only — weekends aren't counted">${bDays} day${bDays===1?'':'s'}</span>` : '';
               })()}
-              <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
-              <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>
+              ${isGroup
+                ? `<span class="small-muted" style="font-size:13px;">${expanded?'▾':'▸'}</span>`
+                : `<button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${r.staff.id}" data-to-edit-id="${r.id}">Edit</button>
+                   <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${r.staff.id}" data-to-delete-id="${r.id}">✕</button>`}
             </div>
           </div>
           <div class="to-card-chips">
@@ -9261,24 +9296,36 @@ function renderTimeOffView(){
             ${r.staff.isSubcontractor?'<span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}
             ${r.area?`<span class="to-entry-area" style="background:${areaColor}18;color:${areaColor};border:1px solid ${areaColor}40;">${escapeHtml(r.area.name)}</span>`:'<span class="to-entry-area unassigned">No area</span>'}
             ${isActive?'<span class="to-active-pill">● Now</span>':''}
-            ${r.label?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
+            ${isGroup?`<span class="to-card-reason">${g.items.length} requests</span>`:''}
+            ${r.label && !g.mixedLabels?`<span class="to-card-reason">${escapeHtml(r.label)}</span>`:''}
           </div>
         </div>
+        ${isGroup && expanded ? `
+        <div style="margin:0 var(--md-space-4);border-left:2px solid var(--md-sys-color-outline-variant,#ddd);padding-left:10px;">
+          ${g.items.map(it=>`
+            <div class="to-card-toprow" style="padding:6px 0;">
+              <span class="small-muted" style="font-size:13px;">${it.startDate===it.endDate?it.startDate:it.startDate+' → '+it.endDate}${it.label?' · '+escapeHtml(it.label):''}</span>
+              <div class="to-card-actions">
+                <button class="to-card-edit btn btn-sm btn-light" data-to-edit-staff="${it.staff.id}" data-to-edit-id="${it.id}">Edit</button>
+                <button class="to-card-del btn btn-sm btn-danger" data-to-delete-staff="${it.staff.id}" data-to-delete-id="${it.id}">✕</button>
+              </div>
+            </div>`).join('')}
+        </div>`:''}
         <div class="to-card-coverage">
           ${r.covStaff
             ? `<div class="to-cov-badge">
                 <span class="to-cov-icon">✓</span>
                 <span class="to-cov-name">${escapeHtml(r.covStaff.name)}</span>
                 <span class="to-cov-label">covering</span>
-                <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${r.id}" data-to-staff="${r.staff.id}">Remove</button>
+                <button class="to-remove-cov btn btn-sm" data-to-remove-cov="${g.ids.join(',')}" data-to-staff="${r.staff.id}">Remove</button>
               </div>`
             : renderCoverageSuggestions(r)}
         </div>
       </div>`;
     };
 
-    const needsCovList = upcoming.filter(r=>!r.covStaff);
-    const hasCovList   = upcoming.filter(r=>!!r.covStaff);
+    const needsCovList = groupByStaff(upcoming.filter(r=>!r.covStaff));
+    const hasCovList   = groupByStaff(upcoming.filter(r=>!!r.covStaff));
 
     if(upcoming.length===0) return `
       <div class="to-empty-state">
@@ -17862,18 +17909,26 @@ function attachHandlers(){
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
     on('btn-toggle-cal-expand', ()=>{ timeOffCalExpanded=!timeOffCalExpanded; render(); });
 
-    // best-fit suggestion card clicks
-    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
-      const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
-      if(!sid||!rid||!covId) return;
-      applyTimeOffCoverage(sid, rid, covId);
+    // expand/collapse a merged multi-day card to show its individual days
+    document.querySelectorAll('[data-to-group-toggle]').forEach(el=>el.addEventListener('click',()=>{
+      const key = el.dataset.toGroupToggle;
+      timeOffExpandedGroups = {...timeOffExpandedGroups, [key]: !timeOffExpandedGroups[key]};
       render();
     }));
 
-    // remove coverage
+    // best-fit suggestion card clicks — toAssignId may be a comma-joined
+    // list of ids when the card represents a merged multi-day request
+    document.querySelectorAll('.to-sug-row, .to-sug-card').forEach(btn=>btn.addEventListener('click',()=>{
+      const sid=btn.dataset.toAssignStaff, rid=btn.dataset.toAssignId, covId=btn.dataset.toAssignCov;
+      if(!sid||!rid||!covId) return;
+      applyTimeOffCoverageForIds(sid, rid.split(','), covId);
+      render();
+    }));
+
+    // remove coverage — same comma-joined-ids handling as above
     document.querySelectorAll('.to-remove-cov').forEach(btn=>btn.addEventListener('click',()=>{
       const rid=btn.dataset.toRemoveCov, sid=btn.dataset.toStaff;
-      removeTimeOffCoverage(sid, rid);
+      removeTimeOffCoverageForIds(sid, rid.split(','));
       render();
     }));
 
@@ -21207,6 +21262,28 @@ function removeTimeOffCoverage(sid, rid){
   delete entry.coverageStaffId;
   syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:null}), 'time off coverage');
   saveState();
+}
+
+// Same-staff consecutive time-off records get merged into one row in the
+// Time Off list (see groupByStaff in renderTimeOffView) so a multi-day
+// request only shows that person's name once. Picking (or removing) a
+// coverer for that merged row needs to apply to every day it represents,
+// not just the first — these wrap the single-id versions above for that.
+// Only the first id runs the full applyTimeOffCoverage() (today's-callout
+// check + the actual board move + the toast); the rest just link the same
+// coverer on their own record so the move/toast isn't repeated per day.
+function applyTimeOffCoverageForIds(sid, ids, covId){
+  ids.forEach((rid, i) => {
+    if(i===0){ applyTimeOffCoverage(sid, rid, covId); return; }
+    const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
+    if(!entry) return;
+    entry.coverageStaffId = covId;
+    syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:covId}), 'time off coverage');
+  });
+  saveState();
+}
+function removeTimeOffCoverageForIds(sid, ids){
+  ids.forEach(rid => removeTimeOffCoverage(sid, rid));
 }
 
 // ── Scheduled time off helpers ──
