@@ -9308,8 +9308,15 @@ function renderTimeOffView(){
     // Merge one staff member's consecutive/overlapping time-off records into
     // a single row — otherwise a week requested as separate daily entries
     // shows that person's name once per day instead of once for the span.
+    // Sorted by staff first so one person's run of days stays contiguous in
+    // this pass even when another person's entries fall between those dates
+    // (e.g. Tsegehreda out 10/7-10/10 and Letitia out 10/8-10/9 — sorting by
+    // date alone interleaves their records and fragments Tsegehreda's single
+    // request into several cards); the result is re-sorted by date afterward
+    // so the final list still reads chronologically like before.
     const groupByStaff = (rows) => {
-      const sorted = rows.slice().sort((a,b)=>a.startDate.localeCompare(b.startDate));
+      const sorted = rows.slice().sort((a,b)=>
+        a.staff.id===b.staff.id ? a.startDate.localeCompare(b.startDate) : a.staff.name.localeCompare(b.staff.name));
       const groups = [];
       sorted.forEach(r=>{
         const last = groups[groups.length-1];
@@ -9324,7 +9331,7 @@ function renderTimeOffView(){
           groups.push({...r, ids:[r.id], items:[r], mixedLabels:false});
         }
       });
-      return groups;
+      return groups.sort((a,b)=>a.startDate.localeCompare(b.startDate));
     };
 
     const renderCard = (g) => {
