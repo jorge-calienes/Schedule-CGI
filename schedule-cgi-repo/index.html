@@ -8412,12 +8412,32 @@ function trParseTime(v){
   if(ap==='PM'&&h<12) h+=12; if(ap==='AM'&&h===12) h=0;
   return h*60+mi+(m[3]?+m[3]/60:0);
 }
+const TR_MONTH_NAMES = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const TR_MONTH_RE = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*';
+// Full-year ints (2026) pass through; 2-digit years (26) are assumed 20xx —
+// every export this screen will ever see is for a week in the recent past.
+function trYear(y){ y=+y; return y<100 ? 2000+y : y; }
+function trPad(n){ return String(n).padStart(2,'0'); }
+// Real punch-clock exports vary a lot more in date format than the staff
+// Import screen's spreadsheets do (slashes, dashes, "5-Oct-2026", a
+// leading weekday name, month spelled out...) — covers the formats
+// actually seen, in addition to the ISO/M-D-Y this started with.
 function trParseDay(v){
   if(v==null||v==='') return null;
   if(v instanceof Date) return v.toISOString().slice(0,10);
-  const s=String(v).trim();
-  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
-  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return m[3]+'-'+m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0');
+  if(typeof v==='number'){ // unformatted Excel serial date (days since 1899-12-30)
+    const d = new Date(Math.round((v-25569)*86400*1000));
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0,10);
+  }
+  let s = String(v).trim().replace(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+/i, '');
+  let m;
+  if(m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)) return m[1]+'-'+trPad(m[2])+'-'+trPad(m[3]);
+  if(m=s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/)) return m[1]+'-'+trPad(m[2])+'-'+trPad(m[3]);
+  if(m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)) return trYear(m[3])+'-'+trPad(m[1])+'-'+trPad(m[2]);
+  if(m=s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/)) return trYear(m[3])+'-'+trPad(m[1])+'-'+trPad(m[2]);
+  if(m=s.match(new RegExp('^(\\d{1,2})-'+TR_MONTH_RE+'-(\\d{2,4})','i'))) return trYear(m[3])+'-'+trPad(TR_MONTH_NAMES[m[2].toLowerCase()])+'-'+trPad(m[1]);
+  if(m=s.match(new RegExp('^'+TR_MONTH_RE+'\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})','i'))) return m[3]+'-'+trPad(TR_MONTH_NAMES[m[1].toLowerCase()])+'-'+trPad(m[2]);
+  if(m=s.match(new RegExp('^(\\d{1,2})\\s+'+TR_MONTH_RE+'\\.?,?\\s+(\\d{4})','i'))) return m[3]+'-'+trPad(TR_MONTH_NAMES[m[2].toLowerCase()])+'-'+trPad(m[1]);
   return null;
 }
 
@@ -8672,7 +8692,13 @@ async function parseWeeklyTimeReviewFile(file, teamStaff){
   // unreadable file.
   if(punches.length===0){
     if(unmatchedSet.size>0) throw new Error('None of these punch rows matched anyone on your team — check the TDIS numbers on each person\'s profile. (File had: '+[...unmatchedSet].join(', ')+')');
-    throw new Error('No usable punch rows found in that file.');
+    // Every row failed the TDIS/Day/Time read itself (not a team-matching
+    // problem) — most likely the Day or Time column is formatted
+    // differently than this screen expects. Echo the first row's raw
+    // values so whoever hits this can actually see why, instead of a
+    // dead-end "no rows" message.
+    const sample = rawRows[0];
+    throw new Error('No usable punch rows found in that file. First row had — TDIS Num: "'+(sample['TDIS Num']??'')+'", Day: "'+(sample['Day']??'')+'", Time: "'+(sample['Time']??'')+'". Check those match the expected format (e.g. Day "2026-10-05" or "10/5/2026", Time "7:30 AM").');
   }
   const days=[...new Set(punches.map(p=>p.day))].sort();
   return {punches, unmatchedTdis:[...unmatchedSet], weekLo:days[0]||null, weekHi:days[days.length-1]||null};
