@@ -5068,9 +5068,23 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-kpi.bad{background:#fadfde;color:#9d2327;}
 .wtr-kpi.warn{background:#fdefc9;color:#85560a;}
 .wtr-kpi.ok{background:#e0f2e8;color:#1b6e45;}
+.wtr-kpi.info{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);}
 :root[data-theme="dark"] .wtr-kpi.bad{background:#3A1F1F;color:#FFB3AB;}
 :root[data-theme="dark"] .wtr-kpi.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-kpi.ok{background:#163821;color:#8FE0A5;}
+.wtr-table-scroll{overflow-x:auto;border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-medium);}
+.wtr-table{border-collapse:collapse;width:100%;font-size:12.5px;}
+.wtr-table th{background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);font-weight:600;text-align:left;padding:7px 9px;white-space:nowrap;}
+.wtr-table td{padding:6px 9px;border-top:1px solid var(--md-sys-color-outline-variant);white-space:nowrap;vertical-align:middle;}
+.wtr-table td.wrap{white-space:normal;min-width:160px;}
+.wtr-table td.t{font-family:var(--mono,ui-monospace,Consolas,monospace);}
+.wtr-table td.ok{background:#e0f2e8;color:#1b6e45;}
+.wtr-table td.warn{background:#fdefc9;color:#85560a;}
+.wtr-table td.bad{background:#fadfde;color:#9d2327;}
+.wtr-table td.off{background:var(--md-sys-color-surface-container-highest);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
+:root[data-theme="dark"] .wtr-table td.ok{background:#163821;color:#8FE0A5;}
+:root[data-theme="dark"] .wtr-table td.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-table td.bad{background:#3A1F1F;color:#FFB3AB;}
 .wtr-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
 .wtr-pc{position:relative;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;padding-left:4px;transition:box-shadow .15s,transform .15s;}
 .wtr-pc::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;}
@@ -8738,6 +8752,16 @@ function trStanding(summary, rows, patternNote){
   if(W.length){ if(level==='good') level='watch'; R.push(...W); }
   if(!R.length) R.push('Every day is clean');
   return {level, label:TR_LEVELS[level][0], tone:TR_LEVELS[level][1], reasons:R};
+}
+
+// Plain-language status for one late start, independent of trDeriveDay's
+// short lateRes string — drives both the per-item queue card and the
+// Late starts table's Status column so the two stay in sync.
+function trLateStatus(d, dec){
+  const made = d.cut!=null && d.cut>=d.late;
+  if(dec.late==='Yes') return made ? ['Approved · made up ✓','ok'] : (d.cut==null ? ['Approved · lunch missing, make-up not confirmed','warn'] : ['Approved · lunch only shortened '+d.cut+' min','warn']);
+  if(dec.late==='No') return ['Not approved','bad'];
+  return made ? ['Made up at lunch · waiting for your approval','warn'] : (d.cut==null ? ['Late · lunch punches missing','bad'] : ['Late · not made up · waiting for your decision','bad']);
 }
 
 // Background-only (never awaited by the nav handler) — the main screen
@@ -14426,6 +14450,7 @@ function renderWeeklyTimeReviewModal(m){
         <span class="small-muted">Started ${r.d.late} min late (lunch ${r.d.lun==null?'unknown':r.d.lun+' min, shortened '+r.d.cut+' min'}) — ${escapeHtml(r.d.lateRes)}. Approved to make up at lunch?</span>
         <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
         <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+        <input type="text" class="wtr-note-input" style="max-width:220px;" data-wtr-latenote-key="${k}" placeholder="Who approved it, and when (optional)" value="${escapeHtml(dec.lateNote||'')}"/>
         ${dec.decidedAt && dec.late ? `<span class="wtr-confirmed">Confirmed by ${escapeHtml(trAccountName(m.accounts, dec.decidedBy))}, ${escapeHtml(friendlyDate(dec.decidedAt.slice(0,10)))}</span>` : ''}
       </div>`:''}
       ${r.d.issueOpen?`
@@ -14520,6 +14545,83 @@ function renderWeeklyTimeReviewModal(m){
             </div>
           </div>`).join('')}
         </div>
+
+        ${(()=>{
+          const lateRows = rows.filter(r=>r.d.late>0);
+          if(!lateRows.length) return '';
+          const okN = lateRows.filter(r=>trLateStatus(r.d, decisions[r.key]||{})[1]==='ok').length;
+          const waitN = lateRows.filter(r=>r.d.lateOpen).length;
+          const noN = lateRows.filter(r=>r.d.lateNo).length;
+          const lateMin = lateRows.reduce((a,r)=>a+r.d.late,0);
+          const madeMin = lateRows.filter(r=>r.d.cut!=null).reduce((a,r)=>a+Math.min(r.d.late,r.d.cut),0);
+          return `
+          <div class="wtr-item" style="margin-top:16px;">
+            <b>Late starts &amp; make-up approvals</b>
+            <div class="wtr-kpis" style="margin-top:8px;">
+              <span class="wtr-kpi info"><b>${lateRows.length}</b>late start${lateRows.length===1?'':'s'}</span>
+              <span class="wtr-kpi ${okN?'ok':'info'}"><b>${okN}</b>approved and made up ✓</span>
+              <span class="wtr-kpi ${waitN?'warn':'ok'}"><b>${waitN}</b>waiting for your approval</span>
+              ${noN?`<span class="wtr-kpi bad"><b>${noN}</b>not approved</span>`:''}
+              <span class="wtr-kpi info"><b>${madeMin} of ${lateMin} min</b>made up through shorter lunch</span>
+            </div>
+            <div class="wtr-table-scroll" style="margin-top:10px;">
+              <table class="wtr-table">
+                <thead><tr><th>Person</th><th>Day</th><th>Started</th><th>Late</th><th>Lunch</th><th>Shortened</th><th>Time counted</th><th>Status</th><th>Your decision</th></tr></thead>
+                <tbody>
+                  ${lateRows.map(r=>{
+                    const dec = decisions[r.key]||{};
+                    const k = escapeHtml(r.key);
+                    const st = trLateStatus(r.d, dec);
+                    return `<tr>
+                      <td><b>${escapeHtml(r.staff.name)}</b></td>
+                      <td>${escapeHtml(friendlyDate(r.day))}</td>
+                      <td class="t">${trFmtClock(r.d.sl[0])} <span class="small-muted">(sched ${trFmtClock(r.sched.s)})</span></td>
+                      <td class="t">${r.d.late}m</td>
+                      <td class="t">${r.d.lun==null?'—':r.d.lun+'m'}</td>
+                      <td class="t">${r.d.cut==null?'—':r.d.cut+'m'}</td>
+                      <td class="t">${r.d.netMin==null?'—':trHm(r.d.netMin)}${r.d.vs!=null?` <span class="small-muted">(${r.d.vs>0?'+':''}${r.d.vs}m)</span>`:''}</td>
+                      <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span></td>
+                      <td>
+                        <div class="wtr-qrow" style="flex-wrap:nowrap;">
+                          <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+                          <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+                          <input type="text" class="wtr-note-input" style="width:140px;" data-wtr-latenote-key="${k}" placeholder="Who approved" value="${escapeHtml(dec.lateNote||'')}"/>
+                        </div>
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            <p class="small-muted" style="margin-top:8px;">A late start made up by a shorter lunch is counted as made up only after you approve it. Each decision updates the person's standing right away.</p>
+          </div>`;
+        })()}
+
+        ${cards.length?`
+        <div class="wtr-item" style="margin-top:16px;">
+          <b>Week log · day by day</b>
+          <div class="wtr-table-scroll" style="margin-top:10px;">
+            <table class="wtr-table">
+              <thead><tr><th>Person</th>${daysSeen.map(d=>`<th>${escapeHtml(friendlyDate(d))}</th>`).join('')}<th>Week so far</th><th>Standing</th></tr></thead>
+              <tbody>
+                ${cards.map(c=>{
+                  const byDay = new Map(c.rows.map(r=>[r.day,r]));
+                  const cells = daysSeen.map(day=>{
+                    const r = byDay.get(day);
+                    if(!r) return `<td class="small-muted">·</td>`;
+                    const dec = decisions[r.key]||{};
+                    const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
+                    const text = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHm(r.d.netMin)+(r.d.est?'*':''));
+                    const mark = (dec.ver==='Yes'||dec.late) ? ' ✓' : '';
+                    return `<td class="t ${tone}" title="${escapeHtml(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')}">${text}${mark}</td>`;
+                  }).join('');
+                  return `<tr><td><b>${escapeHtml(c.s.staff.name)}</b></td>${cells}<td class="t">${trHm(c.s.worked)} / ${trHm(c.s.sched)}</td><td><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <p class="small-muted" style="margin-top:8px;">Hours worked each day (* estimated). Green clean, amber check, red incomplete, gray day off/called out, blank = not uploaded yet.</p>
+        </div>`:''}
 
         ${queueRows.length?`
         <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
@@ -21613,6 +21715,15 @@ function attachHandlers(){
       if(!prev.how) return; // nothing picked in step 1 yet — markup already disables this, but don't trust that alone
       m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes', note:(noteInput?noteInput.value:prev.note)||''})};
       render();
+      saveDecision(key);
+    }));
+    // Saved on change, not gated behind the Approved/Not approved click —
+    // this note is just a record of who approved it, independent of the
+    // decision itself, same as the existing fix-key inputs save on change.
+    document.querySelectorAll('[data-wtr-latenote-key]').forEach(el=>el.addEventListener('change', ()=>{
+      const key = el.dataset.wtrLatenoteKey;
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, lateNote: el.value}};
       saveDecision(key);
     }));
     on('wtr-accept-all', ()=>{
