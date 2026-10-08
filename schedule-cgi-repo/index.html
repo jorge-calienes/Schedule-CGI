@@ -8683,8 +8683,14 @@ function trBuildRows(teamStaff, punches, decisions, daysSeen, timeOffByStaff, ca
   });
   const rows=[];
   teamStaff.forEach(s=>{
-    const sched = parseShiftHoursRange(s.shiftHours);
     const ownDays = new Set(punches.filter(p=>p.staffId===s.id).map(p=>p.day));
+    // Nobody with zero punches anywhere in this upload gets a row — for an
+    // admin, teamStaff is the whole company, and without this, anyone
+    // elsewhere in the company who simply had a day off or called out
+    // during this same week would get pulled into what's supposed to be
+    // a review of THIS uploaded file, not everyone's time-off calendar.
+    if(!ownDays.size) return;
+    const sched = parseShiftHoursRange(s.shiftHours);
     const days = [...new Set([...ownDays, ...(daysSeen||[])])].sort();
     days.forEach(day=>{
       const key = s.id+'|'+day;
