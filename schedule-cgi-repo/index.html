@@ -5095,6 +5095,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-dc{border-radius:6px;padding:4px 2px;text-align:center;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:10.5px;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);}
 .wtr-dc small{display:block;font-family:var(--sans);font-size:9px;opacity:.8;}
 .wtr-dc.ok{background:#e0f2e8;color:#1b6e45;} .wtr-dc.warn{background:#fdefc9;color:#85560a;} .wtr-dc.bad{background:#fadfde;color:#9d2327;}
+.wtr-dc.off{background:var(--md-sys-color-surface-container-highest);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
 :root[data-theme="dark"] .wtr-dc.ok{background:#163821;color:#8FE0A5;}
 :root[data-theme="dark"] .wtr-dc.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-dc.bad{background:#3A1F1F;color:#FFB3AB;}
@@ -8342,6 +8343,17 @@ async function loadTimeReviewSettingsOnce(){
     _trSettingsLoaded = true;
   }catch(e){ console.warn('Could not load Weekly Time Review settings, using defaults:', e&&e.message); }
 }
+// fetchTimeReviewDecisions rows -> the {staffId|day: {ver,late,lateNote,fix}}
+// shape every render/read of `decisions` uses. Shared so every place that
+// (re)loads decisions — opening the screen, uploading a file, switching
+// weeks — builds the map the same way instead of re-deriving it inline.
+function trMapDecisions(rows){
+  const decisions = {};
+  (rows||[]).forEach(row=>{
+    decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{}};
+  });
+  return decisions;
+}
 // Drives the Rules panel form — key must match a TR_RULES key.
 const TR_RULE_FIELDS = [
   {key:'lateGrace', label:'Late counts after (min)'},
@@ -8439,6 +8451,18 @@ function trParseDay(v){
   if(m=s.match(new RegExp('^'+TR_MONTH_RE+'\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})','i'))) return m[3]+'-'+trPad(TR_MONTH_NAMES[m[1].toLowerCase()])+'-'+trPad(m[2]);
   if(m=s.match(new RegExp('^(\\d{1,2})\\s+'+TR_MONTH_RE+'\\.?,?\\s+(\\d{4})','i'))) return m[3]+'-'+trPad(TR_MONTH_NAMES[m[2].toLowerCase()])+'-'+trPad(m[1]);
   return null;
+}
+
+// The Monday (UTC) of the calendar week containing `day` — the canonical
+// week_start every save/fetch keys off of, regardless of which particular
+// days were in any one upload. Without this, uploading a week in pieces
+// (Monday today, Tuesday tomorrow...) would scatter the same calendar
+// week across several different week_start values instead of
+// accumulating into one.
+function trWeekStart(day){
+  const d = new Date(day+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
+  return d.toISOString().slice(0,10);
 }
 
 // Turns one person's raw punches for one day into the 6 named slots (start,
@@ -8553,12 +8577,42 @@ function trDeriveDay(sched, slots, issuesIn, decision){
   return d;
 }
 
+// A day with zero punches on file for this person is ambiguous on its
+// own — on leave, called out, or just a clerical gap in the export — so
+// cross-check it against the records this app already keeps (approved
+// Time Off ranges, and the attendance log's 'callout' events) before
+// treating it as a bare absence.
+function trExcusedReason(staffId, day, timeOffByStaff, calloutEvents){
+  const off = (timeOffByStaff?.[staffId]||[]).find(r=>day>=r.startDate && day<=r.endDate);
+  if(off) return {kind:'off', label:'Day off', note:off.label||'Approved time off'};
+  const callout = (calloutEvents||[]).find(e=>e.staffId===staffId && e.eventType==='callout' && e.eventDate===day);
+  if(callout) return {kind:'callout', label:'Called out', note:callout.note||''};
+  return null;
+}
+// Shaped like trDeriveDay's return value (same fields every renderer
+// reads) but never flagged and never in the open-items queue — an
+// excused day isn't something a supervisor needs to act on, and it's
+// left out of the worked-vs-scheduled totals (netMin null) rather than
+// counted as "under schedule".
+function trExcusedDay(excused){
+  return {
+    sl:Array(6).fill(null), added:Array(6).fill(false), missing:[],
+    startVar:null, endVar:null, brk:null, lun:null, late:0, cut:null, spanMin:null,
+    est:false, netMin:null, target:0, vs:null,
+    issues:[excused.label+(excused.note?' — '+excused.note:'')],
+    base:'Excused', needV:false, final:excused.label, lateRes:'', earlyMin:0,
+    flagged:false, issueOpen:false, lateOpen:false, lateNo:false, open:false,
+    excused:excused.kind,
+  };
+}
+
 // Groups the uploaded punch rows by staff+day (matched by TDIS number) and
-// runs trAnalyzeDay/trDeriveDay over just the days that actually have
-// punches — there's no per-weekday schedule on file (just one shift time
-// per person), so an absence can't be distinguished from a day they simply
-// weren't scheduled; Phase 1 only flags punch-day anomalies, not absences.
-function trBuildRows(teamStaff, punches, decisions){
+// runs trAnalyzeDay/trDeriveDay over every day the team has punches for —
+// plus, for a day a given person has none, checks Time Off/callout records
+// (see trExcusedReason) before leaving it out entirely, since there's no
+// per-weekday schedule on file to otherwise tell "excused" apart from "the
+// export is missing a row".
+function trBuildRows(teamStaff, punches, decisions, daysSeen, timeOffByStaff, calloutEvents){
   const byStaffDay = new Map();
   punches.forEach(p=>{
     const key = p.staffId+'|'+p.day;
@@ -8568,9 +8622,16 @@ function trBuildRows(teamStaff, punches, decisions){
   const rows=[];
   teamStaff.forEach(s=>{
     const sched = parseShiftHoursRange(s.shiftHours);
-    const days = [...new Set(punches.filter(p=>p.staffId===s.id).map(p=>p.day))].sort();
+    const ownDays = new Set(punches.filter(p=>p.staffId===s.id).map(p=>p.day));
+    const days = [...new Set([...ownDays, ...(daysSeen||[])])].sort();
     days.forEach(day=>{
       const key = s.id+'|'+day;
+      if(!ownDays.has(day)){
+        const excused = trExcusedReason(s.id, day, timeOffByStaff, calloutEvents);
+        if(!excused) return; // no punches and nothing excuses it — unchanged: simply not shown
+        rows.push({staff:s, day, key, sched, slots:Array(6).fill(null), raw:[], n:0, d:trExcusedDay(excused)});
+        return;
+      }
       const a = trAnalyzeDay(byStaffDay.get(key)||[]);
       const d = trDeriveDay(sched, a.slots, a.issues, decisions[key]);
       rows.push({staff:s, day, key, sched, slots:a.slots, raw:a.raw, n:a.n, d});
@@ -14225,7 +14286,7 @@ function renderWeeklyTimeReviewModal(m){
         <label for="wtr-file-input" id="wtr-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1.5px dashed var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:36px 16px;text-align:center;cursor:pointer;color:var(--md-sys-color-on-surface-variant);">
           <span style="font-size:28px;">⬆</span>
           <b style="color:var(--md-sys-color-on-surface);">Drop the punch report here, or click to choose</b>
-          <span class="small-muted">.xlsx export — one row per punch (TDIS Num, Day, Description, Time)</span>
+          <span class="small-muted">.xlsx export — one row per punch (TDIS Num, Day, Description, Time). A single day or the whole week both work — uploads add to the week, they don't replace it.</span>
         </label>
         <input type="file" id="wtr-file-input" accept=".xlsx" hidden/>
         ${m.loading?`<div class="small-muted" style="margin-top:12px;">Reading file…</div>`:''}
@@ -14235,7 +14296,8 @@ function renderWeeklyTimeReviewModal(m){
   }
 
   const decisions = m.decisions||{};
-  const rows = trBuildRows(teamStaff, m.punches, decisions);
+  const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
+  const rows = trBuildRows(teamStaff, m.punches, decisions, daysSeen, state.timeOff, state.attendanceEvents);
   const summary = trSummaryByStaff(rows);
   const cards = summary.map(s=>{
     const sRows = rows.filter(r=>r.staff.id===s.staff.id);
@@ -14247,15 +14309,15 @@ function renderWeeklyTimeReviewModal(m){
   const focusCard = cards.find(c=>c.s.staff.id===m.focusStaffId);
   const queueRows = openRows.filter(r=>!m.focusStaffId || r.staff.id===m.focusStaffId);
 
-  const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
   const dayStrip = (sRows) => {
     const byDay = new Map(sRows.map(r=>[r.day, r]));
     return daysSeen.map(day=>{
       const r = byDay.get(day);
       const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})[0];
       if(!r) return `<div class="wtr-dc"><small>${lab}</small>·</div>`;
-      const tone = r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok');
-      return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean'))}"><small>${lab}</small>${r.d.netMin==null?'—':trHmCompact(r.d.netMin)}</div>`;
+      const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
+      const cellText = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHmCompact(r.d.netMin));
+      return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean'))}"><small>${lab}</small>${cellText}</div>`;
     }).join('');
   };
 
@@ -14318,7 +14380,7 @@ function renderWeeklyTimeReviewModal(m){
             <div style="display:flex;gap:6px;">
               ${(m.availableWeeks||[]).length>1?`
               <select id="wtr-week-picker" style="font:inherit;font-size:12.5px;border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:4px 8px;background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);">
-                ${m.availableWeeks.map(w=>`<option value="${escapeHtml(w)}" ${w===m.weekLo?'selected':''}>Week of ${escapeHtml(friendlyDate(w))}</option>`).join('')}
+                ${m.availableWeeks.map(w=>`<option value="${escapeHtml(w)}" ${w===m.weekStart?'selected':''}>Week of ${escapeHtml(friendlyDate(w))}</option>`).join('')}
               </select>`:''}
               <button class="btn btn-light btn-sm" id="wtr-toggle-rules">⚙ Rules</button>
               ${m.loading?`<span class="small-muted" style="align-self:center;">Loading…</span>`:''}
@@ -18740,13 +18802,10 @@ function attachHandlers(){
         loadTimeReviewSettingsOnce(),
       ]);
       if(activeModal?.type!=='weekly-time-review') return; // modal closed/changed while this was in flight
-      const decisions = {};
-      (decisionRows||[]).forEach(row=>{
-        decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{}};
-      });
+      const decisions = trMapDecisions(decisionRows);
       if(week){
         const days = week.punches.map(p=>p.day).sort();
-        openModal({...activeModal, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], loadingSaved:false});
+        openModal({...activeModal, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], loadingSaved:false});
         loadTimeReviewPatterns(staffIds, weeksList||[]);
       } else {
         openModal({...activeModal, decisions, availableWeeks:weeksList||[], loadingSaved:false});
@@ -21327,28 +21386,46 @@ function attachHandlers(){
       m.loading = true; m.error = ''; render();
       try{
         const result = await parseWeeklyTimeReviewFile(file, m.teamStaff);
-        const availableWeeks = [...new Set([result.weekLo, ...(m.availableWeeks||[])])].sort().reverse();
-        openModal({...m, punches:result.punches, unmatchedTdis:result.unmatchedTdis,
-          weekLo:result.weekLo, weekHi:result.weekHi, decisions:{}, availableWeeks, focusStaffId:'', editSlot:'', loading:false, error:''});
-        // Replaces whatever was saved for these exact (staff, day) pairs —
-        // a re-upload supersedes, it doesn't double up (see
-        // saveTimeReviewPunches). Fire-and-forget: the screen already
-        // reflects the parsed file either way.
+        // Canonical Monday-anchored week, not just the min/max day in THIS
+        // upload — a single day uploaded today and the rest of the week
+        // uploaded tomorrow both need to land under the same week_start, or
+        // they'd scatter across separate "weeks" instead of accumulating
+        // into one (see trWeekStart).
+        const weekStart = trWeekStart(result.weekLo);
         const staffDays = [...new Map(result.punches.map(p=>[p.staffId+'|'+p.day, {staffId:p.staffId, day:p.day}])).values()];
-        syncBoardWrite(()=>window.RC.saveTimeReviewPunches({weekStart:result.weekLo, staffDays, punches:result.punches, actingAccountId:authState.account.id}), 'weekly time review punches');
+        const saved = await syncCrudWrite(()=>window.RC.saveTimeReviewPunches({weekStart, staffDays, punches:result.punches, actingAccountId:authState.account.id}));
+        if(!saved.ok) throw saved.error || new Error('Could not save the upload.');
+        // Reload the whole week (not just this file) so a day/partial
+        // upload merges into whatever else is already on file instead of
+        // replacing the screen with only what was just uploaded.
+        const staffIds = m.teamStaff.map(s=>s.id);
+        const [week, decisionRows, weeksList] = await Promise.all([
+          window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart}),
+          window.RC.fetchTimeReviewDecisions({staffIds}),
+          window.RC.fetchTimeReviewWeeksList({staffIds}),
+        ]);
+        const punches = week ? week.punches : result.punches;
+        const days = punches.map(p=>p.day).sort();
+        openModal({...m, punches, unmatchedTdis:result.unmatchedTdis, weekStart,
+          weekLo:days[0], weekHi:days[days.length-1], decisions:trMapDecisions(decisionRows),
+          availableWeeks:(weeksList&&weeksList.length)?weeksList:[weekStart],
+          focusStaffId:'', editSlot:'', loading:false, error:''});
       }catch(e){
         openModal({...m, loading:false, error:(e&&e.message)||'Could not read that file.'});
       }
     };
     const loadWeek = async (weekStart) => {
-      if(!weekStart || weekStart===m.weekLo) return;
+      if(!weekStart || weekStart===m.weekStart) return;
       m.loading = true; render();
       try{
         const staffIds = m.teamStaff.map(s=>s.id);
-        const week = await window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart});
+        const [week, decisionRows] = await Promise.all([
+          window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart}),
+          window.RC.fetchTimeReviewDecisions({staffIds}),
+        ]);
         if(!week){ openModal({...m, loading:false}); return; }
         const days = week.punches.map(p=>p.day).sort();
-        openModal({...m, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], unmatchedTdis:[], focusStaffId:'', editSlot:'', loading:false});
+        openModal({...m, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions:trMapDecisions(decisionRows), unmatchedTdis:[], focusStaffId:'', editSlot:'', loading:false});
       }catch(e){
         openModal({...m, loading:false, error:'Could not load that week. ('+((e&&e.message)||'try again')+')'});
       }
