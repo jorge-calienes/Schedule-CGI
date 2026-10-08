@@ -5066,10 +5066,14 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-kpis{display:flex;gap:8px;flex-wrap:wrap;flex:1;}
 .wtr-kpi{border-radius:var(--md-sys-shape-corner-small);padding:6px 11px;font-size:12.5px;font-weight:600;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
 .wtr-kpi b{font-family:var(--mono,ui-monospace,Consolas,monospace);margin-right:5px;font-weight:700;}
-.wtr-kpi.bad{background:#fadfde;color:#9d2327;}
-.wtr-kpi.warn{background:#fdefc9;color:#85560a;}
-.wtr-kpi.ok{background:#e0f2e8;color:#1b6e45;}
+.wtr-kpi.bad{background:#fadfde;color:#8E2023;}
+.wtr-kpi.warn{background:#fdefc9;color:#704808;}
+.wtr-kpi.ok{background:#e0f2e8;color:#165A39;}
 .wtr-kpi.info{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);}
+.wtr-btn-danger{background:#8E2023;color:#fff;border-color:#8E2023;}
+.wtr-btn-danger:hover{background:#731A1C;border-color:#731A1C;}
+:root[data-theme="dark"] .wtr-btn-danger{background:var(--md-sys-color-error);color:var(--md-sys-color-on-error);border-color:var(--md-sys-color-error);}
+:root[data-theme="dark"] .wtr-btn-danger:hover{opacity:.9;}
 :root[data-theme="dark"] .wtr-kpi.bad{background:#3A1F1F;color:#FFB3AB;}
 :root[data-theme="dark"] .wtr-kpi.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-kpi.ok{background:#163821;color:#8FE0A5;}
@@ -5079,9 +5083,9 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-table td{padding:6px 9px;border-top:1px solid var(--md-sys-color-outline-variant);white-space:nowrap;vertical-align:middle;}
 .wtr-table td.wrap{white-space:normal;min-width:160px;}
 .wtr-table td.t{font-family:var(--mono,ui-monospace,Consolas,monospace);}
-.wtr-table td.ok{background:#e0f2e8;color:#1b6e45;}
-.wtr-table td.warn{background:#fdefc9;color:#85560a;}
-.wtr-table td.bad{background:#fadfde;color:#9d2327;}
+.wtr-table td.ok{background:#e0f2e8;color:#165A39;}
+.wtr-table td.warn{background:#fdefc9;color:#704808;}
+.wtr-table td.bad{background:#fadfde;color:#8E2023;}
 .wtr-table td.off{background:var(--md-sys-color-surface-container-highest);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
 :root[data-theme="dark"] .wtr-table td.ok{background:#163821;color:#8FE0A5;}
 :root[data-theme="dark"] .wtr-table td.warn{background:#3A2E12;color:#FFC46A;}
@@ -5092,11 +5096,11 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-wl-cell{position:relative;}
 .wtr-cell-del{position:absolute;top:1px;right:2px;display:none;font-size:13px;font-weight:700;opacity:.8;}
 .wtr-wl-cell:hover .wtr-cell-del{display:inline-block;}
-.wtr-cell-del:hover{opacity:1;color:#9d2327;}
+.wtr-cell-del:hover{opacity:1;color:#8E2023;}
 .wtr-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
 .wtr-pc{position:relative;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;padding-left:4px;transition:box-shadow .15s,transform .15s;}
 .wtr-pc::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;}
-.wtr-pc.ok::before{background:#1b6e45;} .wtr-pc.warn::before{background:#d19a1c;} .wtr-pc.bad::before{background:#9d2327;}
+.wtr-pc.ok::before{background:#165A39;} .wtr-pc.warn::before{background:#d19a1c;} .wtr-pc.bad::before{background:#8E2023;}
 .wtr-pc:hover{box-shadow:0 4px 14px rgba(0,0,0,.09);transform:translateY(-1px);}
 .wtr-pc.sel{outline:2px solid var(--md-sys-color-primary);outline-offset:-2px;}
 :root[data-theme="dark"] .wtr-pc:hover{box-shadow:0 4px 14px rgba(0,0,0,.4);}
@@ -5105,7 +5109,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-av{width:30px;height:30px;border-radius:50%;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none;}
 .wtr-pc-head b{font-size:14px;display:block;}
 .wtr-standing{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:2px;}
-.wtr-standing.ok{background:#e0f2e8;color:#1b6e45;} .wtr-standing.warn{background:#fdefc9;color:#85560a;} .wtr-standing.bad{background:#fadfde;color:#9d2327;}
+.wtr-standing.ok{background:#e0f2e8;color:#165A39;} .wtr-standing.warn{background:#fdefc9;color:#704808;} .wtr-standing.bad{background:#fadfde;color:#8E2023;}
 :root[data-theme="dark"] .wtr-standing.ok{background:#163821;color:#8FE0A5;}
 :root[data-theme="dark"] .wtr-standing.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-standing.bad{background:#3A1F1F;color:#FFB3AB;}
@@ -5116,7 +5120,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-dstrip{display:grid;grid-template-columns:repeat(var(--n,5),minmax(0,1fr));gap:4px;}
 .wtr-dc{border-radius:6px;padding:4px 2px;text-align:center;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:10.5px;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);}
 .wtr-dc small{display:block;font-family:var(--sans);font-size:9px;opacity:.8;}
-.wtr-dc.ok{background:#e0f2e8;color:#1b6e45;} .wtr-dc.warn{background:#fdefc9;color:#85560a;} .wtr-dc.bad{background:#fadfde;color:#9d2327;}
+.wtr-dc.ok{background:#e0f2e8;color:#165A39;} .wtr-dc.warn{background:#fdefc9;color:#704808;} .wtr-dc.bad{background:#fadfde;color:#8E2023;}
 .wtr-dc.off{background:var(--md-sys-color-surface-container-highest);color:var(--md-sys-color-on-surface-variant);font-style:italic;}
 :root[data-theme="dark"] .wtr-dc.ok{background:#163821;color:#8FE0A5;}
 :root[data-theme="dark"] .wtr-dc.warn{background:#3A2E12;color:#FFC46A;}
@@ -5133,7 +5137,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-ihead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .wtr-ihead .grow{flex:1;}
 .wtr-tone{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;flex-shrink:0;}
-.wtr-tone.bad{background:#fadfde;color:#9d2327;} .wtr-tone.warn{background:#fdefc9;color:#85560a;} .wtr-tone.ok{background:#e0f2e8;color:#1b6e45;}
+.wtr-tone.bad{background:#fadfde;color:#8E2023;} .wtr-tone.warn{background:#fdefc9;color:#704808;} .wtr-tone.ok{background:#e0f2e8;color:#165A39;}
 :root[data-theme="dark"] .wtr-tone.bad{background:#3A1F1F;color:#FFB3AB;}
 :root[data-theme="dark"] .wtr-tone.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-tone.ok{background:#163821;color:#8FE0A5;}
@@ -5143,8 +5147,8 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-slot .t{font-size:13px;font-family:var(--mono,ui-monospace,Consolas,monospace);}
 .wtr-slot-fixlink{align-self:flex-start;margin-top:1px;background:none;border:none;padding:0;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);text-decoration:underline;text-underline-offset:2px;opacity:.7;cursor:pointer;}
 .wtr-slot-fixlink:hover{opacity:1;color:var(--md-sys-color-primary);}
-.wtr-slot.gap{border-color:#9d2327;background:#fadfde;}
-.wtr-slot.gap small{color:#9d2327;}
+.wtr-slot.gap{border-color:#8E2023;background:#fadfde;}
+.wtr-slot.gap small{color:#8E2023;}
 :root[data-theme="dark"] .wtr-slot.gap{border-color:#8B3A3A;background:#3A1F1F;}
 :root[data-theme="dark"] .wtr-slot.gap small{color:#FFB3AB;}
 .wtr-slot input[type="time"]{font:inherit;font-size:12.5px;border:1px solid var(--md-sys-color-outline-variant);border-radius:5px;padding:3px 5px;width:100%;background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);}
@@ -14440,7 +14444,7 @@ function renderWeeklyTimeReviewModal(m){
       if(editing) return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]} · correct it</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${trHhmm(r.d.sl[i])}"/></div>`;
       return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="wtr-slot-fixlink" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
     }
-    return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]}</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${escapeHtml((dec.fix&&dec.fix[i])||'')}"/><em style="font-size:11px;color:#9d2327;">${dec.fix&&dec.fix[i]?'entered':'missing, enter if known'}</em></div>`;
+    return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]}</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${escapeHtml((dec.fix&&dec.fix[i])||'')}"/><em style="font-size:11px;color:#8E2023;">${dec.fix&&dec.fix[i]?'entered':'missing, enter if known'}</em></div>`;
   };
 
   const itemHtml = (r) => {
@@ -14456,8 +14460,8 @@ function renderWeeklyTimeReviewModal(m){
       ${r.d.late>0?`
       <div class="wtr-qrow">
         <span class="small-muted">Started ${r.d.late} min late (lunch ${r.d.lun==null?'unknown':r.d.lun+' min, shortened '+r.d.cut+' min'}) — ${escapeHtml(r.d.lateRes)}. Approved to make up at lunch?</span>
-        <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
-        <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+        <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#165A39;color:#165A39;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+        <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#8E2023;color:#8E2023;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
         <input type="text" class="wtr-note-input" style="max-width:220px;" data-wtr-latenote-key="${k}" placeholder="Who approved it, and when (optional)" value="${escapeHtml(dec.lateNote||'')}"/>
         ${dec.decidedAt && dec.late ? `<span class="wtr-confirmed">Confirmed by ${escapeHtml(trAccountName(m.accounts, dec.decidedBy))}, ${escapeHtml(friendlyDate(dec.decidedAt.slice(0,10)))}</span>` : ''}
       </div>`:''}
@@ -14519,7 +14523,7 @@ function renderWeeklyTimeReviewModal(m){
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0;">
               <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
-              <button class="btn btn-sm btn-danger" id="wtr-del-week" data-wtr-del-week="1">🗑 Delete this week</button>
+              <button class="btn btn-sm wtr-btn-danger" id="wtr-del-week" data-wtr-del-week="1">🗑 Delete this week</button>
             </div>
           </div>
         </div>
@@ -14528,7 +14532,7 @@ function renderWeeklyTimeReviewModal(m){
         <div class="alert-box rust" style="margin-top:12px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;">
           <span>Delete ${escapeHtml(m.pendingDelete.label)}? This can't be undone.</span>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-sm" style="background:#9d2327;color:#fff;border-color:#9d2327;" id="wtr-confirm-delete">Yes, delete</button>
+            <button class="btn btn-sm" style="background:#8E2023;color:#fff;border-color:#8E2023;" id="wtr-confirm-delete">Yes, delete</button>
             <button class="btn btn-sm btn-light" id="wtr-cancel-delete">Cancel</button>
           </div>
         </div>`:''}
@@ -14605,8 +14609,8 @@ function renderWeeklyTimeReviewModal(m){
                       <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span></td>
                       <td>
                         <div class="wtr-qrow" style="flex-wrap:nowrap;">
-                          <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
-                          <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+                          <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#165A39;color:#165A39;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+                          <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#8E2023;color:#8E2023;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
                           <input type="text" class="wtr-note-input" style="width:140px;" data-wtr-latenote-key="${k}" placeholder="Who approved" value="${escapeHtml(dec.lateNote||'')}"/>
                         </div>
                       </td>
