@@ -804,22 +804,41 @@ export async function deleteBlockedPair({ blockedPairId }) {
 // the open modal's own state only; see 0033_weekly_time_review.sql.
 // ---------------------------------------------------------------------------
 
+export async function fetchTimeReviewWeekByStart({ staffIds, weekStart }) {
+  if (!staffIds || !staffIds.length) return null;
+  const { data: rows, error } = await supabase.from('time_review_punches')
+    .select('staff_id, day, description, punch_minutes').in('staff_id', staffIds).eq('week_start', weekStart);
+  if (error) throw error;
+  if (!rows.length) return null;
+  return {
+    weekStart,
+    punches: rows.map(r => ({ staffId: r.staff_id, day: r.day, desc: r.description, t: Number(r.punch_minutes) })),
+  };
+}
+
 // The most recent week this/any manager has uploaded punches for, scoped
-// to the given staff ids (a supervisor's own team) — Phase 2 has no week
-// picker yet, so "latest" is the only week a reopened screen loads.
+// to the given staff ids (a supervisor's own team) — what a reopened
+// screen loads by default, same as fetchTimeReviewWeekByStart picks up
+// from the week picker (Phase 3) for any earlier week.
 export async function fetchLatestTimeReviewWeek({ staffIds }) {
   if (!staffIds || !staffIds.length) return null;
   const { data: latest, error: latestErr } = await supabase.from('time_review_punches')
     .select('week_start').in('staff_id', staffIds).order('week_start', { ascending: false }).limit(1).maybeSingle();
   if (latestErr) throw latestErr;
   if (!latest) return null;
-  const { data: rows, error } = await supabase.from('time_review_punches')
-    .select('staff_id, day, description, punch_minutes').in('staff_id', staffIds).eq('week_start', latest.week_start);
+  return fetchTimeReviewWeekByStart({ staffIds, weekStart: latest.week_start });
+}
+
+// Every week this team has punches on file for, newest first — backs the
+// week picker. Only the start date; the picker fetches that week's
+// punches on selection via fetchTimeReviewWeekByStart, same as the
+// initial load does.
+export async function fetchTimeReviewWeeksList({ staffIds }) {
+  if (!staffIds || !staffIds.length) return [];
+  const { data, error } = await supabase.from('time_review_punches')
+    .select('week_start').in('staff_id', staffIds).order('week_start', { ascending: false });
   if (error) throw error;
-  return {
-    weekStart: latest.week_start,
-    punches: rows.map(r => ({ staffId: r.staff_id, day: r.day, desc: r.description, t: Number(r.punch_minutes) })),
-  };
+  return [...new Set((data || []).map(r => r.week_start))];
 }
 
 // Replaces, not appends: for every (staff, day) pair this upload covers,
@@ -863,6 +882,35 @@ export async function saveTimeReviewDecision({ staffId, day, decision, actingAcc
     decided_at: new Date().toISOString(),
   }, { onConflict: 'staff_id,day' });
   if (error) throw error;
+}
+
+// One shared row for the whole operation (0034_weekly_time_review_settings.sql
+// seeds it) — null only if that seed row was somehow deleted; the caller
+// falls back to the same hardcoded defaults either way.
+export async function fetchTimeReviewSettings() {
+  const { data, error } = await supabase.from('time_review_settings').select('*').eq('id', true).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveTimeReviewSettings({ lateGrace, earlyGrace, lunchMin, lunchPaid, breakMin, standTol, overTol, fallbackTargetMin, tol, actingAccountId }) {
+  const { error } = await supabase.from('time_review_settings').update({
+    late_grace: lateGrace, early_grace: earlyGrace, lunch_min: lunchMin, lunch_paid: lunchPaid,
+    break_min: breakMin, stand_tol: standTol, over_tol: overTol, fallback_target_min: fallbackTargetMin, tol,
+    updated_by: actingAccountId, updated_at: new Date().toISOString(),
+  }).eq('id', true);
+  if (error) throw error;
+}
+
+// Punches across the last few weeks for this team, for the "started late
+// in N of the last M weeks" pattern flag — one query across all of them
+// rather than one round trip per week.
+export async function fetchRecentTimeReviewPunches({ staffIds, weekStarts }) {
+  if (!staffIds || !staffIds.length || !weekStarts || !weekStarts.length) return [];
+  const { data, error } = await supabase.from('time_review_punches')
+    .select('staff_id, week_start, day, description, punch_minutes').in('staff_id', staffIds).in('week_start', weekStarts);
+  if (error) throw error;
+  return data.map(r => ({ staffId: r.staff_id, weekStart: r.week_start, day: r.day, desc: r.description, t: Number(r.punch_minutes) }));
 }
 
 // ---------------------------------------------------------------------------

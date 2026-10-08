@@ -8322,9 +8322,38 @@ function myReviewTeamStaff(){
 
 const TR_KIND = {'Start of Shift':'SOS','End of Shift':'EOS','Start of Break - In':'SOB','Start of Break - Out':'SOB','End of Break':'EOB'};
 const TR_SLOTN = ['Start of shift','Break out','Break in','Lunch out','Lunch in','End of shift'];
-// Tolerances a future phase should expose as editable settings (mirrors the
-// uploaded prototype's "Rules" panel) — hardcoded for Phase 1.
-const TR_RULES = {lateGrace:2, earlyGrace:5, lunchMin:60, breakMin:15, standTol:15, overTol:60, fallbackTargetMin:8*60};
+// Tolerances, editable from the Rules panel on the Weekly Time Review
+// screen (Phase 3) and persisted to time_review_settings — a single
+// shared row for the whole operation, same as every other cross-cutting
+// setting here. Mutable (not const): loadTimeReviewSettingsOnce() below
+// overwrites this with the saved row the first time the screen opens;
+// these starting values just match that row's own defaults so the screen
+// behaves sensibly for the brief window before that fetch resolves.
+let TR_RULES = {lateGrace:2, earlyGrace:5, lunchMin:60, lunchPaid:15, breakMin:15, standTol:15, overTol:60, fallbackTargetMin:8*60, tol:5};
+let _trSettingsLoaded = false;
+async function loadTimeReviewSettingsOnce(){
+  if(_trSettingsLoaded || !window.RC) return;
+  try{
+    const row = await window.RC.fetchTimeReviewSettings();
+    if(row){
+      TR_RULES = {lateGrace:row.late_grace, earlyGrace:row.early_grace, lunchMin:row.lunch_min, lunchPaid:row.lunch_paid,
+        breakMin:row.break_min, standTol:row.stand_tol, overTol:row.over_tol, fallbackTargetMin:row.fallback_target_min, tol:row.tol};
+    }
+    _trSettingsLoaded = true;
+  }catch(e){ console.warn('Could not load Weekly Time Review settings, using defaults:', e&&e.message); }
+}
+// Drives the Rules panel form — key must match a TR_RULES key.
+const TR_RULE_FIELDS = [
+  {key:'lateGrace', label:'Late counts after (min)'},
+  {key:'earlyGrace', label:'Early-leave tolerance (min)'},
+  {key:'lunchMin', label:'Expected lunch (min)'},
+  {key:'lunchPaid', label:'Paid minutes inside lunch'},
+  {key:'breakMin', label:'Expected break (min)'},
+  {key:'tol', label:'Break/lunch over by (min), to flag'},
+  {key:'standTol', label:'Under schedule by (min), to flag'},
+  {key:'overTol', label:'Over schedule by (min), to flag'},
+  {key:'fallbackTargetMin', label:'Fallback target (min, no shift on file)'},
+];
 
 function trFmtClock(mins){
   if(mins==null) return '—';
@@ -8468,7 +8497,7 @@ function trDeriveDay(sched, slots, issuesIn, decision){
   d.spanMin=(sl[0]!=null&&sl[5]!=null)?sl[5]-sl[0]:null;
   d.est=false; d.netMin=null;
   if(d.spanMin!=null){
-    let unpaid; if(d.lun!=null) unpaid=Math.max(0,d.lun-15); else { unpaid=Math.max(0,TR_RULES.lunchMin-15); d.est=true; }
+    let unpaid; if(d.lun!=null) unpaid=Math.max(0,d.lun-TR_RULES.lunchPaid); else { unpaid=Math.max(0,TR_RULES.lunchMin-TR_RULES.lunchPaid); d.est=true; }
     let bd=0; if(d.brk!=null) bd=d.brk; else { bd=TR_RULES.breakMin; d.est=true; }
     d.netMin=Math.round(d.spanMin-unpaid-bd);
   }
@@ -8477,12 +8506,12 @@ function trDeriveDay(sched, slots, issuesIn, decision){
   // comparing netMin straight against that raw span would show nearly
   // everyone "under schedule" by about an hour every day. Target needs the
   // same standard unpaid-lunch chunk taken off so the two are comparable.
-  d.target = sched ? Math.max(0, (sched.e-sched.s) - (TR_RULES.lunchMin-15)) : TR_RULES.fallbackTargetMin;
+  d.target = sched ? Math.max(0, (sched.e-sched.s) - (TR_RULES.lunchMin-TR_RULES.lunchPaid)) : TR_RULES.fallbackTargetMin;
   d.vs = d.netMin==null?null:Math.round(d.netMin-d.target);
   let iss=(issuesIn||[]).slice();
   if(missing.length) iss.unshift('Missing: '+missing.join(', '));
-  if(d.brk!=null&&d.brk>TR_RULES.breakMin+5&&(d.vs==null||d.vs<-5)) iss.push('Break '+d.brk+' min ('+(d.brk-TR_RULES.breakMin)+' over)');
-  if(d.lun!=null&&d.lun>TR_RULES.lunchMin+5&&(d.vs==null||d.vs<-5)) iss.push('Lunch '+d.lun+' min ('+(d.lun-TR_RULES.lunchMin)+' over)');
+  if(d.brk!=null&&d.brk>TR_RULES.breakMin+TR_RULES.tol&&(d.vs==null||d.vs<-TR_RULES.tol)) iss.push('Break '+d.brk+' min ('+(d.brk-TR_RULES.breakMin)+' over)');
+  if(d.lun!=null&&d.lun>TR_RULES.lunchMin+TR_RULES.tol&&(d.vs==null||d.vs<-TR_RULES.tol)) iss.push('Lunch '+d.lun+' min ('+(d.lun-TR_RULES.lunchMin)+' over)');
   if(sched&&sl[5]!=null&&sched.e-sl[5]>TR_RULES.earlyGrace&&(d.vs==null||d.vs<-TR_RULES.earlyGrace)) iss.push('Left '+Math.round(sched.e-sl[5])+' min early (scheduled '+trFmtClock(sched.e)+')');
   d.issues=iss;
   d.base = missing.length ? 'Incomplete' : (iss.length ? 'Review' : 'OK');
@@ -8545,7 +8574,7 @@ function trSummaryByStaff(rows){
 }
 
 const TR_LEVELS = {good:['Good standing','ok'], watch:['Keep an eye','warn'], action:['Needs your action','bad']};
-function trStanding(summary, rows){
+function trStanding(summary, rows, patternNote){
   let level='good'; const R=[];
   const issOpen = rows.filter(r=>r.d.issueOpen).length, lateOpen = rows.filter(r=>r.d.lateOpen).length;
   if(issOpen||lateOpen){ level='action';
@@ -8556,9 +8585,50 @@ function trStanding(summary, rows){
   if(summary.earlyMin) W.push('Left early, '+trHm(summary.earlyMin)+' total');
   if(diff<-TR_RULES.standTol) W.push(trHm(-diff)+' under schedule');
   if(diff>TR_RULES.overTol) W.push(trHm(diff)+' over schedule (check overtime approval)');
+  if(patternNote) W.push(patternNote);
   if(W.length){ if(level==='good') level='watch'; R.push(...W); }
   if(!R.length) R.push('Every day is clean');
   return {level, label:TR_LEVELS[level][0], tone:TR_LEVELS[level][1], reasons:R};
+}
+
+// Background-only (never awaited by the nav handler) — the main screen
+// renders as soon as the current week's own data is in; this fills in
+// each person's "late in N of the last M weeks" note afterward, once it's
+// ready, without holding up anything else. Mirrors the uploaded
+// prototype's own cross-week pattern flag, computed fresh from the
+// persisted punches instead of a separate saved-summary table.
+async function loadTimeReviewPatterns(staffIds, weeksList){
+  const recentWeeks = (weeksList||[]).slice(0,4);
+  if(recentWeeks.length<2 || !window.RC) return;
+  try{
+    const punches = await window.RC.fetchRecentTimeReviewPunches({staffIds, weekStarts:recentWeeks});
+    if(activeModal?.type!=='weekly-time-review') return;
+    const teamStaff = activeModal.teamStaff||[];
+    const byKey = new Map();
+    punches.forEach(p=>{
+      const k = p.staffId+'|'+p.weekStart+'|'+p.day;
+      if(!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push(p);
+    });
+    const lateWeeksByStaff = {};
+    byKey.forEach((dayPunches, k)=>{
+      const [staffId, weekStart] = k.split('|');
+      const staff = teamStaff.find(s=>s.id===staffId);
+      if(!staff) return;
+      const sched = parseShiftHoursRange(staff.shiftHours);
+      const a = trAnalyzeDay(dayPunches);
+      const d = trDeriveDay(sched, a.slots, a.issues, null);
+      if(d.late>0){
+        (lateWeeksByStaff[staffId] = lateWeeksByStaff[staffId]||new Set()).add(weekStart);
+      }
+    });
+    const patterns = {};
+    Object.keys(lateWeeksByStaff).forEach(staffId=>{
+      const n = lateWeeksByStaff[staffId].size;
+      if(n>=3) patterns[staffId] = 'Started late in '+n+' of the last '+recentWeeks.length+' weeks';
+    });
+    if(activeModal?.type==='weekly-time-review') openModal({...activeModal, patterns});
+  }catch(e){ console.warn('Could not load Weekly Time Review patterns:', e&&e.message); }
 }
 
 // Parses an uploaded punch-report .xlsx the same way staff Import does
@@ -14130,7 +14200,7 @@ function renderWeeklyTimeReviewModal(m){
   const summary = trSummaryByStaff(rows);
   const cards = summary.map(s=>{
     const sRows = rows.filter(r=>r.staff.id===s.staff.id);
-    return {s, rows:sRows, st:trStanding(s, sRows)};
+    return {s, rows:sRows, st:trStanding(s, sRows, (m.patterns||{})[s.staff.id])};
   });
   const totWorked = summary.reduce((a,s)=>a+s.worked,0), totSched = summary.reduce((a,s)=>a+s.sched,0);
   const goodN = cards.filter(c=>c.st.level==='good').length, actionN = cards.filter(c=>c.st.level==='action').length, watchN = cards.filter(c=>c.st.level==='watch').length;
@@ -14205,8 +14275,30 @@ function renderWeeklyTimeReviewModal(m){
             ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
             <span class="wtr-kpi ok"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
           </div>
-          <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+            <div style="display:flex;gap:6px;">
+              ${(m.availableWeeks||[]).length>1?`
+              <select id="wtr-week-picker" style="font:inherit;font-size:12.5px;border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:4px 8px;background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);">
+                ${m.availableWeeks.map(w=>`<option value="${escapeHtml(w)}" ${w===m.weekLo?'selected':''}>Week of ${escapeHtml(friendlyDate(w))}</option>`).join('')}
+              </select>`:''}
+              <button class="btn btn-light btn-sm" id="wtr-toggle-rules">⚙ Rules</button>
+              ${m.loading?`<span class="small-muted" style="align-self:center;">Loading…</span>`:''}
+            </div>
+            <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
+          </div>
         </div>
+
+        ${m.showRules?`
+        <div class="wtr-item" style="margin-top:12px;">
+          <b>Rules</b>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;">
+            ${TR_RULE_FIELDS.map(f=>`<label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--md-sys-color-on-surface-variant);">${escapeHtml(f.label)}<input type="number" min="0" step="1" data-wtr-rule="${f.key}" value="${TR_RULES[f.key]}" style="font:inherit;font-size:13px;color:var(--md-sys-color-on-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:5px 8px;background:var(--md-sys-color-surface-container-lowest);"/></label>`).join('')}
+          </div>
+          <div class="wtr-qrow" style="margin-top:4px;">
+            <button class="btn btn-sm btn-primary" id="wtr-save-rules">Save rules</button>
+            <span class="small-muted" id="wtr-rules-msg"></span>
+          </div>
+        </div>`:''}
 
         <h2 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--md-sys-color-on-surface-variant);margin:16px 0 10px;">${authState.account?.role==='admin'?'Team':'Your team'} · click a person to see just their items</h2>
         <div class="wtr-people">
@@ -18598,13 +18690,15 @@ function attachHandlers(){
   on('nav-weekly-time-review',  async ()=>{
     closeNav();
     const teamStaff = myReviewTeamStaff();
-    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, loadingSaved:true, error:''});
+    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:true, error:''});
     if(!teamStaff.length || !window.RC){ if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false}); return; }
     try{
       const staffIds = teamStaff.map(s=>s.id);
-      const [week, decisionRows] = await Promise.all([
+      const [week, decisionRows, weeksList] = await Promise.all([
         window.RC.fetchLatestTimeReviewWeek({staffIds}),
         window.RC.fetchTimeReviewDecisions({staffIds}),
+        window.RC.fetchTimeReviewWeeksList({staffIds}),
+        loadTimeReviewSettingsOnce(),
       ]);
       if(activeModal?.type!=='weekly-time-review') return; // modal closed/changed while this was in flight
       const decisions = {};
@@ -18613,9 +18707,10 @@ function attachHandlers(){
       });
       if(week){
         const days = week.punches.map(p=>p.day).sort();
-        openModal({...activeModal, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, loadingSaved:false});
+        openModal({...activeModal, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], loadingSaved:false});
+        loadTimeReviewPatterns(staffIds, weeksList||[]);
       } else {
-        openModal({...activeModal, decisions, loadingSaved:false});
+        openModal({...activeModal, decisions, availableWeeks:weeksList||[], loadingSaved:false});
       }
     }catch(e){
       if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false, error:'Could not load last week\'s saved data — you can still upload a fresh file. ('+((e&&e.message)||'try again')+')'});
@@ -21193,8 +21288,9 @@ function attachHandlers(){
       m.loading = true; m.error = ''; render();
       try{
         const result = await parseWeeklyTimeReviewFile(file, m.teamStaff);
+        const availableWeeks = [...new Set([result.weekLo, ...(m.availableWeeks||[])])].sort().reverse();
         openModal({...m, punches:result.punches, unmatchedTdis:result.unmatchedTdis,
-          weekLo:result.weekLo, weekHi:result.weekHi, decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+          weekLo:result.weekLo, weekHi:result.weekHi, decisions:{}, availableWeeks, focusStaffId:'', editSlot:'', loading:false, error:''});
         // Replaces whatever was saved for these exact (staff, day) pairs —
         // a re-upload supersedes, it doesn't double up (see
         // saveTimeReviewPunches). Fire-and-forget: the screen already
@@ -21203,6 +21299,19 @@ function attachHandlers(){
         syncBoardWrite(()=>window.RC.saveTimeReviewPunches({weekStart:result.weekLo, staffDays, punches:result.punches, actingAccountId:authState.account.id}), 'weekly time review punches');
       }catch(e){
         openModal({...m, loading:false, error:(e&&e.message)||'Could not read that file.'});
+      }
+    };
+    const loadWeek = async (weekStart) => {
+      if(!weekStart || weekStart===m.weekLo) return;
+      m.loading = true; render();
+      try{
+        const staffIds = m.teamStaff.map(s=>s.id);
+        const week = await window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart});
+        if(!week){ openModal({...m, loading:false}); return; }
+        const days = week.punches.map(p=>p.day).sort();
+        openModal({...m, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], unmatchedTdis:[], focusStaffId:'', editSlot:'', loading:false});
+      }catch(e){
+        openModal({...m, loading:false, error:'Could not load that week. ('+((e&&e.message)||'try again')+')'});
       }
     };
     const fileInput = document.getElementById('wtr-file-input');
@@ -21248,6 +21357,21 @@ function attachHandlers(){
       render();
       saveDecision(key);
     }));
+    const weekPicker = document.getElementById('wtr-week-picker');
+    if(weekPicker) weekPicker.addEventListener('change', ()=>loadWeek(weekPicker.value));
+    on('wtr-toggle-rules', ()=>{ m.showRules = !m.showRules; render(); });
+    on('wtr-save-rules', ()=>{
+      const next = {...TR_RULES};
+      document.querySelectorAll('[data-wtr-rule]').forEach(el=>{
+        const v = Math.max(0, Math.round(Number(el.value))||0);
+        next[el.dataset.wtrRule] = v;
+      });
+      TR_RULES = next;
+      syncBoardWrite(()=>window.RC.saveTimeReviewSettings({...TR_RULES, actingAccountId:authState.account.id}), 'weekly time review settings');
+      render();
+      const msg = document.getElementById('wtr-rules-msg');
+      if(msg) msg.textContent = 'Saved — applied to every day shown.';
+    });
   }
 
   // --- pending evaluations review queue ---
