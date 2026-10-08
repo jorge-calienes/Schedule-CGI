@@ -1644,5 +1644,14 @@ window.RC = {
   clearTempMove,
   fetchStaffEvaluationHistory,
   fetchTeamPerformanceOverview,
+  fetchTimeReviewWeekByStart,
+  fetchLatestTimeReviewWeek,
+  fetchTimeReviewWeeksList,
+  saveTimeReviewPunches,
+  fetchTimeReviewDecisions,
+  saveTimeReviewDecision,
+  fetchTimeReviewSettings,
+  saveTimeReviewSettings,
+  fetchRecentTimeReviewPunches,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
