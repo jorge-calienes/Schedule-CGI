@@ -5055,7 +5055,8 @@ button{font-family:var(--sans);cursor:pointer;}
 /* ── Weekly Time Review (reuses the same tone language as the Time Off
      list — orange/green left-accent cards, icon-chip section banners —
      under its own wtr- prefix since it's a modal, not the split view). ── */
-.wtr-hero{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.wtr-hero{display:flex;flex-direction:column;gap:12px;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.wtr-hero-row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;}
 .wtr-bignum{font-family:var(--mono,ui-monospace,Consolas,monospace);display:flex;align-items:baseline;gap:6px;}
 .wtr-bignum b{font-size:38px;font-weight:600;line-height:1;color:var(--md-sys-color-on-surface);}
 .wtr-bignum span{font-size:16px;color:var(--md-sys-color-on-surface-variant);}
@@ -14495,28 +14496,30 @@ function renderWeeklyTimeReviewModal(m){
       ${m.unmatchedTdis&&m.unmatchedTdis.length?`<div class="alert-box rust" style="margin-bottom:14px;">${m.unmatchedTdis.length} punch row${m.unmatchedTdis.length===1?'':'s'} didn't match anyone on your team (unknown TDIS number${m.unmatchedTdis.length===1?'':'s'}: ${m.unmatchedTdis.map(escapeHtml).join(', ')}).</div>`:''}
       <div class="wtr-wrap" style="padding:0;">
         <div class="wtr-hero">
-          <div style="display:flex;gap:14px;align-items:center;">
-            <div class="wtr-bignum"><b>${goodN}</b><span>/ ${cards.length}</span></div>
-            <div class="wtr-biglbl"><strong>in good standing</strong><small>${daysSeen.length} day${daysSeen.length===1?'':'s'} uploaded</small></div>
-          </div>
-          <div class="wtr-kpis">
-            ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
-            ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
-            ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
-            <span class="wtr-kpi ${(totWorked-totSched)<-TR_RULES.standTol||(totWorked-totSched)>TR_RULES.overTol?'warn':'ok'}"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
-            <div style="display:flex;gap:6px;">
+          <div class="wtr-hero-row">
+            <div style="display:flex;gap:14px;align-items:center;">
+              <div class="wtr-bignum"><b>${goodN}</b><span>/ ${cards.length}</span></div>
+              <div class="wtr-biglbl"><strong>in good standing</strong><small>${daysSeen.length} day${daysSeen.length===1?'':'s'} uploaded</small></div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${m.loading?`<span class="small-muted">Loading…</span>`:''}
               ${(m.availableWeeks||[]).length>1?`
               <select id="wtr-week-picker" style="font:inherit;font-size:12.5px;border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:4px 8px;background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);">
                 ${m.availableWeeks.map(w=>`<option value="${escapeHtml(w)}" ${w===m.weekStart?'selected':''}>Week of ${escapeHtml(friendlyDate(w))}</option>`).join('')}
               </select>`:''}
               <button class="btn btn-light btn-sm" id="wtr-toggle-rules">⚙ Rules</button>
-              ${m.loading?`<span class="small-muted" style="align-self:center;">Loading…</span>`:''}
             </div>
-            <div style="display:flex;gap:6px;">
+          </div>
+          <div class="wtr-hero-row">
+            <div class="wtr-kpis">
+              ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
+              ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
+              ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
+              <span class="wtr-kpi ${(totWorked-totSched)<-TR_RULES.standTol||(totWorked-totSched)>TR_RULES.overTol?'warn':'ok'}"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
               <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
-              <button class="btn btn-light btn-sm" style="color:#9d2327;" id="wtr-del-week" data-wtr-del-week="1">🗑 Delete this week</button>
+              <button class="btn btn-sm btn-danger" id="wtr-del-week" data-wtr-del-week="1">🗑 Delete this week</button>
             </div>
           </div>
         </div>
