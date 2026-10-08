@@ -1,6 +1,7 @@
 // POST /api/accounts/grant
 //   { accountId, role: "team_lead" | "supervisor" | "admin",
-//     assignedAreaIds: ["<uuid>", ...] | [], pin: "1234", name: "Rafael Ortiz" }
+//     assignedAreaIds: ["<uuid>", ...] | [], pin: "1234", name: "Rafael Ortiz",
+//     linkedSupervisorId: "<uuid>" | null }
 //
 // Called from the "Manage accounts" screen. Requires the CALLER to already
 // be signed in as an admin — we re-check that server-side against their
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
     const caller = await requireAdmin(supabaseAdmin, req);
     if (!caller) return res.status(403).json({ error: 'Admin access required.' });
 
-    const { accountId, role, assignedAreaIds, pin, name } = req.body || {};
+    const { accountId, role, assignedAreaIds, pin, name, linkedSupervisorId } = req.body || {};
     if (!accountId || !role) {
       return res.status(400).json({ error: 'accountId and role are required.' });
     }
@@ -104,6 +105,11 @@ export default async function handler(req, res) {
         role,
         status: 'active',
         assigned_area_ids: role === 'team_lead' ? assignedAreaIds : [],
+        // Lets this account's roster be identified for the Weekly Time
+        // Review feature (and any other "this supervisor's team" lookup) —
+        // only meaningful for supervisor accounts, so it's cleared for
+        // every other role rather than left stale from an earlier edit.
+        linked_supervisor_id: role === 'supervisor' ? (linkedSupervisorId || null) : null,
         approved_at: new Date().toISOString(),
         approved_by: caller.id,
         ...(trimmedName ? { name: trimmedName } : {}),

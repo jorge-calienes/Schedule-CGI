@@ -5052,6 +5052,80 @@ button{font-family:var(--sans);cursor:pointer;}
     .to-list-card{border-radius:var(--md-sys-shape-corner-small);}
   }
 
+/* ── Weekly Time Review (reuses the same tone language as the Time Off
+     list — orange/green left-accent cards, icon-chip section banners —
+     under its own wtr- prefix since it's a modal, not the split view). ── */
+.wtr-hero{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:center;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.wtr-bignum{font-family:var(--mono,ui-monospace,Consolas,monospace);display:flex;align-items:baseline;gap:6px;}
+.wtr-bignum b{font-size:38px;font-weight:600;line-height:1;color:var(--md-sys-color-on-surface);}
+.wtr-bignum span{font-size:16px;color:var(--md-sys-color-on-surface-variant);}
+.wtr-biglbl{display:flex;flex-direction:column;}
+.wtr-biglbl strong{font-size:14px;}
+.wtr-biglbl small{color:var(--md-sys-color-on-surface-variant);font-size:12px;}
+.wtr-kpis{display:flex;gap:8px;flex-wrap:wrap;flex:1;}
+.wtr-kpi{border-radius:var(--md-sys-shape-corner-small);padding:6px 11px;font-size:12.5px;font-weight:600;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);white-space:nowrap;}
+.wtr-kpi b{font-family:var(--mono,ui-monospace,Consolas,monospace);margin-right:5px;font-weight:700;}
+.wtr-kpi.bad{background:#fadfde;color:#9d2327;}
+.wtr-kpi.warn{background:#fdefc9;color:#85560a;}
+.wtr-kpi.ok{background:#e0f2e8;color:#1b6e45;}
+:root[data-theme="dark"] .wtr-kpi.bad{background:#3A1F1F;color:#FFB3AB;}
+:root[data-theme="dark"] .wtr-kpi.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-kpi.ok{background:#163821;color:#8FE0A5;}
+.wtr-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.wtr-pc{position:relative;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;padding-left:4px;transition:box-shadow .15s,transform .15s;}
+.wtr-pc::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;}
+.wtr-pc.ok::before{background:#1b6e45;} .wtr-pc.warn::before{background:#d19a1c;} .wtr-pc.bad::before{background:#9d2327;}
+.wtr-pc:hover{box-shadow:0 4px 14px rgba(0,0,0,.09);transform:translateY(-1px);}
+.wtr-pc.sel{outline:2px solid var(--md-sys-color-primary);outline-offset:-2px;}
+:root[data-theme="dark"] .wtr-pc:hover{box-shadow:0 4px 14px rgba(0,0,0,.4);}
+.wtr-pc-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.wtr-pc-head{display:flex;align-items:center;gap:10px;}
+.wtr-av{width:30px;height:30px;border-radius:50%;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none;}
+.wtr-pc-head b{font-size:14px;display:block;}
+.wtr-standing{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:2px;}
+.wtr-standing.ok{background:#e0f2e8;color:#1b6e45;} .wtr-standing.warn{background:#fdefc9;color:#85560a;} .wtr-standing.bad{background:#fadfde;color:#9d2327;}
+:root[data-theme="dark"] .wtr-standing.ok{background:#163821;color:#8FE0A5;}
+:root[data-theme="dark"] .wtr-standing.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-standing.bad{background:#3A1F1F;color:#FFB3AB;}
+.wtr-ptime{display:flex;align-items:baseline;gap:7px;}
+.wtr-ptime .t{font-size:15px;font-weight:600;font-family:var(--mono,ui-monospace,Consolas,monospace);}
+.wtr-prog{height:6px;border-radius:999px;background:var(--md-sys-color-surface-container-high);overflow:hidden;margin-top:4px;}
+.wtr-prog i{display:block;height:100%;background:var(--md-sys-color-primary);}
+.wtr-dstrip{display:grid;grid-template-columns:repeat(var(--n,5),minmax(0,1fr));gap:4px;}
+.wtr-dc{border-radius:6px;padding:4px 2px;text-align:center;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:10.5px;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);}
+.wtr-dc small{display:block;font-family:var(--sans);font-size:9px;opacity:.8;}
+.wtr-dc.ok{background:#e0f2e8;color:#1b6e45;} .wtr-dc.warn{background:#fdefc9;color:#85560a;} .wtr-dc.bad{background:#fadfde;color:#9d2327;}
+:root[data-theme="dark"] .wtr-dc.ok{background:#163821;color:#8FE0A5;}
+:root[data-theme="dark"] .wtr-dc.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-dc.bad{background:#3A1F1F;color:#FFB3AB;}
+.wtr-why{margin:0;padding-left:16px;font-size:11.5px;color:var(--md-sys-color-on-surface-variant);}
+.wtr-why li{margin-bottom:1px;}
+.wtr-section-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding:10px 16px;border-radius:var(--md-sys-shape-corner-medium);box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.wtr-section-head.warn{background:#FFF3E0;color:#E65100;} .wtr-section-head.ok{background:#E8F5E9;color:#1B5E20;}
+:root[data-theme="dark"] .wtr-section-head.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-section-head.ok{background:#163821;color:#8FE0A5;}
+.wtr-section-icon{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:11px;background:rgba(0,0,0,.08);flex-shrink:0;}
+.wtr-item{background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);box-shadow:0 1px 3px rgba(0,0,0,.05);padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+.wtr-ihead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.wtr-ihead .grow{flex:1;}
+.wtr-tone{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;flex-shrink:0;}
+.wtr-tone.bad{background:#fadfde;color:#9d2327;} .wtr-tone.warn{background:#fdefc9;color:#85560a;} .wtr-tone.ok{background:#e0f2e8;color:#1b6e45;}
+:root[data-theme="dark"] .wtr-tone.bad{background:#3A1F1F;color:#FFB3AB;}
+:root[data-theme="dark"] .wtr-tone.warn{background:#3A2E12;color:#FFC46A;}
+:root[data-theme="dark"] .wtr-tone.ok{background:#163821;color:#8FE0A5;}
+.wtr-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:6px;}
+.wtr-slot{border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:6px 8px;background:var(--md-sys-color-surface-container-low);display:flex;flex-direction:column;gap:2px;}
+.wtr-slot small{color:var(--md-sys-color-on-surface-variant);font-size:10.5px;}
+.wtr-slot .t{font-size:13px;font-family:var(--mono,ui-monospace,Consolas,monospace);}
+.wtr-slot.gap{border-color:#9d2327;background:#fadfde;}
+.wtr-slot.gap small{color:#9d2327;}
+:root[data-theme="dark"] .wtr-slot.gap{border-color:#8B3A3A;background:#3A1F1F;}
+:root[data-theme="dark"] .wtr-slot.gap small{color:#FFB3AB;}
+.wtr-slot input[type="time"]{font:inherit;font-size:12.5px;border:1px solid var(--md-sys-color-outline-variant);border-radius:5px;padding:3px 5px;width:100%;background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-surface);}
+.wtr-note{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
+.wtr-qrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+#wtr-drop:hover,#wtr-drop.over{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+
 /* ── Coverage planning dashboard ── */
 .to-toolbar{display:flex;gap:8px;align-items:center;padding:var(--md-space-3) 0 var(--md-space-3);position:sticky;top:0;background:var(--md-sys-color-surface);z-index:2;border-bottom:1px solid var(--md-sys-color-outline-variant);margin-bottom:var(--md-space-3);}
 .to-toolbar input[type="text"]{flex:1;padding:6px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);font-family:var(--sans);font-size:var(--md-sys-typescale-body-medium-size);}
@@ -7205,7 +7279,7 @@ let authState = {
   pin: '',
   error: '',
   errorDetail: '', // muted technical detail shown under `error`, for diagnosing unexpected failures
-  account: null, // {id, name, role, assigned_area_ids}
+  account: null, // {id, name, role, assigned_area_ids, linked_supervisor_id}
   showRequestForm: false,
   requestName: '',
   requestStatus: 'idle', // 'idle' | 'submitting' | 'done'
@@ -8219,6 +8293,306 @@ function staffUnderSupervisor(supervisorId){
 
 function unassignedSupervisorStaff(){
   return state.staff.filter(s=>!s.supervisorId);
+}
+
+// The signed-in account's own roster for team-scoped screens (Weekly Time
+// Review today, possibly others later): admins see everyone; a supervisor
+// account only sees their team once their login is linked to a Supervisors
+// roster entry (Manage accounts → "Supervisor roster entry") — unlinked
+// returns an empty list rather than guessing, since showing the wrong
+// person's team here would be worse than showing nothing.
+function myReviewTeamStaff(){
+  const acct = authState.account;
+  if(!acct) return [];
+  if(acct.role==='admin') return state.staff.filter(s=>s.active!==false);
+  if(acct.role==='supervisor' && acct.linked_supervisor_id) return staffUnderSupervisor(acct.linked_supervisor_id).filter(s=>s.active!==false);
+  return [];
+}
+
+// ============ WEEKLY TIME REVIEW (Phase 1 — client-side only, no persistence yet) ============
+// Reads a punch-report export (.xlsx) the same way the existing staff
+// Import screen reads one — client-side via the SheetJS lib already loaded
+// for that feature, nothing uploaded anywhere. Checked against the shift
+// each person already has on file (staff.shiftHours) — no second file.
+// Review decisions (approve a late start, verify a day, correct a missing
+// punch) live only in the open modal's own state for now; closing the
+// modal discards them. Persisting them to Supabase, and persisting the
+// uploaded punches themselves so a supervisor doesn't have to re-upload to
+// pick a week back up, is Phase 2.
+
+const TR_KIND = {'Start of Shift':'SOS','End of Shift':'EOS','Start of Break - In':'SOB','Start of Break - Out':'SOB','End of Break':'EOB'};
+const TR_SLOTN = ['Start of shift','Break out','Break in','Lunch out','Lunch in','End of shift'];
+// Tolerances a future phase should expose as editable settings (mirrors the
+// uploaded prototype's "Rules" panel) — hardcoded for Phase 1.
+const TR_RULES = {lateGrace:2, earlyGrace:5, lunchMin:60, breakMin:15, standTol:15, overTol:60, fallbackTargetMin:8*60};
+
+function trFmtClock(mins){
+  if(mins==null) return '—';
+  const t=Math.round(mins); let h=Math.floor(t/60)%24, mm=((t%60)+60)%60;
+  const ap=h>=12?'PM':'AM'; h=h%12||12;
+  return h+':'+String(mm).padStart(2,'0')+' '+ap;
+}
+function trHm(mins){
+  const t=Math.round(Math.abs(mins));
+  return (mins<0?'-':'')+Math.floor(t/60)+'h '+String(t%60).padStart(2,'0')+'m';
+}
+// Compact "H:MM" duration for the narrow per-day strip cells, where "7h
+// 31m" doesn't fit — trHm stays for everywhere there's room to spell it out.
+function trHmCompact(mins){
+  const t=Math.round(Math.abs(mins));
+  return (mins<0?'-':'')+Math.floor(t/60)+':'+String(t%60).padStart(2,'0');
+}
+// 24-hour "HH:MM" for pre-filling a <input type="time"> from a
+// minutes-since-midnight value (trParseTime/trFmtClock use 12-hour clock
+// for display; the time input itself needs 24-hour).
+function trHhmm(mins){
+  if(mins==null) return '';
+  const t=Math.round(mins);
+  return String(Math.floor(t/60)%24).padStart(2,'0')+':'+String(((t%60)+60)%60).padStart(2,'0');
+}
+
+// "7:30 – 4:15" -> {s,e} minutes since midnight. The source field has no
+// AM/PM: a 1–11 hour is read as that hour AM, 12 as noon, and then — since
+// every real shift on file runs same-day start-to-end — the end time is
+// pushed 12h later whenever reading it in the same morning meridiem as the
+// start would put it at or before the start (the normal case, e.g.
+// 7:30–4:15 meaning 7:30 AM to 4:15 PM). A true half-day AM-only shift
+// (end later than start, both still morning) is left alone.
+function parseShiftHoursRange(str){
+  if(!str) return null;
+  const m = String(str).trim().match(/^(\d{1,2}):(\d{2})\s*[-–—]+\s*(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const base12 = (h,mi) => (h===12 ? 12*60+mi : (h%12)*60+mi);
+  const startMin = base12(+m[1], +m[2]);
+  let endMin = base12(+m[3], +m[4]);
+  if(endMin<=startMin) endMin += 720;
+  return {s:startMin, e:endMin};
+}
+
+// Punch export cells come through as pre-formatted strings (sheet_to_json
+// is called with raw:false, same as the staff Import screen) — a Date or
+// raw Excel serial is handled too in case a particular export's cell
+// format slips through unformatted.
+function trParseTime(v){
+  if(v==null||v==='') return null;
+  if(v instanceof Date) return v.getHours()*60+v.getMinutes()+v.getSeconds()/60;
+  if(typeof v==='number') return Math.round(((v%1)*1440)*100)/100;
+  const m = String(v).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if(!m) return null;
+  let h=+m[1]; const mi=+m[2]; const ap=m[4]&&m[4].toUpperCase();
+  if(ap==='PM'&&h<12) h+=12; if(ap==='AM'&&h===12) h=0;
+  return h*60+mi+(m[3]?+m[3]/60:0);
+}
+function trParseDay(v){
+  if(v==null||v==='') return null;
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return m[3]+'-'+m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0');
+  return null;
+}
+
+// Turns one person's raw punches for one day into the 6 named slots (start,
+// break out/in, lunch out/in, end), reconciling the real-world messiness of
+// a physical time clock: mis-presses within 2 min of another punch, a
+// Start/End of Shift pressed instead of End of Break while mid-break, and
+// the exactly-4-or-6-punch shortcuts the device's two break-start labels
+// collapse into ("Start of Break - In"/"- Out" both just mean "a break
+// started"; only duration tells break from lunch apart).
+function trAnalyzeDay(dayPunches){
+  let P = dayPunches.map(p=>({k:TR_KIND[p.desc]||'UNK', t:p.t, desc:p.desc})).sort((a,b)=>a.t-b.t);
+  const rawAll = P.map(p=>trFmtClock(p.t)+'  '+p.desc);
+  const sosAll=P.filter(p=>p.k==='SOS'), eosAll=P.filter(p=>p.k==='EOS');
+  const noise = P.filter(p=>((p.k==='SOS'&&p!==sosAll[0])||(p.k==='EOS'&&p!==eosAll[eosAll.length-1]))&&P.some(q=>q!==p&&Math.abs(q.t-p.t)<=2));
+  P = P.filter(p=>!noise.includes(p));
+
+  if(P.length===6||P.length===4){
+    const T=P.map(p=>p.t), iss=[]; noise.forEach(p=>iss.push('Ignored '+p.desc+' at '+trFmtClock(p.t)+' (pressed within 2 min of another punch, looks like a mis-press)'));
+    let slots;
+    if(P.length===6){
+      let [s,b1,b2,l1,l2,e]=T;
+      if(b2-b1>=30&&l2-l1<30){ [b1,b2,l1,l2]=[l1,l2,b1,b2]; iss.push('The first pair was longer than the second, so it was counted as lunch and the shorter pair as the break'); }
+      slots=[s,b1,b2,l1,l2,e];
+      const exp=['SOS','SOB','EOB','SOB','EOB','EOS'];
+      if(P.some((p,i)=>p.k!==exp[i])) iss.push('Punch names did not match their order ('+P.map(p=>p.desc).join(', ')+'). Counted by order: start, break out, break in, lunch out, lunch in, end');
+    } else {
+      const [s,a,b,e]=T; const isL=b-a>=30;
+      slots=[s,isL?null:a,isL?null:b,isL?a:null,isL?b:null,e];
+      iss.push('4 punches (expected 6)');
+      const exp=['SOS','SOB','EOB','EOS'];
+      if(P.some((p,i)=>p.k!==exp[i])) iss.push('Punch names did not match their order ('+P.map(p=>p.desc).join(', ')+'). Counted by order, and the middle pair by length ('+(isL?'lunch':'break')+')');
+    }
+    return {slots, n:P.length, issues:iss, raw:rawAll};
+  }
+
+  const relIssues=[];
+  { const fS=P.find(p=>p.k==='SOS'); const lastE=[...P].reverse().find(p=>p.k==='EOS'); let open=0;
+    P.forEach(p=>{ if(p.k==='SOB') open++; else if(p.k==='EOB'){ if(open>0) open--; }
+      else if(open>0&&((p.k==='EOS'&&p!==lastE)||(p.k==='SOS'&&p!==fS))){ relIssues.push(p.desc+' at '+trFmtClock(p.t)+' was pressed instead of End of Break, counted as the return'); p.k='EOB'; open--; } }); }
+  const by=k=>P.filter(p=>p.k===k).map(p=>p.t);
+  const sos=by('SOS'),eos=by('EOS'),sob=by('SOB'); let eob=by('EOB');
+  const issues=[]; relIssues.forEach(x=>issues.push(x)); noise.forEach(p=>issues.push('Ignored '+p.desc+' at '+trFmtClock(p.t)+' (pressed within 2 min of another punch, looks like a mis-press)')); P.filter(p=>p.k==='UNK').forEach(p=>issues.push('Unrecognized punch label "'+p.desc+'" at '+trFmtClock(p.t)));
+  const start=sos.length?sos[0]:null; let end=eos.length?eos[eos.length-1]:null;
+  if(end==null&&eob.length>sob.length&&eob.length){ end=eob.pop(); issues.push('Sign-out at '+trFmtClock(end)+' was punched as "End of Break" (no End of Shift), treated as end of shift'); }
+  const pairs=[],unpaired=[]; let left=eob.slice().sort((a,b)=>a-b);
+  sob.slice().sort((a,b)=>a-b).forEach(s=>{ const i=left.findIndex(e=>e>s); if(i>=0){pairs.push([s,left[i]]);left.splice(i,1);} else unpaired.push(s); });
+  let brk=null,lun=null;
+  pairs.forEach(([s,e])=>{ if(e-s>=30&&!lun) lun=[s,e]; else if(!brk&&e-s<30) brk=[s,e]; else issues.push('Extra break pair '+trFmtClock(s)+' to '+trFmtClock(e)); });
+  unpaired.forEach(s=>{ if(s<720&&!brk){brk=[s,null];issues.push('Break start '+trFmtClock(s)+' has no matching End of Break');}
+    else if(!lun){lun=[s,null];issues.push('Lunch start '+trFmtClock(s)+' has no matching End of Break (lunch return missing)');}
+    else issues.push('Extra break start '+trFmtClock(s)); });
+  left.forEach(e=>issues.push('End of Break '+trFmtClock(e)+' has no matching start'));
+  if(sos.length>1) issues.push(sos.length+' Start of Shift punches ('+sos.map(trFmtClock).join(', ')+')');
+  if(eos.length>1) issues.push(eos.length+' End of Shift punches ('+eos.map(trFmtClock).join(', ')+')');
+  const slots=[start,brk&&brk[0],brk&&brk[1],lun&&lun[0],lun&&lun[1],end].map(v=>v==null?null:v);
+  if(P.length!==6) issues.push(P.length+' punches (expected 6)');
+  return {slots, n:P.length, issues, raw:rawAll};
+}
+
+// Folds a day's analyzed slots + this supervisor's in-modal decisions (not
+// yet persisted — see note above) into everything the UI needs: net worked
+// minutes, variance vs. the shift on file, and whether this day is clean,
+// needs a look, or is still waiting on a decision.
+function trDeriveDay(sched, slots, issuesIn, decision){
+  const d={}, dec=decision||{}, fix=dec.fix||{};
+  const sl = slots.map((x,i)=>{ const f=fix[i]!=null?trParseTime(fix[i]):null; return f!=null?f:x; });
+  d.sl=sl; d.added=slots.map((x,i)=>x==null&&sl[i]!=null);
+  const missing = TR_SLOTN.filter((n,i)=>sl[i]==null);
+  d.missing=missing;
+  d.startVar=(sl[0]!=null&&sched)?Math.round(sl[0]-sched.s):null;
+  d.endVar=(sl[5]!=null&&sched)?Math.round(sl[5]-sched.e):null;
+  d.brk=(sl[1]!=null&&sl[2]!=null)?Math.round(sl[2]-sl[1]):null;
+  d.lun=(sl[3]!=null&&sl[4]!=null)?Math.round(sl[4]-sl[3]):null;
+  d.late=(d.startVar!=null&&d.startVar>TR_RULES.lateGrace)?d.startVar:0;
+  d.cut=d.lun!=null?Math.max(0,TR_RULES.lunchMin-d.lun):null;
+  d.spanMin=(sl[0]!=null&&sl[5]!=null)?sl[5]-sl[0]:null;
+  d.est=false; d.netMin=null;
+  if(d.spanMin!=null){
+    let unpaid; if(d.lun!=null) unpaid=Math.max(0,d.lun-15); else { unpaid=Math.max(0,TR_RULES.lunchMin-15); d.est=true; }
+    let bd=0; if(d.brk!=null) bd=d.brk; else { bd=TR_RULES.breakMin; d.est=true; }
+    d.netMin=Math.round(d.spanMin-unpaid-bd);
+  }
+  // The shift on file is a raw clock-in/out span (e.g. 7:30–4:00 = 8.5h),
+  // but netMin above already has the unpaid part of lunch subtracted out —
+  // comparing netMin straight against that raw span would show nearly
+  // everyone "under schedule" by about an hour every day. Target needs the
+  // same standard unpaid-lunch chunk taken off so the two are comparable.
+  d.target = sched ? Math.max(0, (sched.e-sched.s) - (TR_RULES.lunchMin-15)) : TR_RULES.fallbackTargetMin;
+  d.vs = d.netMin==null?null:Math.round(d.netMin-d.target);
+  let iss=(issuesIn||[]).slice();
+  if(missing.length) iss.unshift('Missing: '+missing.join(', '));
+  if(d.brk!=null&&d.brk>TR_RULES.breakMin+5&&(d.vs==null||d.vs<-5)) iss.push('Break '+d.brk+' min ('+(d.brk-TR_RULES.breakMin)+' over)');
+  if(d.lun!=null&&d.lun>TR_RULES.lunchMin+5&&(d.vs==null||d.vs<-5)) iss.push('Lunch '+d.lun+' min ('+(d.lun-TR_RULES.lunchMin)+' over)');
+  if(sched&&sl[5]!=null&&sched.e-sl[5]>TR_RULES.earlyGrace&&(d.vs==null||d.vs<-TR_RULES.earlyGrace)) iss.push('Left '+Math.round(sched.e-sl[5])+' min early (scheduled '+trFmtClock(sched.e)+')');
+  d.issues=iss;
+  d.base = missing.length ? 'Incomplete' : (iss.length ? 'Review' : 'OK');
+  d.needV = slots.some(v=>v==null) || (issuesIn||[]).some(x=>/punched as|Shift punches|punches \(expected|no matching/.test(x));
+  d.final = d.base==='OK' ? 'OK' : (dec.ver==='Yes' ? 'Verified' : (d.needV ? 'Unverified' : d.base));
+  d.lateRes='';
+  if(d.late>0){
+    if(d.cut==null) d.lateRes='LATE - cannot verify (lunch missing)';
+    else if(d.cut>=d.late) d.lateRes = dec.late==='Yes' ? 'Made up via lunch - approved' : 'Made up via lunch - NEEDS APPROVAL';
+    else d.lateRes = dec.late==='Yes' ? 'Late - approved, lunch not shortened enough' : 'LATE - not made up';
+  }
+  d.earlyMin = (sched&&d.endVar!=null&&-d.endVar>TR_RULES.earlyGrace&&(d.vs==null||d.vs<-TR_RULES.earlyGrace)) ? -d.endVar : 0;
+  const ver = dec.ver==='Yes';
+  d.flagged = d.base!=='OK' || d.late>0;
+  d.issueOpen = d.base!=='OK' && !ver;
+  d.lateOpen = d.late>0 && dec.late!=='Yes' && dec.late!=='No';
+  d.lateNo = d.late>0 && dec.late==='No';
+  d.open = d.issueOpen || d.lateOpen;
+  return d;
+}
+
+// Groups the uploaded punch rows by staff+day (matched by TDIS number) and
+// runs trAnalyzeDay/trDeriveDay over just the days that actually have
+// punches — there's no per-weekday schedule on file (just one shift time
+// per person), so an absence can't be distinguished from a day they simply
+// weren't scheduled; Phase 1 only flags punch-day anomalies, not absences.
+function trBuildRows(teamStaff, punches, decisions){
+  const byStaffDay = new Map();
+  punches.forEach(p=>{
+    const key = p.staffId+'|'+p.day;
+    if(!byStaffDay.has(key)) byStaffDay.set(key, []);
+    byStaffDay.get(key).push(p);
+  });
+  const rows=[];
+  teamStaff.forEach(s=>{
+    const sched = parseShiftHoursRange(s.shiftHours);
+    const days = [...new Set(punches.filter(p=>p.staffId===s.id).map(p=>p.day))].sort();
+    days.forEach(day=>{
+      const key = s.id+'|'+day;
+      const a = trAnalyzeDay(byStaffDay.get(key)||[]);
+      const d = trDeriveDay(sched, a.slots, a.issues, decisions[key]);
+      rows.push({staff:s, day, key, sched, slots:a.slots, raw:a.raw, n:a.n, d});
+    });
+  });
+  rows.sort((a,b)=>a.staff.name.localeCompare(b.staff.name)||a.day.localeCompare(b.day));
+  return rows;
+}
+
+function trSummaryByStaff(rows){
+  const m=new Map();
+  rows.forEach(r=>{
+    const k=r.staff.id;
+    if(!m.has(k)) m.set(k, {staff:r.staff, days:0, worked:0, sched:0, est:0, lateDays:0, lateMin:0, earlyMin:0});
+    const s=m.get(k); s.days++;
+    if(r.d.netMin!=null){ s.worked+=r.d.netMin; s.sched+=r.d.target; if(r.d.est) s.est+=r.d.netMin; }
+    if(r.d.late>0){ s.lateDays++; s.lateMin+=r.d.late; }
+    s.earlyMin += r.d.earlyMin;
+  });
+  return [...m.values()].sort((a,b)=>a.staff.name.localeCompare(b.staff.name));
+}
+
+const TR_LEVELS = {good:['Good standing','ok'], watch:['Keep an eye','warn'], action:['Needs your action','bad']};
+function trStanding(summary, rows){
+  let level='good'; const R=[];
+  const issOpen = rows.filter(r=>r.d.issueOpen).length, lateOpen = rows.filter(r=>r.d.lateOpen).length;
+  if(issOpen||lateOpen){ level='action';
+    if(issOpen) R.push(issOpen+' day'+(issOpen===1?'':'s')+' with punches to check');
+    if(lateOpen) R.push(lateOpen+' late start'+(lateOpen===1?'':'s')+' to decide'); }
+  const W=[]; const lateNo = rows.filter(r=>r.d.lateNo).length, diff = summary.worked-summary.sched;
+  if(lateNo) W.push(lateNo+' late start'+(lateNo===1?'':'s')+' not approved');
+  if(summary.earlyMin) W.push('Left early, '+trHm(summary.earlyMin)+' total');
+  if(diff<-TR_RULES.standTol) W.push(trHm(-diff)+' under schedule');
+  if(diff>TR_RULES.overTol) W.push(trHm(diff)+' over schedule (check overtime approval)');
+  if(W.length){ if(level==='good') level='watch'; R.push(...W); }
+  if(!R.length) R.push('Every day is clean');
+  return {level, label:TR_LEVELS[level][0], tone:TR_LEVELS[level][1], reasons:R};
+}
+
+// Parses an uploaded punch-report .xlsx the same way staff Import does
+// (SheetJS, client-side only). Expected columns, matching the Access
+// export this was built against: FirstName, LastName, TDIS Num, Day,
+// Description, Time. Rows whose TDIS doesn't match anyone in `teamStaff`
+// are kept out of `punches` and reported in `unmatchedTdis` instead of
+// silently dropped, since an unrecognized TDIS is usually a typo or
+// someone outside this supervisor's team worth knowing about.
+async function parseWeeklyTimeReviewFile(file, teamStaff){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:false});
+  if(rawRows.length===0) throw new Error('No rows found in that file.');
+  const headers = Object.keys(rawRows[0]);
+  const required = ['TDIS Num','Day','Description','Time'];
+  const missing = required.filter(h=>!headers.includes(h));
+  if(missing.length) throw new Error('This doesn\'t look like a punch report — missing column'+(missing.length>1?'s':'')+': '+missing.join(', ')+'.');
+  const staffByTdis = new Map(teamStaff.filter(s=>s.tdisNumber).map(s=>[String(s.tdisNumber).trim(), s]));
+  const punches=[], unmatchedSet=new Set();
+  rawRows.forEach(r=>{
+    const tdis = String(r['TDIS Num']??'').trim();
+    const day = trParseDay(r['Day']);
+    const t = trParseTime(r['Time']);
+    const desc = String(r['Description']??'').trim();
+    if(!tdis||!day||t==null) return;
+    const staff = staffByTdis.get(tdis);
+    if(!staff){ unmatchedSet.add(tdis); return; }
+    punches.push({staffId:staff.id, day, desc, t});
+  });
+  if(punches.length===0 && unmatchedSet.size===0) throw new Error('No usable punch rows found in that file.');
+  const days=[...new Set(punches.map(p=>p.day))].sort();
+  return {punches, unmatchedTdis:[...unmatchedSet], weekLo:days[0]||null, weekHi:days[days.length-1]||null};
 }
 
 // ============ ROTATION FLOW LOGIC ============
@@ -9528,6 +9902,7 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-weekly-time-review"><span class="nav-item-icon">⏱</span>Weekly Time Review</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-reassigns"><span class="nav-item-icon">🙋</span>Review reassignments${reassignBadgeCounts.pending>0?`<span class="nav-item-badge">${reassignBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-position-requests"><span class="nav-item-icon">🏷</span>Review position requests${positionReqBadgeCounts.pending>0?`<span class="nav-item-badge">${positionReqBadgeCounts.pending}</span>`:''}</button>` : ''}
@@ -10798,6 +11173,7 @@ function renderModal(){
   else if(m.type==='restore-period-confirm') inner = renderRestorePeriodConfirmModal(m);
   else if(m.type==='team-dashboard') inner = renderTeamDashboardModal(m);
   else if(m.type==='attendance-report') inner = renderAttendanceReportModal(m);
+  else if(m.type==='weekly-time-review') inner = renderWeeklyTimeReviewModal(m);
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='pending-reassigns') inner = renderPendingReassignsModal(m);
   else if(m.type==='pending-position-requests') inner = renderPendingPositionRequestsModal(m);
@@ -13383,7 +13759,7 @@ function renderManageAccountsModal(m){
   const active = accounts.filter(a=>a.status==='active');
   const revoked = accounts.filter(a=>a.status==='revoked');
   const areaNames = a => (a.assigned_area_ids||[]).map(id=>getAreaById(id)?.name).filter(Boolean).join(', ');
-  const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&areaNames(a)?' · '+escapeHtml(areaNames(a)):''}`;
+  const rowSub = a => `${ACCOUNT_ROLE_LABELS[a.role]||a.role}${a.role==='team_lead'&&areaNames(a)?' · '+escapeHtml(areaNames(a)):''}${a.role==='supervisor'&&a.linked_supervisor_id?' · Team: '+escapeHtml(getSupervisorById(a.linked_supervisor_id)?.name||'—'):''}`;
   return `
   <div class="modal" style="max-width:560px;">
     <div class="modal-head">
@@ -13410,7 +13786,7 @@ function renderManageAccountsModal(m){
         <div class="option-list" style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
           ${active.map(a=>`
             <div class="option-card" style="cursor:default;">
-              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-areas="${(a.assigned_area_ids||[]).join(',')}" style="cursor:pointer;flex:1;">
+              <div class="oc-left" data-edit-account="${a.id}" data-edit-name="${escapeHtml(a.name)}" data-edit-role="${a.role}" data-edit-areas="${(a.assigned_area_ids||[]).join(',')}" data-edit-linked-supervisor="${a.linked_supervisor_id||''}" style="cursor:pointer;flex:1;">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)}</span>
               </div>
@@ -13421,7 +13797,7 @@ function renderManageAccountsModal(m){
         <div class="small-muted" style="font-weight:700;margin-bottom:8px;">Revoked</div>
         <div class="option-list" style="max-height:200px;overflow-y:auto;">
           ${revoked.map(a=>`
-            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-areas="${(a.assigned_area_ids||[]).join(',')}" style="opacity:.65;">
+            <div class="option-card" data-restore-account="${a.id}" data-restore-name="${escapeHtml(a.name)}" data-restore-role="${a.role}" data-restore-areas="${(a.assigned_area_ids||[]).join(',')}" data-restore-linked-supervisor="${a.linked_supervisor_id||''}" style="opacity:.65;">
               <div class="oc-left">
                 <span class="oc-name">${escapeHtml(a.name)}</span>
                 <span class="oc-sub">${rowSub(a)} · access revoked</span>
@@ -13491,6 +13867,15 @@ function renderAccountGrantFormModal(m){
           const checked = assignedAreaIds.includes(ar.id);
           return '<label class="lang-cert-chip grant-area-chip'+(checked?' checked':'')+'"><input type="checkbox" class="grant-area-cb" data-area-id="'+ar.id+'" '+(checked?'checked':'')+' style="display:none;"/>'+escapeHtml(ar.name)+'</label>';
         }).join('')}</div>
+      </div>`:''}
+      ${role==='supervisor'?`
+      <div class="field">
+        <label>Supervisor roster entry (optional)</label>
+        <select id="grant-linked-supervisor-input">
+          <option value="">— not linked —</option>
+          ${state.supervisors.map(sv=>`<option value="${sv.id}" ${(m.linkedSupervisorId||'')===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+        </select>
+        <div class="small-muted" style="margin-top:4px;">Links this login to a Supervisors roster entry so team-scoped screens (like Weekly Time Review) show just this account's own staff. Leave unlinked if that's not needed.</div>
       </div>`:''}
       <div class="field">
         <label>${pinRequired?'PIN (4 digits)':'New PIN (optional)'}</label>
@@ -13700,6 +14085,143 @@ const TEAM_DASH_COLUMNS = [
   {id:'training', label:'Flagged for training',dot:'#B91C1C', match:r=>r.latestRecommendation==='training'},
   {id:'unrated',  label:'Not yet evaluated',   dot:'#9E9E9E', match:r=>r.count===0},
 ];
+function renderWeeklyTimeReviewModal(m){
+  const teamStaff = m.teamStaff||[];
+  const noTeam = teamStaff.length===0;
+  const isUnlinkedSupervisor = authState.account?.role==='supervisor' && !authState.account?.linked_supervisor_id;
+
+  if(!m.punches){
+    return `
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-head">
+        <div><h2>⏱ Weekly Time Review</h2><p>Upload this week's punch report — shifts are already on file, so that's all you need.</p></div>
+        <button class="modal-close" id="modal-close-x">✕</button>
+      </div>
+      <div class="modal-body">
+        ${isUnlinkedSupervisor?`<div class="alert-box rust" style="margin-bottom:14px;">Your account isn't linked to a Supervisors roster entry yet, so no team can be shown. An admin can set this under Manage accounts → edit your account → "Supervisor roster entry".</div>`:''}
+        ${!isUnlinkedSupervisor && noTeam?`<div class="alert-box rust" style="margin-bottom:14px;">No active staff found on your team.</div>`:''}
+        ${!isUnlinkedSupervisor && !noTeam?`<div class="small-muted" style="margin-bottom:14px;">Your team: ${teamStaff.map(s=>escapeHtml(s.name)).join(', ')}</div>`:''}
+        <label for="wtr-file-input" id="wtr-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1.5px dashed var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:36px 16px;text-align:center;cursor:pointer;color:var(--md-sys-color-on-surface-variant);">
+          <span style="font-size:28px;">⬆</span>
+          <b style="color:var(--md-sys-color-on-surface);">Drop the punch report here, or click to choose</b>
+          <span class="small-muted">.xlsx export — one row per punch (TDIS Num, Day, Description, Time)</span>
+        </label>
+        <input type="file" id="wtr-file-input" accept=".xlsx" hidden/>
+        ${m.loading?`<div class="small-muted" style="margin-top:12px;">Reading file…</div>`:''}
+        ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  const decisions = m.decisions||{};
+  const rows = trBuildRows(teamStaff, m.punches, decisions);
+  const summary = trSummaryByStaff(rows);
+  const cards = summary.map(s=>{
+    const sRows = rows.filter(r=>r.staff.id===s.staff.id);
+    return {s, rows:sRows, st:trStanding(s, sRows)};
+  });
+  const totWorked = summary.reduce((a,s)=>a+s.worked,0), totSched = summary.reduce((a,s)=>a+s.sched,0);
+  const goodN = cards.filter(c=>c.st.level==='good').length, actionN = cards.filter(c=>c.st.level==='action').length, watchN = cards.filter(c=>c.st.level==='watch').length;
+  const openRows = rows.filter(r=>r.d.open);
+  const focusCard = cards.find(c=>c.s.staff.id===m.focusStaffId);
+  const queueRows = openRows.filter(r=>!m.focusStaffId || r.staff.id===m.focusStaffId);
+
+  const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
+  const dayStrip = (sRows) => {
+    const byDay = new Map(sRows.map(r=>[r.day, r]));
+    return daysSeen.map(day=>{
+      const r = byDay.get(day);
+      const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})[0];
+      if(!r) return `<div class="wtr-dc"><small>${lab}</small>·</div>`;
+      const tone = r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok');
+      return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean'))}"><small>${lab}</small>${r.d.netMin==null?'—':trHmCompact(r.d.netMin)}</div>`;
+    }).join('');
+  };
+
+  const slotHtml = (r,i) => {
+    const key=r.key, k=escapeHtml(key);
+    const dec = decisions[key]||{};
+    const editing = m.editSlot===key+'|'+i;
+    if(r.slots[i]!=null){
+      if(editing) return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]} · correct it</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${trHhmm(r.d.sl[i])}"/></div>`;
+      return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="btn btn-sm btn-light" style="margin-top:2px;" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
+    }
+    return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]}</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${escapeHtml((dec.fix&&dec.fix[i])||'')}"/><em style="font-size:11px;color:#9d2327;">${dec.fix&&dec.fix[i]?'entered':'missing, enter if known'}</em></div>`;
+  };
+
+  const itemHtml = (r) => {
+    const key=r.key, k=escapeHtml(key), dec=decisions[key]||{};
+    const tone = {OK:'ok',Review:'warn',Incomplete:'bad',Verified:'ok',Unverified:'bad'}[r.d.final]||'warn';
+    const why = r.d.issues.filter(x=>!/^Missing:|punches \(expected/.test(x));
+    return `
+    <div class="wtr-item">
+      <div class="wtr-ihead"><b>${escapeHtml(r.staff.name)}</b><span class="small-muted">${escapeHtml(friendlyDate(r.day))}</span>${r.sched?`<span class="small-muted">scheduled ${trFmtClock(r.sched.s)} – ${trFmtClock(r.sched.e)}</span>`:''}<span class="grow"></span><span class="wtr-tone ${tone}">${escapeHtml(r.d.final)}</span></div>
+      <div class="wtr-slots">${[0,1,2,3,4,5].map(i=>slotHtml(r,i)).join('')}</div>
+      ${why.length?`<ul class="wtr-why">${why.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:''}
+      <div class="wtr-note">${r.d.netMin==null?'Worked time cannot be counted yet — start or end of shift is missing.':`Counts <b>${trHm(r.d.netMin)}</b>${r.d.est?' (estimated — a lunch or break punch is missing)':''} · target ${trHm(r.d.target)} (${r.d.vs>0?'+':''}${r.d.vs} min)`}</div>
+      ${r.d.late>0?`
+      <div class="wtr-qrow">
+        <span class="small-muted">Started ${r.d.late} min late (lunch ${r.d.lun==null?'unknown':r.d.lun+' min, shortened '+r.d.cut+' min'}) — ${escapeHtml(r.d.lateRes)}. Approved to make up at lunch?</span>
+        <button class="btn btn-sm" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+        <button class="btn btn-sm" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+      </div>`:''}
+      ${r.d.issueOpen?`
+      <div class="wtr-qrow">
+        <span class="small-muted">Confirm this day:</span>
+        <button class="btn btn-sm btn-primary" data-wtr-verify="${k}">Accept as is</button>
+      </div>`:''}
+    </div>`;
+  };
+
+  return `
+  <div class="modal" style="max-width:1000px;">
+    <div class="modal-head">
+      <div><h2>⏱ Weekly Time Review</h2><p>${escapeHtml(friendlyDate(m.weekLo))} – ${escapeHtml(friendlyDate(m.weekHi))} · ${escapeHtml(authState.account?.role==='admin'?'everyone':'your team')}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.unmatchedTdis&&m.unmatchedTdis.length?`<div class="alert-box rust" style="margin-bottom:14px;">${m.unmatchedTdis.length} punch row${m.unmatchedTdis.length===1?'':'s'} didn't match anyone on your team (unknown TDIS number${m.unmatchedTdis.length===1?'':'s'}: ${m.unmatchedTdis.map(escapeHtml).join(', ')}).</div>`:''}
+      <div class="wtr-wrap" style="padding:0;">
+        <div class="wtr-hero">
+          <div style="display:flex;gap:14px;align-items:center;">
+            <div class="wtr-bignum"><b>${goodN}</b><span>/ ${cards.length}</span></div>
+            <div class="wtr-biglbl"><strong>in good standing</strong><small>${daysSeen.length} day${daysSeen.length===1?'':'s'} uploaded</small></div>
+          </div>
+          <div class="wtr-kpis">
+            ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
+            ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
+            ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
+            <span class="wtr-kpi ok"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
+          </div>
+          <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
+        </div>
+
+        <h2 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--md-sys-color-on-surface-variant);margin:16px 0 10px;">${authState.account?.role==='admin'?'Team':'Your team'} · click a person to see just their items</h2>
+        <div class="wtr-people">
+          ${cards.map(c=>`
+          <div class="wtr-pc ${c.st.tone}${m.focusStaffId===c.s.staff.id?' sel':''}" data-wtr-focus="${c.s.staff.id}" style="cursor:pointer;">
+            <div class="wtr-pc-body">
+              <div class="wtr-pc-head"><span class="wtr-av">${escapeHtml((c.s.staff.name.split(' ').map(p=>p[0]).join('').slice(0,2)||'').toUpperCase())}</span><div><b>${escapeHtml(c.s.staff.name)}</b><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></div></div>
+              <div><div class="wtr-ptime"><span class="t">${trHm(c.s.worked)}</span><span class="small-muted">of ${trHm(c.s.sched)}</span></div><div class="wtr-prog"><i style="width:${c.s.sched?Math.min(100,c.s.worked/c.s.sched*100):0}%"></i></div></div>
+              <div class="wtr-dstrip" style="--n:${daysSeen.length};">${dayStrip(c.rows)}</div>
+              <ul class="wtr-why">${c.st.reasons.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
+            </div>
+          </div>`).join('')}
+        </div>
+
+        ${queueRows.length?`
+        <div style="margin-top:16px;">
+          <div class="wtr-section-head warn"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+          ${queueRows.map(itemHtml).join('')}
+        </div>`:`
+        <div class="wtr-section-head ok" style="margin-top:16px;"><span class="wtr-section-icon">✓</span>Nothing waiting on you${focusCard?' for '+escapeHtml(focusCard.s.staff.name):''}</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderTeamDashboardModal(m){
   const search = (m.search||'').trim().toLowerCase();
   const rows = m.loading ? [] : aggregateTeamPerformance(m.raw);
@@ -18061,6 +18583,7 @@ function attachHandlers(){
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
+  on('nav-weekly-time-review',  ()=>{ closeNav(); openModal({type:'weekly-time-review', teamStaff: myReviewTeamStaff(), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''}); });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
   on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
@@ -20405,18 +20928,20 @@ function attachHandlers(){
   // --- manage accounts ---
   if(activeModal.type==='manage-accounts'){
     on('btn-add-account', ()=>{
-      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaIds:[], pin:''});
+      openModal({type:'account-grant-form', mode:'create', accountId:null, name:'', role:'team_lead', assignedAreaIds:[], linkedSupervisorId:'', pin:''});
     });
     document.querySelectorAll('[data-grant-account]').forEach(el=>el.addEventListener('click', ()=>{
-      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaIds:[], pin:''});
+      openModal({type:'account-grant-form', mode:'grant', accountId:el.dataset.grantAccount, name:el.dataset.grantName, role:'team_lead', assignedAreaIds:[], linkedSupervisorId:'', pin:''});
     }));
     document.querySelectorAll('[data-edit-account]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'account-grant-form', mode:'edit', accountId:el.dataset.editAccount, name:el.dataset.editName,
-        role:el.dataset.editRole||'team_lead', assignedAreaIds:(el.dataset.editAreas||'').split(',').filter(Boolean), pin:''});
+        role:el.dataset.editRole||'team_lead', assignedAreaIds:(el.dataset.editAreas||'').split(',').filter(Boolean),
+        linkedSupervisorId:el.dataset.editLinkedSupervisor||'', pin:''});
     }));
     document.querySelectorAll('[data-restore-account]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'account-grant-form', mode:'restore', accountId:el.dataset.restoreAccount, name:el.dataset.restoreName,
-        role:el.dataset.restoreRole||'team_lead', assignedAreaIds:(el.dataset.restoreAreas||'').split(',').filter(Boolean), pin:''});
+        role:el.dataset.restoreRole||'team_lead', assignedAreaIds:(el.dataset.restoreAreas||'').split(',').filter(Boolean),
+        linkedSupervisorId:el.dataset.restoreLinkedSupervisor||'', pin:''});
     }));
     document.querySelectorAll('[data-revoke-account]').forEach(el=>el.addEventListener('click', async e=>{
       e.stopPropagation();
@@ -20619,6 +21144,62 @@ function attachHandlers(){
     });
   }
 
+  // --- weekly time review ---
+  if(activeModal.type==='weekly-time-review'){
+    const m = activeModal;
+    const loadFile = async (file) => {
+      if(!file) return;
+      m.loading = true; m.error = ''; render();
+      try{
+        const result = await parseWeeklyTimeReviewFile(file, m.teamStaff);
+        openModal({...m, punches:result.punches, unmatchedTdis:result.unmatchedTdis,
+          weekLo:result.weekLo, weekHi:result.weekHi, decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+      }catch(e){
+        openModal({...m, loading:false, error:(e&&e.message)||'Could not read that file.'});
+      }
+    };
+    const fileInput = document.getElementById('wtr-file-input');
+    if(fileInput) fileInput.addEventListener('change', ()=>loadFile(fileInput.files[0]));
+    const dropEl = document.getElementById('wtr-drop');
+    if(dropEl){
+      dropEl.addEventListener('dragover', e=>{ e.preventDefault(); dropEl.classList.add('over'); });
+      dropEl.addEventListener('dragleave', ()=>dropEl.classList.remove('over'));
+      dropEl.addEventListener('drop', e=>{ e.preventDefault(); dropEl.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
+    }
+    on('wtr-upload-another', ()=>{
+      openModal({...m, teamStaff: myReviewTeamStaff(), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+    });
+    document.querySelectorAll('[data-wtr-focus]').forEach(el=>el.addEventListener('click', ()=>{
+      m.focusStaffId = m.focusStaffId===el.dataset.wtrFocus ? '' : el.dataset.wtrFocus;
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-editslot]').forEach(el=>el.addEventListener('click', ()=>{
+      m.editSlot = el.dataset.wtrEditslot;
+      render();
+      const inp = document.querySelector('.wtr-slot input[type="time"][data-wtr-fix-key]');
+      if(inp) inp.focus();
+    }));
+    document.querySelectorAll('[data-wtr-fix-key]').forEach(el=>el.addEventListener('change', ()=>{
+      const key = el.dataset.wtrFixKey, slot = el.dataset.wtrFixSlot;
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, fix:{...(prev.fix||{}), [slot]: el.value}}};
+      m.editSlot = '';
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-late]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrLate, val = el.dataset.wtrLateVal;
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, late: prev.late===val ? '' : val}};
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-verify]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrVerify;
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, ver:'Yes'}};
+      render();
+    }));
+  }
+
   // --- pending evaluations review queue ---
   if(activeModal.type==='pending-evals'){
     const m = activeModal;
@@ -20800,15 +21381,18 @@ function attachHandlers(){
         activeModal.pin = cleaned;
         refreshSubmitState();
       });
+      const linkedSupSel = document.getElementById('grant-linked-supervisor-input');
+      if(linkedSupSel) linkedSupSel.addEventListener('change', ()=>{ activeModal.linkedSupervisorId = linkedSupSel.value; });
       on('grant-random-pin', ()=>{ openModal({...m, name: nameInput?nameInput.value:m.name, pin: randomPin()}); });
       on('grant-cancel-btn', ()=>openManageAccounts());
       on('grant-submit-btn', async ()=>{
         const name = (nameInput?nameInput.value:m.name).trim();
         const role = roleSel?roleSel.value:m.role;
         const assignedAreaIds = role==='team_lead' ? (activeModal.assignedAreaIds||[]) : [];
+        const linkedSupervisorId = role==='supervisor' ? ((linkedSupSel?linkedSupSel.value:activeModal.linkedSupervisorId)||null) : null;
         const pin = pinInput?pinInput.value:m.pin;
         if(!name || !pinIsValid(pin) || (role==='team_lead'&&assignedAreaIds.length===0)) return;
-        openModal({...m, name, role, assignedAreaIds, pin, saving:true, error:''});
+        openModal({...m, name, role, assignedAreaIds, linkedSupervisorId, pin, saving:true, error:''});
         try{
           let accountId = m.accountId;
           if(!accountId){
@@ -20816,7 +21400,7 @@ function attachHandlers(){
             if(!reqResult.accountId) throw new Error(reqResult.message || 'Could not create that account — a person with that name may already exist.');
             accountId = reqResult.accountId;
           }
-          await window.RC.grantAccess({accountId, role, assignedAreaIds, pin: pin||undefined, name});
+          await window.RC.grantAccess({accountId, role, assignedAreaIds, linkedSupervisorId, pin: pin||undefined, name});
           openModal({type:'account-grant-form', mode:m.mode, accountId, name, role, assignedAreaIds, pin, result:true});
         }catch(e){
           openModal({...m, name, role, assignedAreaIds, pin, saving:false, error: (e&&e.message)||'Could not grant access.'});
