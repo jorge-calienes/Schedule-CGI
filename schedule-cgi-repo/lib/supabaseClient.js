@@ -860,6 +860,35 @@ export async function saveTimeReviewPunches({ weekStart, staffDays, punches, act
   if (error) throw error;
 }
 
+const addDaysISO = (dateStr, n) => {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// One function covers every delete granularity the Weekly Time Review
+// screen offers — whole week, one day for everyone, one person's whole
+// week, or one person's one day — depending on which of staffIds/day the
+// caller passes:
+//   staffIds=<whole team>, weekStart set, day omitted  -> delete the week
+//   staffIds=<whole team>, day set                     -> delete that day for everyone
+//   staffIds=[onePerson], weekStart set, day omitted   -> delete that person's week
+//   staffIds=[onePerson], day set                      -> delete that person's one day
+// time_review_decisions has no week_start column, only day, so a
+// week-level delete there needs the day range instead.
+export async function deleteTimeReviewPunches({ staffIds, weekStart, day }) {
+  if (!staffIds || !staffIds.length) return;
+  let qp = supabase.from('time_review_punches').delete().in('staff_id', staffIds);
+  qp = day ? qp.eq('day', day) : qp.eq('week_start', weekStart);
+  const { error: ep } = await qp;
+  if (ep) throw ep;
+
+  let qd = supabase.from('time_review_decisions').delete().in('staff_id', staffIds);
+  qd = day ? qd.eq('day', day) : qd.gte('day', weekStart).lte('day', addDaysISO(weekStart, 6));
+  const { error: ed } = await qd;
+  if (ed) throw ed;
+}
+
 export async function fetchTimeReviewDecisions({ staffIds }) {
   if (!staffIds || !staffIds.length) return [];
   const { data, error } = await supabase.from('time_review_decisions').select('*').in('staff_id', staffIds);
@@ -1648,6 +1677,7 @@ window.RC = {
   fetchLatestTimeReviewWeek,
   fetchTimeReviewWeeksList,
   saveTimeReviewPunches,
+  deleteTimeReviewPunches,
   fetchTimeReviewDecisions,
   saveTimeReviewDecision,
   fetchTimeReviewSettings,
