@@ -5140,6 +5140,14 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-rule-inputrow small{color:var(--md-sys-color-on-surface-variant);font-size:11px;}
 .wtr-rule-help{font-size:11px;line-height:1.35;color:var(--md-sys-color-on-surface-variant);}
 .wtr-confirmed{font-size:11px;color:var(--md-sys-color-on-surface-variant);font-style:italic;}
+.wtr-confirm-block{display:flex;flex-direction:column;gap:10px;}
+.wtr-confirm-label{font-size:12.5px;}
+.wtr-note-input{font:inherit;font-size:12.5px;color:var(--md-sys-color-on-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:6px 9px;background:var(--md-sys-color-surface-container-lowest);width:100%;}
+.wtr-confirm-step{display:flex;gap:8px;align-items:flex-start;}
+.wtr-step-badge{flex:none;width:18px;height:18px;border-radius:50%;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+.wtr-confirm-step-body{flex:1;}
+.wtr-how-btn.sel{background:var(--md-sys-color-primary);color:#fff;border-color:var(--md-sys-color-primary);}
+[data-wtr-accept][disabled]{opacity:.45;cursor:not-allowed;}
 .wtr-late-btn.sel{box-shadow:inset 0 0 0 1.5px currentColor;font-weight:700;}
 
 /* ── Coverage planning dashboard ── */
@@ -8338,6 +8346,12 @@ function myReviewTeamStaff(){
 
 const TR_KIND = {'Start of Shift':'SOS','End of Shift':'EOS','Start of Break - In':'SOB','Start of Break - Out':'SOB','End of Break':'EOB'};
 const TR_SLOTN = ['Start of shift','Break out','Break in','Lunch out','Lunch in','End of shift'];
+// How a flagged day actually got checked with the employee — distinct
+// from *who in this app* clicked confirm (that's decided_by/decided_at).
+// A missing punch or a late start is often disputable later, and "a
+// supervisor clicked a button" isn't documentation; "confirmed over
+// Teams, she said she forgot to punch back in from lunch" is.
+const TR_HOW = ['Email','Teams / chat','Text message','In person','Phone call'];
 // Tolerances, editable from the Rules panel on the Weekly Time Review
 // screen (Phase 3) and persisted to time_review_settings — a single
 // shared row for the whole operation, same as every other cross-cutting
@@ -8366,7 +8380,7 @@ function trMapDecisions(rows){
   const decisions = {};
   (rows||[]).forEach(row=>{
     decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{},
-      decidedBy:row.decided_by||null, decidedAt:row.decided_at||null};
+      how:row.verify_how||'', note:row.verify_note||'', decidedBy:row.decided_by||null, decidedAt:row.decided_at||null};
   });
   return decisions;
 }
@@ -8377,6 +8391,17 @@ function trMapDecisions(rows){
 function trAccountName(accounts, id){
   if(!id) return '';
   return (accounts||[]).find(a=>a.id===id)?.name || 'someone';
+}
+// How a verified/accepted day reads in the day-strip tooltip and the
+// history list — "Accepted as is" when the plain-skip path was used
+// (no real verification needed), "Confirmed via <channel>" otherwise,
+// plus whatever note was typed, so the documentation is visible without
+// opening the item back up.
+function trConfirmedSummary(dec, accounts){
+  if(!dec || dec.ver!=='Yes' || !dec.decidedAt) return '';
+  const who = trAccountName(accounts, dec.decidedBy), when = friendlyDate(dec.decidedAt.slice(0,10));
+  const base = (!dec.how || dec.how==='Accepted as is') ? 'Accepted as is' : 'Confirmed via '+dec.how;
+  return base+' by '+who+', '+when+(dec.note?' — "'+dec.note+'"':'');
 }
 // Drives the Rules panel form — key must match a TR_RULES key. Grouped
 // (group + the order within it) so the panel reads as three short
@@ -14362,7 +14387,9 @@ function renderWeeklyTimeReviewModal(m){
       const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
       const cellText = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHmCompact(r.d.netMin));
       const dec = decisions[r.key]||{};
-      const confirmedNote = (dec.decidedAt && (dec.ver==='Yes'||dec.late)) ? ' · Confirmed by '+trAccountName(m.accounts, dec.decidedBy)+', '+friendlyDate(dec.decidedAt.slice(0,10)) : '';
+      const verifiedSummary = trConfirmedSummary(dec, m.accounts);
+      const lateConfirmed = (dec.decidedAt && dec.late) ? ' · '+(dec.late==='Yes'?'Late approved':'Late not approved')+' by '+trAccountName(m.accounts, dec.decidedBy)+', '+friendlyDate(dec.decidedAt.slice(0,10)) : '';
+      const confirmedNote = (verifiedSummary?' · '+verifiedSummary:'')+lateConfirmed;
       return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')+confirmedNote)}"><small>${lab}</small>${cellText}${confirmedNote?' ✓':''}</div>`;
     }).join('');
   };
@@ -14396,9 +14423,26 @@ function renderWeeklyTimeReviewModal(m){
         ${dec.decidedAt && dec.late ? `<span class="wtr-confirmed">Confirmed by ${escapeHtml(trAccountName(m.accounts, dec.decidedBy))}, ${escapeHtml(friendlyDate(dec.decidedAt.slice(0,10)))}</span>` : ''}
       </div>`:''}
       ${r.d.issueOpen?`
-      <div class="wtr-qrow">
-        <span class="small-muted">Confirm this day:</span>
-        <button class="btn btn-sm btn-primary" data-wtr-verify="${k}">Accept as is</button>
+      <div class="wtr-confirm-block">
+        <b class="wtr-confirm-label">${r.d.needV?'Confirm this with proof (email, chat, in person)':'Check this day'}</b>
+        <div class="wtr-confirm-step">
+          <span class="wtr-step-badge">1</span>
+          <div class="wtr-confirm-step-body">
+            <span class="small-muted">How did you confirm it?</span>
+            <div class="wtr-qrow" style="margin-top:4px;">
+              ${TR_HOW.map(o=>`<button class="btn btn-sm wtr-how-btn${dec.how===o?' sel':''}" data-wtr-how="${escapeHtml(o)}" data-wtr-how-key="${k}">${escapeHtml(o)}</button>`).join('')}
+            </div>
+            <input type="text" class="wtr-note-input" style="margin-top:6px;" data-wtr-note-key="${k}" placeholder="Who said it, where, when (optional)" value="${escapeHtml(dec.note||'')}"/>
+          </div>
+        </div>
+        <div class="wtr-confirm-step">
+          <span class="wtr-step-badge">2</span>
+          <div class="wtr-confirm-step-body wtr-qrow">
+            <button class="btn btn-sm btn-primary" data-wtr-accept="${k}" ${!dec.how ? 'disabled':''}>✓ Accept this day</button>
+            ${!r.d.needV?`<button class="btn btn-sm btn-light" data-wtr-verify="${k}">Skip — accept as is</button>`:''}
+            ${!dec.how ? `<span class="small-muted">Pick how you confirmed it first</span>`:''}
+          </div>
+        </div>
       </div>`:''}
     </div>`;
   };
@@ -14474,7 +14518,7 @@ function renderWeeklyTimeReviewModal(m){
         ${queueRows.length?`
         <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
-          ${focusCard && queueRows.some(r=>r.d.issueOpen) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
+          ${focusCard && queueRows.some(r=>r.d.issueOpen && !r.d.needV) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
           ${queueRows.map(itemHtml).join('')}
@@ -21535,22 +21579,49 @@ function attachHandlers(){
     document.querySelectorAll('[data-wtr-verify]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrVerify;
       const prev = m.decisions[key] || {};
-      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes'})};
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes', how:'Accepted as is'})};
+      render();
+      saveDecision(key);
+    }));
+    // Step 1 — pick how it was confirmed. This only records the choice
+    // (and whatever's typed in the note so far) locally; it does NOT
+    // mark the day accepted or save to the server yet. Step 2 (Accept
+    // this day, below) is the actual confirmation — splitting them
+    // means a day can't get silently accepted by clicking a channel
+    // button before anyone's actually said how they verified it.
+    document.querySelectorAll('[data-wtr-how]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrHowKey, how = el.dataset.wtrHow;
+      const noteInput = document.querySelector('[data-wtr-note-key="'+CSS.escape(key)+'"]');
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, how: prev.how===how ? '' : how, note:(noteInput?noteInput.value:prev.note)||''}};
+      render();
+    }));
+    // Step 2 — the actual accept. Disabled in the markup until step 1
+    // has picked a "how" for anything that needs real proof (needV);
+    // for the no-proof-needed case there's a separate "Skip — accept as
+    // is" button ([data-wtr-verify]) that bypasses step 1 entirely.
+    document.querySelectorAll('[data-wtr-accept]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrAccept;
+      const noteInput = document.querySelector('[data-wtr-note-key="'+CSS.escape(key)+'"]');
+      const prev = m.decisions[key] || {};
+      if(!prev.how) return; // nothing picked in step 1 yet — markup already disables this, but don't trust that alone
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes', note:(noteInput?noteInput.value:prev.note)||''})};
       render();
       saveDecision(key);
     }));
     on('wtr-accept-all', ()=>{
       if(!m.focusStaffId) return;
-      // Only the generic "confirm this day" items (issueOpen) — a late
-      // start is a judgment call about whether it was actually made up,
-      // not a nuisance to clear in bulk, so it still needs its own
-      // Approved/Not approved click per day.
+      // Only plain "accept as is" items (issueOpen and not needV) — a
+      // late start is its own per-day judgment call, and anything that
+      // actually needs proof (needV) still has to go through the
+      // Confirmed-by flow one at a time, same as it does individually;
+      // bulk-skipping that would defeat the point of asking for proof.
       const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
       const rows = trBuildRows(m.teamStaff, m.punches, m.decisions, daysSeen, state.timeOff, state.attendanceEvents);
-      const toAccept = rows.filter(r=>r.staff.id===m.focusStaffId && r.d.issueOpen);
+      const toAccept = rows.filter(r=>r.staff.id===m.focusStaffId && r.d.issueOpen && !r.d.needV);
       if(!toAccept.length) return;
       const next = {...m.decisions};
-      toAccept.forEach(r=>{ next[r.key] = stampDecision({...(next[r.key]||{}), ver:'Yes'}); });
+      toAccept.forEach(r=>{ next[r.key] = stampDecision({...(next[r.key]||{}), ver:'Yes', how:'Accepted as is'}); });
       m.decisions = next;
       render();
       toAccept.forEach(r=>saveDecision(r.key));
