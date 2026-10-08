@@ -5126,6 +5126,18 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-note{font-size:12px;color:var(--md-sys-color-on-surface-variant);}
 .wtr-qrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 #wtr-drop:hover,#wtr-drop.over{border-color:var(--md-sys-color-primary);background:var(--md-sys-color-primary-container);}
+.wtr-rules-panel{gap:14px;}
+.wtr-rules-group{border-top:1px solid var(--md-sys-color-outline-variant);padding-top:10px;}
+.wtr-rules-group-head{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--md-sys-color-on-surface-variant);margin-bottom:8px;}
+.wtr-rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.wtr-rule-field{display:flex;flex-direction:column;gap:4px;}
+.wtr-rule-label{font-size:12.5px;font-weight:600;color:var(--md-sys-color-on-surface);}
+.wtr-rule-inputrow{display:flex;align-items:center;gap:6px;}
+.wtr-rule-inputrow input[type="number"]{font:inherit;font-size:13px;width:90px;color:var(--md-sys-color-on-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:5px 8px;background:var(--md-sys-color-surface-container-lowest);}
+.wtr-rule-inputrow small{color:var(--md-sys-color-on-surface-variant);font-size:11px;}
+.wtr-rule-help{font-size:11px;line-height:1.35;color:var(--md-sys-color-on-surface-variant);}
+.wtr-confirmed{font-size:11px;color:var(--md-sys-color-on-surface-variant);font-style:italic;}
+.wtr-late-btn.sel{box-shadow:inset 0 0 0 1.5px currentColor;font-weight:700;}
 
 /* ── Coverage planning dashboard ── */
 .to-toolbar{display:flex;gap:8px;align-items:center;padding:var(--md-space-3) 0 var(--md-space-3);position:sticky;top:0;background:var(--md-sys-color-surface);z-index:2;border-bottom:1px solid var(--md-sys-color-outline-variant);margin-bottom:var(--md-space-3);}
@@ -8350,22 +8362,44 @@ async function loadTimeReviewSettingsOnce(){
 function trMapDecisions(rows){
   const decisions = {};
   (rows||[]).forEach(row=>{
-    decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{}};
+    decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{},
+      decidedBy:row.decided_by||null, decidedAt:row.decided_at||null};
   });
   return decisions;
 }
-// Drives the Rules panel form — key must match a TR_RULES key.
+// decided_by is an accounts.id — resolve it against the account list the
+// nav handler loads alongside everything else, same list Manage Accounts
+// uses. Missing/unresolvable (deleted account, nothing decided yet) just
+// falls back to a neutral label rather than showing a raw uuid.
+function trAccountName(accounts, id){
+  if(!id) return '';
+  return (accounts||[]).find(a=>a.id===id)?.name || 'someone';
+}
+// Drives the Rules panel form — key must match a TR_RULES key. Grouped
+// (group + the order within it) so the panel reads as three short
+// questions instead of nine unrelated number boxes, and `help` spells out
+// in plain language what moving each one actually changes.
 const TR_RULE_FIELDS = [
-  {key:'lateGrace', label:'Late counts after (min)'},
-  {key:'earlyGrace', label:'Early-leave tolerance (min)'},
-  {key:'lunchMin', label:'Expected lunch (min)'},
-  {key:'lunchPaid', label:'Paid minutes inside lunch'},
-  {key:'breakMin', label:'Expected break (min)'},
-  {key:'tol', label:'Break/lunch over by (min), to flag'},
-  {key:'standTol', label:'Under schedule by (min), to flag'},
-  {key:'overTol', label:'Over schedule by (min), to flag'},
-  {key:'fallbackTargetMin', label:'Fallback target (min, no shift on file)'},
+  {key:'lateGrace', label:'Late counts after', unit:'min', group:'Start & end of shift',
+    help:'A clock-in this many minutes after the scheduled start still counts as on time.'},
+  {key:'earlyGrace', label:'Early leave tolerance', unit:'min', group:'Start & end of shift',
+    help:'Clocking out this many minutes before the scheduled end still counts as on time.'},
+  {key:'lunchMin', label:'Expected lunch length', unit:'min', group:'Lunch & break',
+    help:'How long a normal lunch runs.'},
+  {key:'lunchPaid', label:'Paid minutes in lunch', unit:'min', group:'Lunch & break',
+    help:'Of that lunch, how many minutes count as paid time (the rest comes off worked hours).'},
+  {key:'breakMin', label:'Expected break length', unit:'min', group:'Lunch & break',
+    help:'How long a normal break runs.'},
+  {key:'tol', label:'Over by this much, flag it', unit:'min', group:'Lunch & break',
+    help:'A lunch or break running this many minutes long gets flagged — but only on a day that also ran short.'},
+  {key:'standTol', label:'Under schedule, flag it', unit:'min', group:'Flagging thresholds',
+    help:'Running this many minutes under the scheduled hours shows up as "keep an eye on".'},
+  {key:'overTol', label:'Over schedule, flag it', unit:'min', group:'Flagging thresholds',
+    help:'Running this many minutes over the scheduled hours shows up as "check overtime approval".'},
+  {key:'fallbackTargetMin', label:'Fallback target', unit:'min/day', group:'Flagging thresholds',
+    help:'Expected daily minutes used for anyone with no shift time on their profile.'},
 ];
+const TR_RULE_GROUPS = [...new Set(TR_RULE_FIELDS.map(f=>f.group))];
 
 function trFmtClock(mins){
   if(mins==null) return '—';
@@ -14317,7 +14351,9 @@ function renderWeeklyTimeReviewModal(m){
       if(!r) return `<div class="wtr-dc"><small>${lab}</small>·</div>`;
       const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
       const cellText = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHmCompact(r.d.netMin));
-      return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean'))}"><small>${lab}</small>${cellText}</div>`;
+      const dec = decisions[r.key]||{};
+      const confirmedNote = (dec.decidedAt && (dec.ver==='Yes'||dec.late)) ? ' · Confirmed by '+trAccountName(m.accounts, dec.decidedBy)+', '+friendlyDate(dec.decidedAt.slice(0,10)) : '';
+      return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')+confirmedNote)}"><small>${lab}</small>${cellText}${confirmedNote?' ✓':''}</div>`;
     }).join('');
   };
 
@@ -14345,8 +14381,9 @@ function renderWeeklyTimeReviewModal(m){
       ${r.d.late>0?`
       <div class="wtr-qrow">
         <span class="small-muted">Started ${r.d.late} min late (lunch ${r.d.lun==null?'unknown':r.d.lun+' min, shortened '+r.d.cut+' min'}) — ${escapeHtml(r.d.lateRes)}. Approved to make up at lunch?</span>
-        <button class="btn btn-sm" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
-        <button class="btn btn-sm" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+        <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#1b6e45;color:#1b6e45;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+        <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#9d2327;color:#9d2327;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+        ${dec.decidedAt && dec.late ? `<span class="wtr-confirmed">Confirmed by ${escapeHtml(trAccountName(m.accounts, dec.decidedBy))}, ${escapeHtml(friendlyDate(dec.decidedAt.slice(0,10)))}</span>` : ''}
       </div>`:''}
       ${r.d.issueOpen?`
       <div class="wtr-qrow">
@@ -14390,11 +14427,20 @@ function renderWeeklyTimeReviewModal(m){
         </div>
 
         ${m.showRules?`
-        <div class="wtr-item" style="margin-top:12px;">
-          <b>Rules</b>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;">
-            ${TR_RULE_FIELDS.map(f=>`<label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--md-sys-color-on-surface-variant);">${escapeHtml(f.label)}<input type="number" min="0" step="1" data-wtr-rule="${f.key}" value="${TR_RULES[f.key]}" style="font:inherit;font-size:13px;color:var(--md-sys-color-on-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:5px 8px;background:var(--md-sys-color-surface-container-lowest);"/></label>`).join('')}
-          </div>
+        <div class="wtr-item wtr-rules-panel" style="margin-top:12px;">
+          <div><b>Rules</b><p class="small-muted" style="margin:2px 0 0;">These tolerances decide what gets flagged for review — applied to every day shown, for everyone.</p></div>
+          ${TR_RULE_GROUPS.map(group=>`
+          <div class="wtr-rules-group">
+            <div class="wtr-rules-group-head">${escapeHtml(group)}</div>
+            <div class="wtr-rules-grid">
+              ${TR_RULE_FIELDS.filter(f=>f.group===group).map(f=>`
+              <label class="wtr-rule-field">
+                <span class="wtr-rule-label">${escapeHtml(f.label)}</span>
+                <span class="wtr-rule-inputrow"><input type="number" min="0" step="1" data-wtr-rule="${f.key}" value="${TR_RULES[f.key]}"/><small>${escapeHtml(f.unit)}</small></span>
+                <span class="wtr-rule-help">${escapeHtml(f.help)}</span>
+              </label>`).join('')}
+            </div>
+          </div>`).join('')}
           <div class="wtr-qrow" style="margin-top:4px;">
             <button class="btn btn-sm btn-primary" id="wtr-save-rules">Save rules</button>
             <span class="small-muted" id="wtr-rules-msg"></span>
@@ -14415,8 +14461,9 @@ function renderWeeklyTimeReviewModal(m){
         </div>
 
         ${queueRows.length?`
-        <div style="margin-top:16px;">
-          <div class="wtr-section-head warn"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
+        <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
+          ${focusCard && queueRows.some(r=>r.d.issueOpen) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
           ${queueRows.map(itemHtml).join('')}
@@ -18791,24 +18838,25 @@ function attachHandlers(){
   on('nav-weekly-time-review',  async ()=>{
     closeNav();
     const teamStaff = myReviewTeamStaff();
-    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:true, error:''});
+    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, accounts:[], focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:true, error:''});
     if(!teamStaff.length || !window.RC){ if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false}); return; }
     try{
       const staffIds = teamStaff.map(s=>s.id);
-      const [week, decisionRows, weeksList] = await Promise.all([
+      const [week, decisionRows, weeksList, accounts] = await Promise.all([
         window.RC.fetchLatestTimeReviewWeek({staffIds}),
         window.RC.fetchTimeReviewDecisions({staffIds}),
         window.RC.fetchTimeReviewWeeksList({staffIds}),
+        window.RC.fetchAccounts().catch(()=>[]), // names for the "confirmed by" trail — not worth failing the whole screen over
         loadTimeReviewSettingsOnce(),
       ]);
       if(activeModal?.type!=='weekly-time-review') return; // modal closed/changed while this was in flight
       const decisions = trMapDecisions(decisionRows);
       if(week){
         const days = week.punches.map(p=>p.day).sort();
-        openModal({...activeModal, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], loadingSaved:false});
+        openModal({...activeModal, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
         loadTimeReviewPatterns(staffIds, weeksList||[]);
       } else {
-        openModal({...activeModal, decisions, availableWeeks:weeksList||[], loadingSaved:false});
+        openModal({...activeModal, decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
       }
     }catch(e){
       if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false, error:'Could not load last week\'s saved data — you can still upload a fresh file. ('+((e&&e.message)||'try again')+')'});
@@ -21459,20 +21507,43 @@ function attachHandlers(){
       render();
       saveDecision(key);
     }));
+    // Stamped on every actual confirm (late decision, accept, bulk-accept —
+    // not the plain punch-time fix inputs, which aren't a confirmation by
+    // themselves) so the "Confirmed by/on" note shows immediately, instead
+    // of waiting for the next full reload to pick up what the server
+    // would have stamped anyway (saveTimeReviewDecision always sets
+    // decided_by/decided_at server-side).
+    const stampDecision = (obj) => ({...obj, decidedBy:authState.account.id, decidedAt:new Date().toISOString()});
     document.querySelectorAll('[data-wtr-late]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrLate, val = el.dataset.wtrLateVal;
       const prev = m.decisions[key] || {};
-      m.decisions = {...m.decisions, [key]: {...prev, late: prev.late===val ? '' : val}};
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, late: prev.late===val ? '' : val})};
       render();
       saveDecision(key);
     }));
     document.querySelectorAll('[data-wtr-verify]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrVerify;
       const prev = m.decisions[key] || {};
-      m.decisions = {...m.decisions, [key]: {...prev, ver:'Yes'}};
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes'})};
       render();
       saveDecision(key);
     }));
+    on('wtr-accept-all', ()=>{
+      if(!m.focusStaffId) return;
+      // Only the generic "confirm this day" items (issueOpen) — a late
+      // start is a judgment call about whether it was actually made up,
+      // not a nuisance to clear in bulk, so it still needs its own
+      // Approved/Not approved click per day.
+      const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
+      const rows = trBuildRows(m.teamStaff, m.punches, m.decisions, daysSeen, state.timeOff, state.attendanceEvents);
+      const toAccept = rows.filter(r=>r.staff.id===m.focusStaffId && r.d.issueOpen);
+      if(!toAccept.length) return;
+      const next = {...m.decisions};
+      toAccept.forEach(r=>{ next[r.key] = stampDecision({...(next[r.key]||{}), ver:'Yes'}); });
+      m.decisions = next;
+      render();
+      toAccept.forEach(r=>saveDecision(r.key));
+    });
     const weekPicker = document.getElementById('wtr-week-picker');
     if(weekPicker) weekPicker.addEventListener('change', ()=>loadWeek(weekPicker.value));
     on('wtr-toggle-rules', ()=>{ m.showRules = !m.showRules; render(); });
