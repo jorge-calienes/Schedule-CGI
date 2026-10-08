@@ -5101,6 +5101,7 @@ button{font-family:var(--sans);cursor:pointer;}
 :root[data-theme="dark"] .wtr-dc.bad{background:#3A1F1F;color:#FFB3AB;}
 .wtr-why{margin:0;padding-left:16px;font-size:11.5px;color:var(--md-sys-color-on-surface-variant);}
 .wtr-why li{margin-bottom:1px;}
+.wtr-last-reviewed{font-size:10.5px;color:var(--md-sys-color-on-surface-variant);opacity:.8;border-top:1px solid var(--md-sys-color-outline-variant);padding-top:6px;margin-top:2px;}
 .wtr-section-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding:10px 16px;border-radius:var(--md-sys-shape-corner-medium);box-shadow:0 1px 2px rgba(0,0,0,.04);}
 .wtr-section-head.warn{background:#FFF3E0;color:#E65100;} .wtr-section-head.ok{background:#E8F5E9;color:#1B5E20;}
 :root[data-theme="dark"] .wtr-section-head.warn{background:#3A2E12;color:#FFC46A;}
@@ -5118,6 +5119,8 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-slot{border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:6px 8px;background:var(--md-sys-color-surface-container-low);display:flex;flex-direction:column;gap:2px;}
 .wtr-slot small{color:var(--md-sys-color-on-surface-variant);font-size:10.5px;}
 .wtr-slot .t{font-size:13px;font-family:var(--mono,ui-monospace,Consolas,monospace);}
+.wtr-slot-fixlink{align-self:flex-start;margin-top:1px;background:none;border:none;padding:0;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);text-decoration:underline;text-underline-offset:2px;opacity:.7;cursor:pointer;}
+.wtr-slot-fixlink:hover{opacity:1;color:var(--md-sys-color-primary);}
 .wtr-slot.gap{border-color:#9d2327;background:#fadfde;}
 .wtr-slot.gap small{color:#9d2327;}
 :root[data-theme="dark"] .wtr-slot.gap{border-color:#8B3A3A;background:#3A1F1F;}
@@ -5137,6 +5140,14 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-rule-inputrow small{color:var(--md-sys-color-on-surface-variant);font-size:11px;}
 .wtr-rule-help{font-size:11px;line-height:1.35;color:var(--md-sys-color-on-surface-variant);}
 .wtr-confirmed{font-size:11px;color:var(--md-sys-color-on-surface-variant);font-style:italic;}
+.wtr-confirm-block{display:flex;flex-direction:column;gap:10px;}
+.wtr-confirm-label{font-size:12.5px;}
+.wtr-note-input{font:inherit;font-size:12.5px;color:var(--md-sys-color-on-surface);border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:6px 9px;background:var(--md-sys-color-surface-container-lowest);width:100%;}
+.wtr-confirm-step{display:flex;gap:8px;align-items:flex-start;}
+.wtr-step-badge{flex:none;width:18px;height:18px;border-radius:50%;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+.wtr-confirm-step-body{flex:1;}
+.wtr-how-btn.sel{background:var(--md-sys-color-primary);color:#fff;border-color:var(--md-sys-color-primary);}
+[data-wtr-accept][disabled]{opacity:.45;cursor:not-allowed;}
 .wtr-late-btn.sel{box-shadow:inset 0 0 0 1.5px currentColor;font-weight:700;}
 
 /* ── Coverage planning dashboard ── */
@@ -8335,6 +8346,12 @@ function myReviewTeamStaff(){
 
 const TR_KIND = {'Start of Shift':'SOS','End of Shift':'EOS','Start of Break - In':'SOB','Start of Break - Out':'SOB','End of Break':'EOB'};
 const TR_SLOTN = ['Start of shift','Break out','Break in','Lunch out','Lunch in','End of shift'];
+// How a flagged day actually got checked with the employee — distinct
+// from *who in this app* clicked confirm (that's decided_by/decided_at).
+// A missing punch or a late start is often disputable later, and "a
+// supervisor clicked a button" isn't documentation; "confirmed over
+// Teams, she said she forgot to punch back in from lunch" is.
+const TR_HOW = ['Email','Teams / chat','Text message','In person','Phone call'];
 // Tolerances, editable from the Rules panel on the Weekly Time Review
 // screen (Phase 3) and persisted to time_review_settings — a single
 // shared row for the whole operation, same as every other cross-cutting
@@ -8363,7 +8380,7 @@ function trMapDecisions(rows){
   const decisions = {};
   (rows||[]).forEach(row=>{
     decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{},
-      decidedBy:row.decided_by||null, decidedAt:row.decided_at||null};
+      how:row.verify_how||'', note:row.verify_note||'', decidedBy:row.decided_by||null, decidedAt:row.decided_at||null};
   });
   return decisions;
 }
@@ -8374,6 +8391,17 @@ function trMapDecisions(rows){
 function trAccountName(accounts, id){
   if(!id) return '';
   return (accounts||[]).find(a=>a.id===id)?.name || 'someone';
+}
+// How a verified/accepted day reads in the day-strip tooltip and the
+// history list — "Accepted as is" when the plain-skip path was used
+// (no real verification needed), "Confirmed via <channel>" otherwise,
+// plus whatever note was typed, so the documentation is visible without
+// opening the item back up.
+function trConfirmedSummary(dec, accounts){
+  if(!dec || dec.ver!=='Yes' || !dec.decidedAt) return '';
+  const who = trAccountName(accounts, dec.decidedBy), when = friendlyDate(dec.decidedAt.slice(0,10));
+  const base = (!dec.how || dec.how==='Accepted as is') ? 'Accepted as is' : 'Confirmed via '+dec.how;
+  return base+' by '+who+', '+when+(dec.note?' — "'+dec.note+'"':'');
 }
 // Drives the Rules panel form — key must match a TR_RULES key. Grouped
 // (group + the order within it) so the panel reads as three short
@@ -14333,10 +14361,15 @@ function renderWeeklyTimeReviewModal(m){
   const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
   const rows = trBuildRows(teamStaff, m.punches, decisions, daysSeen, state.timeOff, state.attendanceEvents);
   const summary = trSummaryByStaff(rows);
+  // Needs-action first, then keep-an-eye, then good standing (name as the
+  // tiebreaker) — alphabetical order buried whoever needed attention most
+  // among whoever's name happened to sort last.
+  const TR_LEVEL_ORDER = {action:0, watch:1, good:2};
   const cards = summary.map(s=>{
     const sRows = rows.filter(r=>r.staff.id===s.staff.id);
-    return {s, rows:sRows, st:trStanding(s, sRows, (m.patterns||{})[s.staff.id])};
-  });
+    const reviewedAts = sRows.map(r=>decisions[r.key]?.decidedAt).filter(Boolean).sort();
+    return {s, rows:sRows, st:trStanding(s, sRows, (m.patterns||{})[s.staff.id]), lastReviewedAt:reviewedAts[reviewedAts.length-1]||null};
+  }).sort((a,b)=>(TR_LEVEL_ORDER[a.st.level]-TR_LEVEL_ORDER[b.st.level])||a.s.staff.name.localeCompare(b.s.staff.name));
   const totWorked = summary.reduce((a,s)=>a+s.worked,0), totSched = summary.reduce((a,s)=>a+s.sched,0);
   const goodN = cards.filter(c=>c.st.level==='good').length, actionN = cards.filter(c=>c.st.level==='action').length, watchN = cards.filter(c=>c.st.level==='watch').length;
   const openRows = rows.filter(r=>r.d.open);
@@ -14347,12 +14380,16 @@ function renderWeeklyTimeReviewModal(m){
     const byDay = new Map(sRows.map(r=>[r.day, r]));
     return daysSeen.map(day=>{
       const r = byDay.get(day);
-      const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})[0];
+      // First letter alone collides (Tue/Thu and Sat/Sun both start with
+      // the same letter) — two letters disambiguates every day of the week.
+      const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).slice(0,2);
       if(!r) return `<div class="wtr-dc"><small>${lab}</small>·</div>`;
       const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
       const cellText = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHmCompact(r.d.netMin));
       const dec = decisions[r.key]||{};
-      const confirmedNote = (dec.decidedAt && (dec.ver==='Yes'||dec.late)) ? ' · Confirmed by '+trAccountName(m.accounts, dec.decidedBy)+', '+friendlyDate(dec.decidedAt.slice(0,10)) : '';
+      const verifiedSummary = trConfirmedSummary(dec, m.accounts);
+      const lateConfirmed = (dec.decidedAt && dec.late) ? ' · '+(dec.late==='Yes'?'Late approved':'Late not approved')+' by '+trAccountName(m.accounts, dec.decidedBy)+', '+friendlyDate(dec.decidedAt.slice(0,10)) : '';
+      const confirmedNote = (verifiedSummary?' · '+verifiedSummary:'')+lateConfirmed;
       return `<div class="wtr-dc ${tone}" title="${escapeHtml(friendlyDate(day)+': '+(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')+confirmedNote)}"><small>${lab}</small>${cellText}${confirmedNote?' ✓':''}</div>`;
     }).join('');
   };
@@ -14363,7 +14400,7 @@ function renderWeeklyTimeReviewModal(m){
     const editing = m.editSlot===key+'|'+i;
     if(r.slots[i]!=null){
       if(editing) return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]} · correct it</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${trHhmm(r.d.sl[i])}"/></div>`;
-      return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="btn btn-sm btn-light" style="margin-top:2px;" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
+      return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="wtr-slot-fixlink" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
     }
     return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]}</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${escapeHtml((dec.fix&&dec.fix[i])||'')}"/><em style="font-size:11px;color:#9d2327;">${dec.fix&&dec.fix[i]?'entered':'missing, enter if known'}</em></div>`;
   };
@@ -14386,9 +14423,26 @@ function renderWeeklyTimeReviewModal(m){
         ${dec.decidedAt && dec.late ? `<span class="wtr-confirmed">Confirmed by ${escapeHtml(trAccountName(m.accounts, dec.decidedBy))}, ${escapeHtml(friendlyDate(dec.decidedAt.slice(0,10)))}</span>` : ''}
       </div>`:''}
       ${r.d.issueOpen?`
-      <div class="wtr-qrow">
-        <span class="small-muted">Confirm this day:</span>
-        <button class="btn btn-sm btn-primary" data-wtr-verify="${k}">Accept as is</button>
+      <div class="wtr-confirm-block">
+        <b class="wtr-confirm-label">${r.d.needV?'Confirm this with proof (email, chat, in person)':'Check this day'}</b>
+        <div class="wtr-confirm-step">
+          <span class="wtr-step-badge">1</span>
+          <div class="wtr-confirm-step-body">
+            <span class="small-muted">How did you confirm it?</span>
+            <div class="wtr-qrow" style="margin-top:4px;">
+              ${TR_HOW.map(o=>`<button class="btn btn-sm wtr-how-btn${dec.how===o?' sel':''}" data-wtr-how="${escapeHtml(o)}" data-wtr-how-key="${k}">${escapeHtml(o)}</button>`).join('')}
+            </div>
+            <input type="text" class="wtr-note-input" style="margin-top:6px;" data-wtr-note-key="${k}" placeholder="Who said it, where, when (optional)" value="${escapeHtml(dec.note||'')}"/>
+          </div>
+        </div>
+        <div class="wtr-confirm-step">
+          <span class="wtr-step-badge">2</span>
+          <div class="wtr-confirm-step-body wtr-qrow">
+            <button class="btn btn-sm btn-primary" data-wtr-accept="${k}" ${!dec.how ? 'disabled':''}>✓ Accept this day</button>
+            ${!r.d.needV?`<button class="btn btn-sm btn-light" data-wtr-verify="${k}">Skip — accept as is</button>`:''}
+            ${!dec.how ? `<span class="small-muted">Pick how you confirmed it first</span>`:''}
+          </div>
+        </div>
       </div>`:''}
     </div>`;
   };
@@ -14411,7 +14465,7 @@ function renderWeeklyTimeReviewModal(m){
             ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
             ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
             ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
-            <span class="wtr-kpi ok"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
+            <span class="wtr-kpi ${(totWorked-totSched)<-TR_RULES.standTol||(totWorked-totSched)>TR_RULES.overTol?'warn':'ok'}"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
             <div style="display:flex;gap:6px;">
@@ -14456,6 +14510,7 @@ function renderWeeklyTimeReviewModal(m){
               <div><div class="wtr-ptime"><span class="t">${trHm(c.s.worked)}</span><span class="small-muted">of ${trHm(c.s.sched)}</span></div><div class="wtr-prog"><i style="width:${c.s.sched?Math.min(100,c.s.worked/c.s.sched*100):0}%"></i></div></div>
               <div class="wtr-dstrip" style="--n:${daysSeen.length};">${dayStrip(c.rows)}</div>
               <ul class="wtr-why">${c.st.reasons.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
+              <div class="wtr-last-reviewed">${c.lastReviewedAt?`Last reviewed ${escapeHtml(friendlyDate(c.lastReviewedAt.slice(0,10)))}`:'Not reviewed yet'}</div>
             </div>
           </div>`).join('')}
         </div>
@@ -14463,7 +14518,7 @@ function renderWeeklyTimeReviewModal(m){
         ${queueRows.length?`
         <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
-          ${focusCard && queueRows.some(r=>r.d.issueOpen) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
+          ${focusCard && queueRows.some(r=>r.d.issueOpen && !r.d.needV) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
           ${queueRows.map(itemHtml).join('')}
@@ -21524,22 +21579,49 @@ function attachHandlers(){
     document.querySelectorAll('[data-wtr-verify]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrVerify;
       const prev = m.decisions[key] || {};
-      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes'})};
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes', how:'Accepted as is'})};
+      render();
+      saveDecision(key);
+    }));
+    // Step 1 — pick how it was confirmed. This only records the choice
+    // (and whatever's typed in the note so far) locally; it does NOT
+    // mark the day accepted or save to the server yet. Step 2 (Accept
+    // this day, below) is the actual confirmation — splitting them
+    // means a day can't get silently accepted by clicking a channel
+    // button before anyone's actually said how they verified it.
+    document.querySelectorAll('[data-wtr-how]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrHowKey, how = el.dataset.wtrHow;
+      const noteInput = document.querySelector('[data-wtr-note-key="'+CSS.escape(key)+'"]');
+      const prev = m.decisions[key] || {};
+      m.decisions = {...m.decisions, [key]: {...prev, how: prev.how===how ? '' : how, note:(noteInput?noteInput.value:prev.note)||''}};
+      render();
+    }));
+    // Step 2 — the actual accept. Disabled in the markup until step 1
+    // has picked a "how" for anything that needs real proof (needV);
+    // for the no-proof-needed case there's a separate "Skip — accept as
+    // is" button ([data-wtr-verify]) that bypasses step 1 entirely.
+    document.querySelectorAll('[data-wtr-accept]').forEach(el=>el.addEventListener('click', ()=>{
+      const key = el.dataset.wtrAccept;
+      const noteInput = document.querySelector('[data-wtr-note-key="'+CSS.escape(key)+'"]');
+      const prev = m.decisions[key] || {};
+      if(!prev.how) return; // nothing picked in step 1 yet — markup already disables this, but don't trust that alone
+      m.decisions = {...m.decisions, [key]: stampDecision({...prev, ver:'Yes', note:(noteInput?noteInput.value:prev.note)||''})};
       render();
       saveDecision(key);
     }));
     on('wtr-accept-all', ()=>{
       if(!m.focusStaffId) return;
-      // Only the generic "confirm this day" items (issueOpen) — a late
-      // start is a judgment call about whether it was actually made up,
-      // not a nuisance to clear in bulk, so it still needs its own
-      // Approved/Not approved click per day.
+      // Only plain "accept as is" items (issueOpen and not needV) — a
+      // late start is its own per-day judgment call, and anything that
+      // actually needs proof (needV) still has to go through the
+      // Confirmed-by flow one at a time, same as it does individually;
+      // bulk-skipping that would defeat the point of asking for proof.
       const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
       const rows = trBuildRows(m.teamStaff, m.punches, m.decisions, daysSeen, state.timeOff, state.attendanceEvents);
-      const toAccept = rows.filter(r=>r.staff.id===m.focusStaffId && r.d.issueOpen);
+      const toAccept = rows.filter(r=>r.staff.id===m.focusStaffId && r.d.issueOpen && !r.d.needV);
       if(!toAccept.length) return;
       const next = {...m.decisions};
-      toAccept.forEach(r=>{ next[r.key] = stampDecision({...(next[r.key]||{}), ver:'Yes'}); });
+      toAccept.forEach(r=>{ next[r.key] = stampDecision({...(next[r.key]||{}), ver:'Yes', how:'Accepted as is'}); });
       m.decisions = next;
       render();
       toAccept.forEach(r=>saveDecision(r.key));

@@ -878,6 +878,8 @@ export async function saveTimeReviewDecision({ staffId, day, decision, actingAcc
     late_approved: decision.late || null,
     late_note: decision.lateNote || '',
     fix: decision.fix || {},
+    verify_how: decision.how || '',
+    verify_note: decision.note || '',
     decided_by: actingAccountId,
     decided_at: new Date().toISOString(),
   }, { onConflict: 'staff_id,day' });
