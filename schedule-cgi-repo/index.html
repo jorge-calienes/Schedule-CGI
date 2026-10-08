@@ -8648,10 +8648,14 @@ async function parseWeeklyTimeReviewFile(file, teamStaff){
   const required = ['TDIS Num','Day','Description','Time'];
   const missing = required.filter(h=>!headers.includes(h));
   if(missing.length) throw new Error('This doesn\'t look like a punch report — missing column'+(missing.length>1?'s':'')+': '+missing.join(', ')+'.');
-  const staffByTdis = new Map(teamStaff.filter(s=>s.tdisNumber).map(s=>[String(s.tdisNumber).trim(), s]));
+  // TDIS codes are stored uppercase everywhere else in the app (staff
+  // profile input, roster import) — match case-insensitively here too, or
+  // a punch report whose export happens to lowercase the column silently
+  // matches nobody.
+  const staffByTdis = new Map(teamStaff.filter(s=>s.tdisNumber).map(s=>[String(s.tdisNumber).trim().toUpperCase(), s]));
   const punches=[], unmatchedSet=new Set();
   rawRows.forEach(r=>{
-    const tdis = String(r['TDIS Num']??'').trim();
+    const tdis = String(r['TDIS Num']??'').trim().toUpperCase();
     const day = trParseDay(r['Day']);
     const t = trParseTime(r['Time']);
     const desc = String(r['Description']??'').trim();
@@ -8660,7 +8664,16 @@ async function parseWeeklyTimeReviewFile(file, teamStaff){
     if(!staff){ unmatchedSet.add(tdis); return; }
     punches.push({staffId:staff.id, day, desc, t});
   });
-  if(punches.length===0 && unmatchedSet.size===0) throw new Error('No usable punch rows found in that file.');
+  // Zero matched punches used to fall through with an empty `punches`
+  // array, which the modal's `!m.punches` empty-state check treats as
+  // truthy (an empty array isn't falsy) — so it rendered the populated
+  // dashboard with a 0/0 team and no cards, which just looks like nothing
+  // happened. Surface it as a clear error instead, same as any other
+  // unreadable file.
+  if(punches.length===0){
+    if(unmatchedSet.size>0) throw new Error('None of these punch rows matched anyone on your team — check the TDIS numbers on each person\'s profile. (File had: '+[...unmatchedSet].join(', ')+')');
+    throw new Error('No usable punch rows found in that file.');
+  }
   const days=[...new Set(punches.map(p=>p.day))].sort();
   return {punches, unmatchedTdis:[...unmatchedSet], weekLo:days[0]||null, weekHi:days[days.length-1]||null};
 }
@@ -14160,7 +14173,7 @@ function renderWeeklyTimeReviewModal(m){
   const noTeam = teamStaff.length===0;
   const isUnlinkedSupervisor = authState.account?.role==='supervisor' && !authState.account?.linked_supervisor_id;
 
-  if(!m.punches){
+  if(!m.punches || m.punches.length===0){
     if(m.loadingSaved){
       return `
       <div class="modal" style="max-width:640px;">
