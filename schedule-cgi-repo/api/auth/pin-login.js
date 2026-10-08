@@ -58,7 +58,7 @@ export default async function handler(req, res) {
 
     const { data: account, error: acctErr } = await supabaseAdmin
       .from('accounts')
-      .select('id, user_id, name, role, status, assigned_area_ids')
+      .select('id, user_id, name, role, status, assigned_area_ids, linked_supervisor_id')
       .eq('id', accountId)
       .single();
 
@@ -107,6 +107,7 @@ export default async function handler(req, res) {
         name: account.name,
         role: account.role,
         assigned_area_ids: account.assigned_area_ids,
+        linked_supervisor_id: account.linked_supervisor_id,
       },
     });
   } catch (e) {
