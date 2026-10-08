@@ -5101,6 +5101,7 @@ button{font-family:var(--sans);cursor:pointer;}
 :root[data-theme="dark"] .wtr-dc.bad{background:#3A1F1F;color:#FFB3AB;}
 .wtr-why{margin:0;padding-left:16px;font-size:11.5px;color:var(--md-sys-color-on-surface-variant);}
 .wtr-why li{margin-bottom:1px;}
+.wtr-last-reviewed{font-size:10.5px;color:var(--md-sys-color-on-surface-variant);opacity:.8;border-top:1px solid var(--md-sys-color-outline-variant);padding-top:6px;margin-top:2px;}
 .wtr-section-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding:10px 16px;border-radius:var(--md-sys-shape-corner-medium);box-shadow:0 1px 2px rgba(0,0,0,.04);}
 .wtr-section-head.warn{background:#FFF3E0;color:#E65100;} .wtr-section-head.ok{background:#E8F5E9;color:#1B5E20;}
 :root[data-theme="dark"] .wtr-section-head.warn{background:#3A2E12;color:#FFC46A;}
@@ -5118,6 +5119,8 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-slot{border:1px solid var(--md-sys-color-outline-variant);border-radius:6px;padding:6px 8px;background:var(--md-sys-color-surface-container-low);display:flex;flex-direction:column;gap:2px;}
 .wtr-slot small{color:var(--md-sys-color-on-surface-variant);font-size:10.5px;}
 .wtr-slot .t{font-size:13px;font-family:var(--mono,ui-monospace,Consolas,monospace);}
+.wtr-slot-fixlink{align-self:flex-start;margin-top:1px;background:none;border:none;padding:0;font-size:10.5px;color:var(--md-sys-color-on-surface-variant);text-decoration:underline;text-underline-offset:2px;opacity:.7;cursor:pointer;}
+.wtr-slot-fixlink:hover{opacity:1;color:var(--md-sys-color-primary);}
 .wtr-slot.gap{border-color:#9d2327;background:#fadfde;}
 .wtr-slot.gap small{color:#9d2327;}
 :root[data-theme="dark"] .wtr-slot.gap{border-color:#8B3A3A;background:#3A1F1F;}
@@ -14333,10 +14336,15 @@ function renderWeeklyTimeReviewModal(m){
   const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
   const rows = trBuildRows(teamStaff, m.punches, decisions, daysSeen, state.timeOff, state.attendanceEvents);
   const summary = trSummaryByStaff(rows);
+  // Needs-action first, then keep-an-eye, then good standing (name as the
+  // tiebreaker) — alphabetical order buried whoever needed attention most
+  // among whoever's name happened to sort last.
+  const TR_LEVEL_ORDER = {action:0, watch:1, good:2};
   const cards = summary.map(s=>{
     const sRows = rows.filter(r=>r.staff.id===s.staff.id);
-    return {s, rows:sRows, st:trStanding(s, sRows, (m.patterns||{})[s.staff.id])};
-  });
+    const reviewedAts = sRows.map(r=>decisions[r.key]?.decidedAt).filter(Boolean).sort();
+    return {s, rows:sRows, st:trStanding(s, sRows, (m.patterns||{})[s.staff.id]), lastReviewedAt:reviewedAts[reviewedAts.length-1]||null};
+  }).sort((a,b)=>(TR_LEVEL_ORDER[a.st.level]-TR_LEVEL_ORDER[b.st.level])||a.s.staff.name.localeCompare(b.s.staff.name));
   const totWorked = summary.reduce((a,s)=>a+s.worked,0), totSched = summary.reduce((a,s)=>a+s.sched,0);
   const goodN = cards.filter(c=>c.st.level==='good').length, actionN = cards.filter(c=>c.st.level==='action').length, watchN = cards.filter(c=>c.st.level==='watch').length;
   const openRows = rows.filter(r=>r.d.open);
@@ -14347,7 +14355,9 @@ function renderWeeklyTimeReviewModal(m){
     const byDay = new Map(sRows.map(r=>[r.day, r]));
     return daysSeen.map(day=>{
       const r = byDay.get(day);
-      const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})[0];
+      // First letter alone collides (Tue/Thu and Sat/Sun both start with
+      // the same letter) — two letters disambiguates every day of the week.
+      const lab = new Date(day+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).slice(0,2);
       if(!r) return `<div class="wtr-dc"><small>${lab}</small>·</div>`;
       const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
       const cellText = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHmCompact(r.d.netMin));
@@ -14363,7 +14373,7 @@ function renderWeeklyTimeReviewModal(m){
     const editing = m.editSlot===key+'|'+i;
     if(r.slots[i]!=null){
       if(editing) return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]} · correct it</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${trHhmm(r.d.sl[i])}"/></div>`;
-      return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="btn btn-sm btn-light" style="margin-top:2px;" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
+      return `<div class="wtr-slot"><small>${TR_SLOTN[i]}</small><span class="t">${trFmtClock(r.d.sl[i])}</span><button class="wtr-slot-fixlink" data-wtr-editslot="${k}|${i}">Wrong? Fix</button></div>`;
     }
     return `<div class="wtr-slot gap"><small>${TR_SLOTN[i]}</small><input type="time" data-wtr-fix-key="${k}" data-wtr-fix-slot="${i}" value="${escapeHtml((dec.fix&&dec.fix[i])||'')}"/><em style="font-size:11px;color:#9d2327;">${dec.fix&&dec.fix[i]?'entered':'missing, enter if known'}</em></div>`;
   };
@@ -14411,7 +14421,7 @@ function renderWeeklyTimeReviewModal(m){
             ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
             ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
             ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
-            <span class="wtr-kpi ok"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
+            <span class="wtr-kpi ${(totWorked-totSched)<-TR_RULES.standTol||(totWorked-totSched)>TR_RULES.overTol?'warn':'ok'}"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
             <div style="display:flex;gap:6px;">
@@ -14456,6 +14466,7 @@ function renderWeeklyTimeReviewModal(m){
               <div><div class="wtr-ptime"><span class="t">${trHm(c.s.worked)}</span><span class="small-muted">of ${trHm(c.s.sched)}</span></div><div class="wtr-prog"><i style="width:${c.s.sched?Math.min(100,c.s.worked/c.s.sched*100):0}%"></i></div></div>
               <div class="wtr-dstrip" style="--n:${daysSeen.length};">${dayStrip(c.rows)}</div>
               <ul class="wtr-why">${c.st.reasons.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
+              <div class="wtr-last-reviewed">${c.lastReviewedAt?`Last reviewed ${escapeHtml(friendlyDate(c.lastReviewedAt.slice(0,10)))}`:'Not reviewed yet'}</div>
             </div>
           </div>`).join('')}
         </div>
