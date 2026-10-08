@@ -14091,6 +14091,18 @@ function renderWeeklyTimeReviewModal(m){
   const isUnlinkedSupervisor = authState.account?.role==='supervisor' && !authState.account?.linked_supervisor_id;
 
   if(!m.punches){
+    if(m.loadingSaved){
+      return `
+      <div class="modal" style="max-width:640px;">
+        <div class="modal-head">
+          <div><h2>⏱ Weekly Time Review</h2></div>
+          <button class="modal-close" id="modal-close-x">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="small-muted">Loading your last saved week…</div>
+        </div>
+      </div>`;
+    }
     return `
     <div class="modal" style="max-width:640px;">
       <div class="modal-head">
@@ -18583,7 +18595,32 @@ function attachHandlers(){
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
-  on('nav-weekly-time-review',  ()=>{ closeNav(); openModal({type:'weekly-time-review', teamStaff: myReviewTeamStaff(), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''}); });
+  on('nav-weekly-time-review',  async ()=>{
+    closeNav();
+    const teamStaff = myReviewTeamStaff();
+    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, loadingSaved:true, error:''});
+    if(!teamStaff.length || !window.RC){ if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false}); return; }
+    try{
+      const staffIds = teamStaff.map(s=>s.id);
+      const [week, decisionRows] = await Promise.all([
+        window.RC.fetchLatestTimeReviewWeek({staffIds}),
+        window.RC.fetchTimeReviewDecisions({staffIds}),
+      ]);
+      if(activeModal?.type!=='weekly-time-review') return; // modal closed/changed while this was in flight
+      const decisions = {};
+      (decisionRows||[]).forEach(row=>{
+        decisions[row.staff_id+'|'+row.day] = {ver:row.verified||'', late:row.late_approved||'', lateNote:row.late_note||'', fix:row.fix||{}};
+      });
+      if(week){
+        const days = week.punches.map(p=>p.day).sort();
+        openModal({...activeModal, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, loadingSaved:false});
+      } else {
+        openModal({...activeModal, decisions, loadingSaved:false});
+      }
+    }catch(e){
+      if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false, error:'Could not load last week\'s saved data — you can still upload a fresh file. ('+((e&&e.message)||'try again')+')'});
+    }
+  });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
   on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
@@ -21147,6 +21184,10 @@ function attachHandlers(){
   // --- weekly time review ---
   if(activeModal.type==='weekly-time-review'){
     const m = activeModal;
+    const saveDecision = (key) => {
+      const i = key.indexOf('|'), staffId = key.slice(0,i), day = key.slice(i+1);
+      syncBoardWrite(()=>window.RC.saveTimeReviewDecision({staffId, day, decision: m.decisions[key]||{}, actingAccountId: authState.account.id}), 'time review decision');
+    };
     const loadFile = async (file) => {
       if(!file) return;
       m.loading = true; m.error = ''; render();
@@ -21154,6 +21195,12 @@ function attachHandlers(){
         const result = await parseWeeklyTimeReviewFile(file, m.teamStaff);
         openModal({...m, punches:result.punches, unmatchedTdis:result.unmatchedTdis,
           weekLo:result.weekLo, weekHi:result.weekHi, decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+        // Replaces whatever was saved for these exact (staff, day) pairs —
+        // a re-upload supersedes, it doesn't double up (see
+        // saveTimeReviewPunches). Fire-and-forget: the screen already
+        // reflects the parsed file either way.
+        const staffDays = [...new Map(result.punches.map(p=>[p.staffId+'|'+p.day, {staffId:p.staffId, day:p.day}])).values()];
+        syncBoardWrite(()=>window.RC.saveTimeReviewPunches({weekStart:result.weekLo, staffDays, punches:result.punches, actingAccountId:authState.account.id}), 'weekly time review punches');
       }catch(e){
         openModal({...m, loading:false, error:(e&&e.message)||'Could not read that file.'});
       }
@@ -21185,18 +21232,21 @@ function attachHandlers(){
       m.decisions = {...m.decisions, [key]: {...prev, fix:{...(prev.fix||{}), [slot]: el.value}}};
       m.editSlot = '';
       render();
+      saveDecision(key);
     }));
     document.querySelectorAll('[data-wtr-late]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrLate, val = el.dataset.wtrLateVal;
       const prev = m.decisions[key] || {};
       m.decisions = {...m.decisions, [key]: {...prev, late: prev.late===val ? '' : val}};
       render();
+      saveDecision(key);
     }));
     document.querySelectorAll('[data-wtr-verify]').forEach(el=>el.addEventListener('click', ()=>{
       const key = el.dataset.wtrVerify;
       const prev = m.decisions[key] || {};
       m.decisions = {...m.decisions, [key]: {...prev, ver:'Yes'}};
       render();
+      saveDecision(key);
     }));
   }
 

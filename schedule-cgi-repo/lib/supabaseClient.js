@@ -798,6 +798,74 @@ export async function deleteBlockedPair({ blockedPairId }) {
 }
 
 // ---------------------------------------------------------------------------
+// Weekly Time Review — the uploaded punch report itself, and each
+// supervisor decision made while reviewing it (verify a day, approve/
+// not-approve a late start, a corrected punch time). Phase 1 kept both in
+// the open modal's own state only; see 0033_weekly_time_review.sql.
+// ---------------------------------------------------------------------------
+
+// The most recent week this/any manager has uploaded punches for, scoped
+// to the given staff ids (a supervisor's own team) — Phase 2 has no week
+// picker yet, so "latest" is the only week a reopened screen loads.
+export async function fetchLatestTimeReviewWeek({ staffIds }) {
+  if (!staffIds || !staffIds.length) return null;
+  const { data: latest, error: latestErr } = await supabase.from('time_review_punches')
+    .select('week_start').in('staff_id', staffIds).order('week_start', { ascending: false }).limit(1).maybeSingle();
+  if (latestErr) throw latestErr;
+  if (!latest) return null;
+  const { data: rows, error } = await supabase.from('time_review_punches')
+    .select('staff_id, day, description, punch_minutes').in('staff_id', staffIds).eq('week_start', latest.week_start);
+  if (error) throw error;
+  return {
+    weekStart: latest.week_start,
+    punches: rows.map(r => ({ staffId: r.staff_id, day: r.day, desc: r.description, t: Number(r.punch_minutes) })),
+  };
+}
+
+// Replaces, not appends: for every (staff, day) pair this upload covers,
+// any previously-saved punches for that exact day are cleared first — so
+// re-uploading a corrected export for a day already on file supersedes it
+// instead of doubling it up. `staffDays` is the deduped set of pairs the
+// parsed punches actually touch.
+export async function saveTimeReviewPunches({ weekStart, staffDays, punches, actingAccountId }) {
+  for (const { staffId, day } of staffDays) {
+    const { error } = await supabase.from('time_review_punches').delete().eq('staff_id', staffId).eq('day', day);
+    if (error) throw error;
+  }
+  if (!punches.length) return;
+  const rows = punches.map(p => ({
+    staff_id: p.staffId, week_start: weekStart, day: p.day,
+    description: p.desc, punch_minutes: p.t, uploaded_by: actingAccountId,
+  }));
+  const { error } = await supabase.from('time_review_punches').insert(rows);
+  if (error) throw error;
+}
+
+export async function fetchTimeReviewDecisions({ staffIds }) {
+  if (!staffIds || !staffIds.length) return [];
+  const { data, error } = await supabase.from('time_review_decisions').select('*').in('staff_id', staffIds);
+  if (error) throw error;
+  return data;
+}
+
+// Always writes the decision's full current shape (not a partial patch) —
+// the caller (index.html) already keeps the accumulated {ver, late,
+// lateNote, fix} object per day, so this just upserts that whole object
+// rather than trying to merge fragments server-side.
+export async function saveTimeReviewDecision({ staffId, day, decision, actingAccountId }) {
+  const { error } = await supabase.from('time_review_decisions').upsert({
+    staff_id: staffId, day,
+    verified: decision.ver || null,
+    late_approved: decision.late || null,
+    late_note: decision.lateNote || '',
+    fix: decision.fix || {},
+    decided_by: actingAccountId,
+    decided_at: new Date().toISOString(),
+  }, { onConflict: 'staff_id,day' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
 // Coverage — who is currently covering someone else's area (from a manual
 // callout or a scheduled time off) and where they return to. Was local-only
 // before this (see 0007_coverage_sync.sql for the schema and
