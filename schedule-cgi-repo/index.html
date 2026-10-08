@@ -5085,6 +5085,13 @@ button{font-family:var(--sans);cursor:pointer;}
 :root[data-theme="dark"] .wtr-table td.ok{background:#163821;color:#8FE0A5;}
 :root[data-theme="dark"] .wtr-table td.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-table td.bad{background:#3A1F1F;color:#FFB3AB;}
+.wtr-del-icon{background:none;border:none;padding:0;margin-left:4px;font-size:10.5px;opacity:.55;cursor:pointer;line-height:1;vertical-align:middle;}
+.wtr-del-icon:hover{opacity:1;}
+.wtr-table th .wtr-del-icon{color:inherit;}
+.wtr-wl-cell{position:relative;}
+.wtr-cell-del{position:absolute;top:1px;right:2px;display:none;font-size:13px;font-weight:700;opacity:.8;}
+.wtr-wl-cell:hover .wtr-cell-del{display:inline-block;}
+.wtr-cell-del:hover{opacity:1;color:#9d2327;}
 .wtr-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
 .wtr-pc{position:relative;background:var(--md-sys-color-surface-container-lowest);border:1px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;padding-left:4px;transition:box-shadow .15s,transform .15s;}
 .wtr-pc::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;}
@@ -14507,9 +14514,21 @@ function renderWeeklyTimeReviewModal(m){
               <button class="btn btn-light btn-sm" id="wtr-toggle-rules">⚙ Rules</button>
               ${m.loading?`<span class="small-muted" style="align-self:center;">Loading…</span>`:''}
             </div>
-            <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-light btn-sm" id="wtr-upload-another">⬆ Upload a different week</button>
+              <button class="btn btn-light btn-sm" style="color:#9d2327;" id="wtr-del-week" data-wtr-del-week="1">🗑 Delete this week</button>
+            </div>
           </div>
         </div>
+
+        ${m.pendingDelete?`
+        <div class="alert-box rust" style="margin-top:12px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;">
+          <span>Delete ${escapeHtml(m.pendingDelete.label)}? This can't be undone.</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm" style="background:#9d2327;color:#fff;border-color:#9d2327;" id="wtr-confirm-delete">Yes, delete</button>
+            <button class="btn btn-sm btn-light" id="wtr-cancel-delete">Cancel</button>
+          </div>
+        </div>`:''}
 
         ${m.showRules?`
         <div class="wtr-item wtr-rules-panel" style="margin-top:12px;">
@@ -14602,7 +14621,7 @@ function renderWeeklyTimeReviewModal(m){
           <b>Week log · day by day</b>
           <div class="wtr-table-scroll" style="margin-top:10px;">
             <table class="wtr-table">
-              <thead><tr><th>Person</th>${daysSeen.map(d=>`<th>${escapeHtml(friendlyDate(d))}</th>`).join('')}<th>Week so far</th><th>Standing</th></tr></thead>
+              <thead><tr><th>Person</th>${daysSeen.map(d=>`<th>${escapeHtml(friendlyDate(d))} <button class="wtr-del-icon" data-wtr-del-day="${d}" title="Delete ${escapeHtml(friendlyDate(d))} for everyone">🗑</button></th>`).join('')}<th>Week so far</th><th>Standing</th></tr></thead>
               <tbody>
                 ${cards.map(c=>{
                   const byDay = new Map(c.rows.map(r=>[r.day,r]));
@@ -14613,14 +14632,14 @@ function renderWeeklyTimeReviewModal(m){
                     const tone = r.d.base==='Excused' ? 'off' : (r.d.open ? (r.d.base==='Incomplete'?'bad':'warn') : (r.d.lateNo?'warn':'ok'));
                     const text = r.d.base==='Excused' ? (r.d.excused==='off'?'Off':'Out') : (r.d.netMin==null?'—':trHm(r.d.netMin)+(r.d.est?'*':''));
                     const mark = (dec.ver==='Yes'||dec.late) ? ' ✓' : '';
-                    return `<td class="t ${tone}" title="${escapeHtml(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')}">${text}${mark}</td>`;
+                    return `<td class="t ${tone} wtr-wl-cell" title="${escapeHtml(r.d.issues.concat(r.d.lateRes?[r.d.lateRes]:[]).join('; ')||'clean')}">${text}${mark}<button class="wtr-del-icon wtr-cell-del" data-wtr-del-person="${c.s.staff.id}" data-wtr-del-day="${day}" title="Delete ${escapeHtml(c.s.staff.name)}'s ${escapeHtml(friendlyDate(day))}">×</button></td>`;
                   }).join('');
-                  return `<tr><td><b>${escapeHtml(c.s.staff.name)}</b></td>${cells}<td class="t">${trHm(c.s.worked)} / ${trHm(c.s.sched)}</td><td><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></td></tr>`;
+                  return `<tr><td><b>${escapeHtml(c.s.staff.name)}</b> <button class="wtr-del-icon" data-wtr-del-person="${c.s.staff.id}" title="Delete all of ${escapeHtml(c.s.staff.name)}'s data this week">🗑</button></td>${cells}<td class="t">${trHm(c.s.worked)} / ${trHm(c.s.sched)}</td><td><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></td></tr>`;
                 }).join('')}
               </tbody>
             </table>
           </div>
-          <p class="small-muted" style="margin-top:8px;">Hours worked each day (* estimated). Green clean, amber check, red incomplete, gray day off/called out, blank = not uploaded yet.</p>
+          <p class="small-muted" style="margin-top:8px;">Hours worked each day (* estimated). Green clean, amber check, red incomplete, gray day off/called out, blank = not uploaded yet. 🗑 deletes a whole day/person; hover a cell for × to delete just that one day for that person.</p>
         </div>`:''}
 
         ${queueRows.length?`
@@ -21641,6 +21660,58 @@ function attachHandlers(){
         openModal({...m, loading:false, error:'Could not load that week. ('+((e&&e.message)||'try again')+')'});
       }
     };
+    // Deletes punches + any decisions tied to them, then reloads: the
+    // current week if it still has data, otherwise the next most recent
+    // week with data, otherwise back to the empty upload screen — never
+    // left showing stale data for something that's just been removed.
+    const doDelete = async () => {
+      const del = m.pendingDelete;
+      if(!del) return;
+      m.pendingDelete = null; m.loading = true; render();
+      try{
+        const result = await syncCrudWrite(()=>window.RC.deleteTimeReviewPunches({staffIds:del.staffIds, weekStart:del.weekStart, day:del.day}));
+        if(!result.ok) throw result.error || new Error('Could not delete.');
+        const staffIds = m.teamStaff.map(s=>s.id);
+        const [week, decisionRows, weeksList] = await Promise.all([
+          window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart:m.weekStart}),
+          window.RC.fetchTimeReviewDecisions({staffIds}),
+          window.RC.fetchTimeReviewWeeksList({staffIds}),
+        ]);
+        const decisions = trMapDecisions(decisionRows);
+        if(week){
+          const days = week.punches.map(p=>p.day).sort();
+          openModal({...m, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], focusStaffId:'', editSlot:'', loading:false, error:''});
+        } else if(weeksList && weeksList.length){
+          const nextStart = weeksList[0];
+          const week2 = await window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart:nextStart});
+          const days2 = week2 ? week2.punches.map(p=>p.day).sort() : [];
+          openModal({...m, punches:week2?week2.punches:null, weekStart:nextStart, weekLo:days2[0]||'', weekHi:days2[days2.length-1]||'', decisions, availableWeeks:weeksList, focusStaffId:'', editSlot:'', loading:false, error:''});
+        } else {
+          openModal({...m, punches:null, weekStart:'', weekLo:'', weekHi:'', decisions:{}, availableWeeks:[], focusStaffId:'', editSlot:'', loading:false, error:''});
+        }
+      }catch(e){
+        openModal({...m, loading:false, error:(e&&e.message)||'Could not delete that.'});
+      }
+    };
+    document.querySelectorAll('[data-wtr-del-week]').forEach(el=>el.addEventListener('click', ()=>{
+      m.pendingDelete = {label:'this week\'s data for your team', staffIds:m.teamStaff.map(s=>s.id), weekStart:m.weekStart, day:null};
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-del-day]:not([data-wtr-del-person])').forEach(el=>el.addEventListener('click', ()=>{
+      const day = el.dataset.wtrDelDay;
+      m.pendingDelete = {label:friendlyDate(day)+'\'s data for everyone', staffIds:m.teamStaff.map(s=>s.id), weekStart:null, day};
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-del-person]').forEach(el=>el.addEventListener('click', ()=>{
+      const staffId = el.dataset.wtrDelPerson, day = el.dataset.wtrDelDay || null;
+      const staff = m.teamStaff.find(s=>s.id===staffId);
+      const name = staff ? staff.name : 'this person';
+      const label = day ? name+'\'s '+friendlyDate(day) : 'all of '+name+'\'s data this week';
+      m.pendingDelete = {label, staffIds:[staffId], weekStart: day?null:m.weekStart, day};
+      render();
+    }));
+    on('wtr-confirm-delete', doDelete);
+    on('wtr-cancel-delete', ()=>{ m.pendingDelete = null; render(); });
     const fileInput = document.getElementById('wtr-file-input');
     if(fileInput) fileInput.addEventListener('change', ()=>loadFile(fileInput.files[0]));
     const dropEl = document.getElementById('wtr-drop');
