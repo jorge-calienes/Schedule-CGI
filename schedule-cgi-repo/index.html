@@ -9426,6 +9426,15 @@ function render(){
   // checkboxes to work through in one sitting.
   const _mbOld = document.querySelector('.modal-body');
   const _modalScroll = _mbOld?.scrollTop || 0;
+  // Same class of bug, Time Off split view: the realtime refresh (any
+  // board change anywhere, not just time off) calls render() independent
+  // of anything the person is doing, so without this a supervisor
+  // scrolling through "Coverage needed" gets yanked back to the top
+  // mid-scroll whenever someone else's edit lands.
+  const _toListOld = document.querySelector('.to-list-wrap');
+  const _toListScroll = _toListOld?.scrollTop || 0;
+  const _toCalOld = document.querySelector('.cal-grid-wrap');
+  const _toCalScroll = _toCalOld?.scrollTop || 0;
 
   // Only play the view-switch fade when viewMode actually changed since the
   // last render — board/overview/etc re-render constantly for unrelated
@@ -9506,6 +9515,26 @@ function render(){
       requestAnimationFrame(()=>{
         const mb2 = document.querySelector('.modal-body');
         if(mb2) mb2.scrollTop = _modalScroll;
+      });
+    }
+  }
+  if(_toListScroll){
+    const toList = document.querySelector('.to-list-wrap');
+    if(toList){
+      toList.scrollTop = _toListScroll;
+      requestAnimationFrame(()=>{
+        const toList2 = document.querySelector('.to-list-wrap');
+        if(toList2) toList2.scrollTop = _toListScroll;
+      });
+    }
+  }
+  if(_toCalScroll){
+    const toCal = document.querySelector('.cal-grid-wrap');
+    if(toCal){
+      toCal.scrollTop = _toCalScroll;
+      requestAnimationFrame(()=>{
+        const toCal2 = document.querySelector('.cal-grid-wrap');
+        if(toCal2) toCal2.scrollTop = _toCalScroll;
       });
     }
   }
