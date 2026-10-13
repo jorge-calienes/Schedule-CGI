@@ -22788,25 +22788,30 @@ function _applyTodayTimeOff(){
     }
   });
 
-  // 3. Scheduled leave that ended yesterday — auto mark the person back in
-  // and send whoever covered their area back to regular duties, the same
-  // as clicking "Back ✓" manually. Narrowly scoped to endDate===yesterday
-  // (not "any past record") so this can't misfire against an unrelated
-  // manual callout that happens to share a staff member with old time-off
-  // history — it only fires in the one-render window right after a leave
-  // actually ends.
+  // 3. A "scheduled" callout (the kind step 1 above sets automatically, as
+  // opposed to a manual callout someone clicked "Mark someone out" for —
+  // see the state.callouts[s.id]==='scheduled' vs ===true distinction) that
+  // no longer corresponds to an active time-off record for today — auto
+  // mark the person back in and send whoever covered their area back to
+  // regular duties, the same as clicking "Back ✓" manually.
+  // This used to only fire when a record's endDate was literally yesterday,
+  // which covered a leave ending on schedule but missed every other way the
+  // record stops covering today: edited to a different date range,
+  // shortened, or deleted outright from the staff profile's Time tab — each
+  // of those left the stale 'scheduled' callout stuck forever, since there
+  // was no longer any record for "ended yesterday" to match against.
+  // Checking the callout's own marker instead of hunting for matching
+  // leftover time-off evidence covers all of those the same way, and still
+  // can't misfire onto a manual callout, since those are never 'scheduled'.
   // Mutates state directly instead of calling maybeReturnCoverageFor() /
   // returnFromCoverage() — this whole function runs as the first line of
   // render(), so calling something that itself calls render() here would
   // re-enter render() mid-build, same reason step 2 above mutates
   // state.coverage/state.assignments directly instead of calling
   // assignCoverage().
-  const yesterday = yesterdayLabel();
   state.staff.forEach(s=>{
-    if(!state.callouts[s.id]) return;          // not out, nothing to reconcile
-    if(isScheduledOut(s.id, today)) return;     // still within an active range
-    const justEnded = ((state.timeOff||{})[s.id]||[]).some(r=>r.endDate===yesterday);
-    if(!justEnded) return;
+    if(state.callouts[s.id]!=='scheduled') return; // not an auto-applied scheduled callout, leave it alone
+    if(isScheduledOut(s.id, today)) return;         // still within an active range
     const areaId = state.assignments[s.id];
     delete state.callouts[s.id];
     if(boardLoadedFromServer) syncBoardWrite(()=>window.RC.clearCallout({
