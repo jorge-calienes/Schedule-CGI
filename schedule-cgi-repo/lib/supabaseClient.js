@@ -260,6 +260,22 @@ export async function moveStaff({ staffId, areaId, actingAccountId, staffName, f
   });
 }
 
+export async function unassignAllStaff({ staffIds, actingAccountId }) {
+  if (!staffIds || !staffIds.length) return;
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('assignments')
+    .upsert(staffIds.map(staffId => ({ staff_id: staffId, area_id: null, updated_by: actingAccountId, updated_at: now })));
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId,
+    action: 'move',
+    description: `unassigned all ${staffIds.length} placed staff to prepare for a new rotation`,
+    metadata: { staffIds, bulk: 'unassign-all' },
+  });
+}
+
 export async function swapStaff({ idA, idB, areaA, areaB, actingAccountId, nameA, nameB }) {
   const now = new Date().toISOString();
   const { error } = await supabase.from('assignments').upsert([
@@ -1591,6 +1607,7 @@ window.RC = {
   getCurrentAccount,
   loadBoard,
   moveStaff,
+  unassignAllStaff,
   swapStaff,
   setCallout,
   clearCallout,
