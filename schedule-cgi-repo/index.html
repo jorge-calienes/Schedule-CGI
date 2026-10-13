@@ -15344,9 +15344,16 @@ function renderAreaReorderModal(m){
 }
 
 function renderDeptReorderModal(m){
-  // only show non-fixed departments (fixed areas have their own panel)
-  const fixedDepts = new Set(state.areas.filter(a=>a.fixed).map(a=>a.department));
-  const depts = state.departments.filter(d=>!fixedDepts.has(d));
+  // Every department that has at least one area shows up on the board
+  // (areasByDepartment() includes fixed areas right alongside regular
+  // ones — "Fixed Positions" is a department like any other there, not a
+  // separately-pinned panel, despite what an older comment here used to
+  // claim) — this list has to match that exactly, or a department whose
+  // areas happen to include a fixed one silently can't be reordered at
+  // all, with no indication why it's missing.
+  const deptsWithAreas = new Set(state.areas.map(a=>a.department));
+  const depts = state.departments.filter(d=>deptsWithAreas.has(d))
+    .concat([...deptsWithAreas].filter(d=>!state.departments.includes(d)));
   return `
   <div class="modal" style="max-width:440px;">
     <div class="modal-head">
@@ -15356,7 +15363,7 @@ function renderDeptReorderModal(m){
     <div class="modal-body">
       <div id="dept-order-list">
         ${depts.map((dept, i) => {
-          const areas = state.areas.filter(a=>a.department===dept&&!a.fixed);
+          const areas = state.areas.filter(a=>a.department===dept);
           return `
           <div class="dept-order-row" draggable="true" data-dept-idx="${i}" data-dept="${encodeURIComponent(dept)}">
             <span class="dept-order-handle" title="Drag to reorder">⠿</span>
@@ -20006,17 +20013,26 @@ function attachHandlers(){
   if(activeModal.type==='dept-reorder'){
     on('modal-close-dept', closeModal);
 
-    // helper: move dept at idx by delta (-1=up, +1=down), preserving fixed depts in place
+    // helper: move dept at idx by delta (-1=up, +1=down), preserving
+    // area-less depts in place (nothing to reorder for one that isn't on
+    // the board at all) — must match renderDeptReorderModal's own `depts`
+    // list exactly, predicate for predicate, or the row index a click
+    // reports and the department that index resolves to here drift apart.
     function moveDept(idx, delta){
-      const fixedDepts = new Set(state.areas.filter(a=>a.fixed).map(a=>a.department));
-      const reorderable = state.departments.filter(d=>!fixedDepts.has(d));
+      const deptsWithAreas = new Set(state.areas.map(a=>a.department));
+      const extra = [...deptsWithAreas].filter(d=>!state.departments.includes(d));
+      const reorderable = state.departments.filter(d=>deptsWithAreas.has(d)).concat(extra);
       const newIdx = idx + delta;
       if(newIdx < 0 || newIdx >= reorderable.length) return;
       // swap in the reorderable slice, then re-merge back into state.departments
       [reorderable[idx], reorderable[newIdx]] = [reorderable[newIdx], reorderable[idx]];
-      // rebuild state.departments: keep fixed depts in original relative position, replace reorderable depts
+      // rebuild state.departments: keep area-less depts in original relative
+      // position, replace reorderable depts with their new order, and append
+      // any department name an area references but state.departments never
+      // picked up (same fallback areasByDepartment() falls back to).
       let rIdx = 0;
-      state.departments = state.departments.map(d=>fixedDepts.has(d) ? d : reorderable[rIdx++]);
+      state.departments = state.departments.map(d=>deptsWithAreas.has(d) ? reorderable[rIdx++] : d);
+      if(rIdx < reorderable.length) state.departments = state.departments.concat(reorderable.slice(rIdx));
       saveState();
       // Without this the new order only ever lived in this browser's local
       // state and silently reverted on the next fresh load elsewhere.
