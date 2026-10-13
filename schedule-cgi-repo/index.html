@@ -3484,7 +3484,7 @@ button{font-family:var(--sans);cursor:pointer;}
 /* ---------- layout ---------- */
 .layout{display:flex;height:calc(100vh - 136px);}
 .sidebar{
-    width:240px;
+    width:272px;
     background:var(--md-sys-color-surface-container-low);
     color:var(--md-sys-color-on-surface);
     border-right:1px solid var(--md-sys-color-outline-variant);
@@ -3536,10 +3536,10 @@ button{font-family:var(--sans);cursor:pointer;}
     min-height:48px;
     border:1.5px dashed var(--md-sys-color-outline);
     border-radius:var(--md-sys-shape-corner-medium);
-    padding:var(--md-space-2);
+    padding:var(--md-space-3);
     display:flex;
     flex-direction:column;
-    gap:var(--md-space-2);
+    gap:var(--md-space-3);
   }
 .pool-zone.dragover{border-color:var(--md-sys-color-tertiary);background:var(--md-sys-color-tertiary-container);}
 .pool-empty{font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface-variant);text-align:center;padding:var(--md-space-4) var(--md-space-1);font-style:italic;}
@@ -5940,6 +5940,7 @@ button{font-family:var(--sans);cursor:pointer;}
 /* ---- LARGE / EXTRA-LARGE (1200px+): a bit more breathing room ---- */
 @media (min-width:1200px){
     .board-wrap{padding:var(--md-space-6);}
+    .sidebar{width:300px;}
     .area-col{width:320px;min-width:280px;max-width:420px;}
     .overview-columns{columns:4 280px;}
   }
