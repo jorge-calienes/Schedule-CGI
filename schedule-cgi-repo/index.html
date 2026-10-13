@@ -3521,6 +3521,8 @@ button{font-family:var(--sans);cursor:pointer;}
     font-size:15px;cursor:pointer;
   }
 .sidebar-mini-btn:hover{background:var(--md-sys-color-surface-container-highest);}
+.sidebar-mini-btn:disabled{opacity:.38;cursor:not-allowed;}
+.sidebar-mini-btn:disabled:hover{background:var(--md-sys-color-surface-container-high);}
 .sidebar h3{
     font-size:var(--md-sys-typescale-label-medium-size);
     text-transform:uppercase;
@@ -10500,6 +10502,7 @@ async function undoLastRotation(){
 
 function renderSidebar(){
   const unplaced = state.staff.filter(s=>s.active!==false && !state.assignments[s.id]);
+  const placedActive = state.staff.filter(s=>s.active!==false && state.assignments[s.id]).length;
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
 
@@ -10516,6 +10519,7 @@ function renderSidebar(){
       ${readOnly ? '' : `
       <button class="sidebar-mini-btn" id="btn-add-area" title="Add work area">➕</button>
       <button class="sidebar-mini-btn" id="btn-mark-callout" title="Mark someone out">⚠️</button>
+      <button class="sidebar-mini-btn" id="btn-unassign-all" ${placedActive===0?'disabled':''} title="Unassign everyone — clear the board for a new rotation">↩</button>
       `}
     </div>`;
   }
@@ -10535,6 +10539,7 @@ function renderSidebar(){
     <div class="sidebar-actions">
       <button class="btn btn-light btn-sm" id="btn-add-area">+ Add work area</button>
       <button class="btn btn-light btn-sm" id="btn-mark-callout">Mark someone out</button>
+      <button class="btn btn-light btn-sm" id="btn-unassign-all" ${placedActive===0?'disabled title="Everyone is already unassigned"':'title="Clear the board before placing everyone for a new rotation"'}>↩ Unassign everyone</button>
     </div>`}
     <h3>Legend</h3>
     <div class="small-muted" style="line-height:1.7;padding:0 4px;">
@@ -11451,6 +11456,7 @@ function renderModal(){
   else if(m.type==='flow-manager') inner = renderFlowManagerModal(m);
   else if(m.type==='flow-editor') inner = renderFlowEditorModal(m);
   else if(m.type==='confirm-rotate') inner = renderConfirmRotateModal(m);
+  else if(m.type==='unassign-all-confirm') inner = renderUnassignAllConfirmModal(m);
   else if(m.type==='rotate-preview') inner = renderRotatePreviewModal(m);
   else if(m.type==='report-preview') inner = renderReportPreviewModal(m);
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
@@ -13022,6 +13028,22 @@ function renderAreaEditorModal(m){
         <button class="btn btn-primary" id="area-save-btn" style="flex:1;">${editing?'Save changes':'Create area'}</button>
         ${editing?`<button class="btn btn-danger" id="area-delete-btn">Delete</button>`:''}
       </div>
+    </div>
+  </div>`;
+}
+
+// --- Unassign everyone (clear the board before placing fresh for a new rotation) ---
+function renderUnassignAllConfirmModal(m){
+  const placed = state.staff.filter(s=>s.active!==false && state.assignments[s.id]);
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Unassign everyone?</h2><p>Moves all ${placed.length} currently placed staff to the Unassigned pool so you can drag each one into their new spot for the next rotation. This doesn't start the rotation itself — use Rotate when you're done placing everyone to set the length and start date.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="confirm-unassign-all-btn" ${m.saving?'disabled':''}>${m.saving?'Unassigning…':'Unassign everyone'}</button>
     </div>
   </div>`;
 }
@@ -18948,6 +18970,7 @@ function attachHandlers(){
   on('btn-add-area', ()=>openModal({type:'area-editor'}));
   on('btn-add-area-2', ()=>openModal({type:'area-editor'}));
   on('btn-mark-callout', ()=>openModal({type:'mark-callout'}));
+  on('btn-unassign-all', ()=>openModal({type:'unassign-all-confirm'}));
   on('btn-sidebar-expand', ()=>{ sidebarForceExpanded=true; render(); });
   on('btn-sidebar-collapse', ()=>{ sidebarForceExpanded=false; render(); });
 
@@ -20552,6 +20575,20 @@ function attachHandlers(){
       saveState();
       closeModal();
       showToast('Rotated into period ' + newLabel, 'teal');
+    });
+  }
+
+  // --- unassign everyone (clear the board before placing fresh) ---
+  if(activeModal.type==='unassign-all-confirm'){
+    on('confirm-unassign-all-btn', async ()=>{
+      const ids = state.staff.filter(s=>s.active!==false && state.assignments[s.id]).map(s=>s.id);
+      if(!ids.length){ closeModal(); return; }
+      openModal({...activeModal, saving:true});
+      ids.forEach(id=>{ state.assignments[id] = null; });
+      saveState();
+      const result = await syncCrudWrite(()=>window.RC.unassignAllStaff({staffIds: ids, actingAccountId: authState.account.id}));
+      closeModal();
+      showToast(result.ok ? `${ids.length} staff moved to the unassigned pool — place them for the new rotation` : 'Unassigned here, but not saved to the server — try again', result.ok?'teal':'rust');
     });
   }
 
