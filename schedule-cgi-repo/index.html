@@ -3464,6 +3464,23 @@ label{font-size:12px;font-weight:600;color:var(--c-text-2);display:block;margin-
     cursor:default;
   }
 .period-pill b{color:inherit;font-weight:inherit;}
+.topbar-rotate-btn{
+    font-family:inherit;
+    font-size:12px;font-weight:700;
+    padding:4px 10px;
+    border-radius:999px;
+    background:var(--c-accent);
+    color:#fff;
+    border:none;
+    white-space:nowrap;
+    letter-spacing:-.01em;
+    flex-shrink:0;
+    cursor:pointer;
+    display:flex;align-items:center;gap:4px;
+    transition:background .15s,transform .1s;
+  }
+.topbar-rotate-btn:hover{background:#254d8a;}
+.topbar-rotate-btn:active{transform:scale(.96);}
 .topbar-right{display:flex;gap:var(--md-space-2);flex-wrap:wrap;align-items:center;}
 
 /* buttons (md.comp.button: filled / outlined / text / filled-tonal) */
@@ -5964,6 +5981,7 @@ button{font-family:var(--sans);cursor:pointer;}
     .period-pill{font-size:11px;padding:var(--md-space-1) var(--md-space-2);white-space:nowrap;}
     .btn-primary{font-size:12px;padding:7px 12px;}
     .rotate-label{display:none;}
+    .topbar-rotate-btn{padding:var(--md-space-1) var(--md-space-2);font-size:13px;}
     /* bottom tab bar (iOS/Android native pattern) instead of a top row —
        fixed above the home indicator so it stays reachable with a thumb
        and doesn't scroll away with the content. */
@@ -9796,6 +9814,7 @@ function renderTopbar(){
     <div class="topbar-context">
       ${unplaced>0?`<span class="topbar-unplaced" title="${unplaced} unplaced">⚠ ${unplaced}</span>`:''}
       <button class="period-pill" id="btn-period-pill" title="Started ${friendlyDate(state.rotationStartDate||state.currentPeriod)} · Next rotation due ${friendlyDate(addBusinessWeeksToDateStr(state.rotationStartDate||state.currentPeriod||todayLabel(), Number(state.rotationWeeks)||2))}">📅 ${friendlyDate(state.currentPeriod)||'—'}</button>
+      ${isTeamLeadRole() ? '' : `<button class="topbar-rotate-btn" id="btn-topbar-rotate" title="Set the rotation length and start date, and begin a new period">🔁 <span class="rotate-label">Rotate Now</span></button>`}
     </div>
     <div class="topbar-actions">
       <button class="topbar-icon-btn ${boardSearch?'active':''}" id="btn-toggle-search" aria-label="Search">
@@ -17498,6 +17517,7 @@ function attachHandlers(){
   });
 
   on('btn-rotate', ()=>openModal({type:'rotate-preview'}));
+  on('btn-topbar-rotate', ()=>openModal({type:'rotate-preview'}));
   on('btn-undo-rotate', undoLastRotation);
   // ── search — CSS-only filter, no DOM rebuild on each keystroke ──
   const searchEl = document.getElementById('board-search-input');
