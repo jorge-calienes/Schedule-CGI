@@ -5093,6 +5093,16 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-btn-danger:hover{background:#731A1C;border-color:#731A1C;}
 :root[data-theme="dark"] .wtr-btn-danger{background:var(--md-sys-color-error);color:var(--md-sys-color-on-error);border-color:var(--md-sys-color-error);}
 :root[data-theme="dark"] .wtr-btn-danger:hover{opacity:.9;}
+
+/* A modal's primary confirm action rendered in red (e.g. "Remove this
+   person?") needs to look like the main button, not the faint, de-emphasized
+   .modal-foot .btn-danger used for secondary/escape-hatch destructive
+   actions elsewhere — same AAA-contrast red used by Weekly Time Review's
+   delete confirm, just under its own name since it isn't WTR-specific. */
+.confirm-remove-staff-solid-btn{background:#8E2023;color:#fff;border:none;}
+.confirm-remove-staff-solid-btn:hover{background:#731A1C;}
+:root[data-theme="dark"] .confirm-remove-staff-solid-btn{background:var(--md-sys-color-error);color:var(--md-sys-color-on-error);}
+:root[data-theme="dark"] .confirm-remove-staff-solid-btn:hover{opacity:.9;}
 :root[data-theme="dark"] .wtr-kpi.bad{background:#3A1F1F;color:#FFB3AB;}
 :root[data-theme="dark"] .wtr-kpi.warn{background:#3A2E12;color:#FFC46A;}
 :root[data-theme="dark"] .wtr-kpi.ok{background:#163821;color:#8FE0A5;}
@@ -11477,6 +11487,7 @@ function renderModal(){
   else if(m.type==='flow-editor') inner = renderFlowEditorModal(m);
   else if(m.type==='confirm-rotate') inner = renderConfirmRotateModal(m);
   else if(m.type==='unassign-all-confirm') inner = renderUnassignAllConfirmModal(m);
+  else if(m.type==='confirm-remove-staff') inner = renderConfirmRemoveStaffModal(m);
   else if(m.type==='rotate-preview') inner = renderRotatePreviewModal(m);
   else if(m.type==='report-preview') inner = renderReportPreviewModal(m);
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
@@ -12031,6 +12042,37 @@ function renderPlacementConflictModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-cancel">Cancel placement</button>
       <button class="btn btn-danger" id="modal-place-anyway">Place anyway</button>
+    </div>
+  </div>`;
+}
+
+// --- Confirm removing a staff member (separate step so a misclick on the
+//     profile modal's "Remove" button — sitting right next to Save — can't
+//     delete someone outright). ---
+function renderConfirmRemoveStaffModal(m){
+  const staff = getStaffById(m.staffId);
+  const name = staff ? staff.name : 'this person';
+  const firstName = name.split(' ')[0];
+  const areaId = staff ? state.assignments[staff.id] : null;
+  const area = areaId ? getAreaById(areaId) : null;
+  const blockedWith = staff ? state.blocks.filter(b=>b.a===staff.id||b.b===staff.id)
+    .map(b=>getStaffById(b.a===staff.id?b.b:b.a)?.name).filter(Boolean) : [];
+  const extra = area && blockedWith.length
+    ? ` They'll also be cleared from <b>${escapeHtml(area.name)}</b> and lose the blocked-pair rule with ${blockedWith.map(escapeHtml).join(', ')}.`
+    : area
+    ? ` They'll also be cleared from <b>${escapeHtml(area.name)}</b>.`
+    : blockedWith.length
+    ? ` They'll also lose the blocked-pair rule with ${blockedWith.map(escapeHtml).join(', ')}.`
+    : '';
+  return `
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <div><h2>Remove ${escapeHtml(name)}?</h2><p>${escapeHtml(firstName)} will be taken off your roster for good.${extra} This can't be undone, so take a second to make sure that's who you meant to remove.</p></div>
+      <button class="modal-close" id="modal-close-remove-staff">✕</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-cancel-remove-staff">Cancel</button>
+      <button class="btn confirm-remove-staff-solid-btn" id="confirm-remove-staff-btn" ${m.saving?'disabled':''}>${m.saving?'Removing…':'Remove '+escapeHtml(name)}</button>
     </div>
   </div>`;
 }
@@ -19722,11 +19764,20 @@ function attachHandlers(){
       }
     });
 
-    on('staff-delete-btn', async ()=>{
-      const id=activeModal.editId;
+    on('staff-delete-btn', ()=>{
+      openModal({type:'confirm-remove-staff', staffId:activeModal.editId, returnTo:{type:'staff-manager', editId:activeModal.editId, staffTab:activeModal.staffTab}});
+    });
+  }
+
+  // --- confirm remove staff modal ---
+  if(activeModal.type==='confirm-remove-staff'){
+    const returnTo = activeModal.returnTo;
+    on('modal-close-remove-staff', ()=>{ if(returnTo) openModal(returnTo); else closeModal(); });
+    on('modal-cancel-remove-staff', ()=>{ if(returnTo) openModal(returnTo); else closeModal(); });
+    on('confirm-remove-staff-btn', async ()=>{
+      const id = activeModal.staffId;
       const removedName = getStaffById(id)?.name || 'Staff';
-      const delBtn = document.getElementById('staff-delete-btn');
-      if(delBtn){ delBtn.disabled=true; delBtn.textContent='Removing…'; }
+      openModal({...activeModal, saving:true});
       const sync = await syncCrudWrite(()=>window.RC.archiveStaff({staffId:id, staffName:removedName, actingAccountId:authState.account.id}));
       state.staff=state.staff.filter(s=>s.id!==id); delete state.assignments[id]; delete state.callouts[id];
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
