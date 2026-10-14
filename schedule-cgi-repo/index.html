@@ -17148,6 +17148,7 @@ function attachHandlers(){
       const s = getStaffById(dragStaffId);
       s.supervisorId = supId;
       saveState();
+      syncRosterStaffEdit(s, 'supervisor assignment');
       showToast(supId ? `${s.name} now reports to ${getSupervisorById(supId).name}` : `${s.name} has no supervisor`, 'teal');
       render();
       dragStaffId = null;
@@ -17387,6 +17388,7 @@ function attachHandlers(){
     }
     s.supervisorId = supId;
     saveState();
+    syncRosterStaffEdit(s, 'supervisor assignment');
     showToast(supId ? `${s.name} now reports to ${getSupervisorById(supId).name}` : `${s.name} has no supervisor`, 'teal');
     render();
   }));
