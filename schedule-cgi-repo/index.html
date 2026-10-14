@@ -11488,6 +11488,7 @@ function renderModal(){
   else if(m.type==='confirm-rotate') inner = renderConfirmRotateModal(m);
   else if(m.type==='unassign-all-confirm') inner = renderUnassignAllConfirmModal(m);
   else if(m.type==='confirm-remove-staff') inner = renderConfirmRemoveStaffModal(m);
+  else if(m.type==='confirm-reactivate-staff') inner = renderConfirmReactivateStaffModal(m);
   else if(m.type==='rotate-preview') inner = renderRotatePreviewModal(m);
   else if(m.type==='report-preview') inner = renderReportPreviewModal(m);
   else if(m.type==='feedback-modal') inner = renderFeedbackModal(m);
@@ -12073,6 +12074,26 @@ function renderConfirmRemoveStaffModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-cancel-remove-staff">Cancel</button>
       <button class="btn confirm-remove-staff-solid-btn" id="confirm-remove-staff-btn" ${m.saving?'disabled':''}>${m.saving?'Removing…':'Remove '+escapeHtml(name)}</button>
+    </div>
+  </div>`;
+}
+
+// Offered when a new-staff save collides with staff_tdis_unique on an
+// ARCHIVED record — that TDIS # is reserved forever once used (the unique
+// index doesn't exclude inactive rows), so without this the admin hits a
+// dead end: they can't reuse the # and have no way to see who's holding
+// it. Reactivating applies the details just typed to the old row instead
+// of creating a new one.
+function renderConfirmReactivateStaffModal(m){
+  return `
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-head">
+      <div><h2>TDIS # ${escapeHtml(m.tdisNumber)} belongs to ${escapeHtml(m.archivedName)}</h2><p>${escapeHtml(m.archivedName)} was previously removed from the roster, but that TDIS # is still theirs — it can't be reused on a new record. Reactivate them with the details you just entered for ${escapeHtml(m.newName)} instead?</p></div>
+      <button class="modal-close" id="modal-close-reactivate-staff">✕</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-cancel-reactivate-staff">Use a different TDIS #</button>
+      <button class="btn btn-primary" id="confirm-reactivate-staff-btn" ${m.saving?'disabled':''}>${m.saving?'Reactivating…':'Reactivate '+escapeHtml(m.archivedName)}</button>
     </div>
   </div>`;
 }
@@ -19766,8 +19787,10 @@ function attachHandlers(){
         closeModal();
       } else {
         let createdId = null;
+        let departmentIdUsed = null;
         const sync = await syncCrudWrite(async ()=>{
           const departmentId = dept ? await window.RC.ensureDepartment(dept) : null;
+          departmentIdUsed = departmentId;
           const row = await window.RC.createStaff({
             name, tdisNumber:tdisNumberRaw, departmentId, homeAreaId:null,
             isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
@@ -19789,6 +19812,27 @@ function attachHandlers(){
         // them from the UI since the server never knew they existed — the
         // staff member would simply vanish with no clear explanation.
         if(!sync.ok){
+          // staff_tdis_unique has no "where active" clause, so a TDIS # once
+          // used stays reserved even after that staff member is archived —
+          // the admin has no way to see who's holding it or free it up.
+          // Look up whether it's an archived record and, if so, offer to
+          // reactivate them with the details just entered instead of a
+          // dead-end "pick a different number".
+          if(/staff_tdis_unique/.test(sync.error?.message||'')){
+            try{
+              const archived = await window.RC.findArchivedStaffByTdis({tdisNumber: tdisNumberRaw});
+              if(archived){
+                openModal({type:'confirm-reactivate-staff', archivedId:archived.id, archivedName:archived.name,
+                  newName:name, tdisNumber:tdisNumberRaw,
+                  fields:{name, tdisNumber:tdisNumberRaw, departmentId:departmentIdUsed, homeAreaId:null,
+                    isTeamLead, isSubcontractor, needsAccommodations, tags, counterCert, hireDate,
+                    supervisorId, positionId, flowId, flowEnrolled: !!flowId,
+                    shiftHoursLabel:shiftHours, breakTimesLabel:breakTimes, department:dept},
+                  finalLangCerts});
+                return;
+              }
+            }catch(e){ console.warn('Archived-TDIS lookup failed:', e && e.message); }
+          }
           if(tdisErrEl && /tdis/i.test(sync.error?.message||'')) tdisErrEl.textContent = `Already used — ${sync.error.message}`;
           showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust');
           if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='Add staff'; }
@@ -19826,6 +19870,35 @@ function attachHandlers(){
       state.blocks=state.blocks.filter(b=>b.a!==id&&b.b!==id);
       saveState();
       showToast(sync.ok ? `${removedName} removed — saved to database ✓` : `${removedName} removed here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      closeModal();
+    });
+  }
+
+  if(activeModal.type==='confirm-reactivate-staff'){
+    on('modal-close-reactivate-staff', ()=>openModal({type:'staff-manager', editId:'__new__'}));
+    on('modal-cancel-reactivate-staff', ()=>openModal({type:'staff-manager', editId:'__new__'}));
+    on('confirm-reactivate-staff-btn', async ()=>{
+      const {archivedId, archivedName, fields, finalLangCerts} = activeModal;
+      openModal({...activeModal, saving:true});
+      const sync = await syncCrudWrite(async ()=>{
+        const result = await window.RC.reactivateStaff({staffId:archivedId, ...fields, actingAccountId:authState.account.id});
+        if(finalLangCerts && finalLangCerts.length) await window.RC.setStaffLanguageCerts({staffId: archivedId, languageIds: finalLangCerts});
+        return result;
+      });
+      if(!sync.ok){
+        showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust');
+        openModal({...activeModal, saving:false});
+        return;
+      }
+      const reactivated = {id:archivedId, name:fields.name, tdisNumber:fields.tdisNumber, tags:fields.tags,
+        department:fields.department, active:true, shiftHours:fields.shiftHoursLabel, breakTimes:fields.breakTimesLabel,
+        isTeamLead:fields.isTeamLead, homeAreaId:null, supervisorId:fields.supervisorId, positionId:fields.positionId,
+        flowId:fields.flowId, flowEnrolled:fields.flowEnrolled, needsAccommodations:fields.needsAccommodations,
+        counterCert:fields.counterCert, hireDate:fields.hireDate, isSubcontractor:fields.isSubcontractor,
+        languageCerts:finalLangCerts||[]};
+      state.staff.push(reactivated); state.assignments[archivedId]=null;
+      saveState();
+      showToast(`${archivedName} reactivated — saved to database ✓`,'teal');
       closeModal();
     });
   }
