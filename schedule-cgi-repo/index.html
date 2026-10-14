@@ -19778,15 +19778,28 @@ function attachHandlers(){
           if(finalLangCerts.length) await window.RC.setStaffLanguageCerts({staffId: row.id, languageIds: finalLangCerts});
           return row;
         });
-        // Use the real Supabase-generated id when the sync succeeded, so the
-        // local record and the database row are the same entity from the
-        // start — falls back to a local-only id if the sync failed.
-        const newStaff={id: sync.ok ? createdId : uid('staff'), name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
+        // A brand-new staff member has no pre-existing local record to fall
+        // back to the way an edit does. Pushing a phantom record under a
+        // fake local id when the insert failed (e.g. a TDIS # already used
+        // by an archived staff member — the local dupe-check above only
+        // sees active staff, so the database's unique index can still
+        // reject it) meant every later action on them synced that fake id
+        // as a "staffId", which Postgres then rejected outright since it
+        // isn't a real UUID, and the very next realtime board refresh wiped
+        // them from the UI since the server never knew they existed — the
+        // staff member would simply vanish with no clear explanation.
+        if(!sync.ok){
+          if(tdisErrEl && /tdis/i.test(sync.error?.message||'')) tdisErrEl.textContent = `Already used — ${sync.error.message}`;
+          showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust');
+          if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='Add staff'; }
+          return;
+        }
+        const newStaff={id: createdId, name,tdisNumber:tdisNumberRaw,tags,department:dept,active:true,shiftHours,breakTimes,
           isTeamLead,homeAreaId:null,supervisorId,positionId,flowId,flowEnrolled:!!flowId,
           needsAccommodations,counterCert,hireDate,isSubcontractor,languageCerts:finalLangCerts,lateStart};
         state.staff.push(newStaff); state.assignments[newStaff.id]=null;
         saveState();
-        showToast(sync.ok ? `${name} added — saved to database ✓` : `${name} added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        showToast(`${name} added — saved to database ✓`,'teal');
         closeModal();
         const sugs=suggestAreasFor(newStaff.id);
         if(sugs.length>0){ if(isTeamLead) newStaff.homeAreaId=sugs[0].area.id;
@@ -20288,8 +20301,14 @@ function attachHandlers(){
       if(!name){ showToast('Enter a language name','rust'); return; }
       if(activeModal.editId==='__new__'){
         const sync = await syncCrudWrite(()=>window.RC.createLanguage({name}));
-        state.languages.push({id: sync.ok ? sync.result.id : uid('lang'), name});
-        showToast(sync.ok ? 'Language added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        // A fake local id here would later be sent as language_id when a
+        // staff member's certs are saved — the real table has no such row,
+        // so that insert fails too, and a realtime refresh wipes the
+        // phantom language out of the list entirely. Stay on the form
+        // instead of pretending the save worked.
+        if(!sync.ok){ showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust'); return; }
+        state.languages.push({id: sync.result.id, name});
+        showToast('Language added — saved to database ✓', 'teal');
       } else {
         const l = state.languages.find(x=>x.id===activeModal.editId);
         const sync = await syncCrudWrite(()=>window.RC.updateLanguage({languageId: l.id, name}));
@@ -20323,8 +20342,13 @@ function attachHandlers(){
       if(activeModal.editId==='__new__'){
         const sortOrder = state.positions.length;
         const sync = await syncCrudWrite(()=>window.RC.createPosition({name, sortOrder, rotates}));
-        state.positions.push({id: sync.ok ? sync.result.id : uid('pos'), name, sortOrder, rotates});
-        showToast(sync.ok ? 'Position added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        // A fake local id here would later be sent as a staff member's
+        // positionId — the real table has no such row, so that write fails
+        // too, and a realtime refresh wipes the phantom position out of the
+        // list entirely. Stay on the form instead of pretending it worked.
+        if(!sync.ok){ showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust'); return; }
+        state.positions.push({id: sync.result.id, name, sortOrder, rotates});
+        showToast('Position added — saved to database ✓', 'teal');
       } else {
         const p = state.positions.find(x=>x.id===activeModal.editId);
         const sync = await syncCrudWrite(()=>window.RC.updatePosition({positionId: p.id, name, sortOrder: p?.sortOrder||0, rotates}));
@@ -20576,11 +20600,21 @@ function attachHandlers(){
           createdId = row.id;
           return row;
         });
-        state.areas.push({id: sync.ok ? createdId : uid('area'), name, capacity, color, department:dept, fixed});
+        // A fake local id here would later be sent as a staff member's
+        // homeAreaId or an assignment's areaId — the real table has no such
+        // row, so those writes fail too, and a realtime refresh wipes the
+        // phantom area out of the board entirely. Stay on the form instead
+        // of pretending the save worked.
+        if(!sync.ok){
+          showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust');
+          if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='Create area'; }
+          return;
+        }
+        state.areas.push({id: createdId, name, capacity, color, department:dept, fixed});
         if(!state.departments) state.departments = [];
         if(!state.departments.includes(dept)) state.departments.push(dept);
         saveState();
-        showToast(sync.ok ? `"${name}" added — saved to database ✓` : `"${name}" added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        showToast(`"${name}" added — saved to database ✓`,'teal');
         closeModal();
       }
     });
@@ -20633,8 +20667,14 @@ function attachHandlers(){
         showToast(sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color}));
-        state.supervisors.push({id: sync.ok ? sync.result.id : uid('sup'), name, color});
-        showToast(sync.ok ? 'Supervisor added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        // A fake local id here would later be sent as a staff member's
+        // supervisorId — the real supervisors table has no such row, so
+        // that write is rejected outright (not even a valid uuid), and a
+        // realtime refresh wipes the phantom supervisor out of the list
+        // entirely. Stay on the form instead of pretending it worked.
+        if(!sync.ok){ showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust'); return; }
+        state.supervisors.push({id: sync.result.id, name, color});
+        showToast('Supervisor added — saved to database ✓', 'teal');
       }
       saveState();
       // Stay on the manager (reset to a blank "Add" form) so an admin can add
@@ -22414,8 +22454,14 @@ function attachHandlers(){
         showToast(sync.ok ? 'Flow updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
         const sync = await syncCrudWrite(()=>window.RC.createRotationFlow({name, color, stages: currentStages}));
-        state.rotationFlows.push({id: sync.ok ? sync.result.id : uid('flow'), name, color, stages:currentStages});
-        showToast(sync.ok ? 'Flow added — saved to database ✓' : `Added here, but not saved to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        // A fake local id here would later be sent as a staff member's
+        // flowId — the real rotation_flows table has no such row, so that
+        // write fails too, and a realtime refresh wipes the phantom flow
+        // out of the list entirely. Stay on the form instead of pretending
+        // the save worked.
+        if(!sync.ok){ showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust'); return; }
+        state.rotationFlows.push({id: sync.result.id, name, color, stages:currentStages});
+        showToast('Flow added — saved to database ✓', 'teal');
       }
       saveState();
       openModal({type:'flow-manager'});
