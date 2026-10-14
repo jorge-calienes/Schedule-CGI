@@ -555,6 +555,34 @@ export async function archiveStaff({ staffId, staffName, actingAccountId }) {
   });
 }
 
+// staff_tdis_unique applies to every row regardless of active status, so a
+// TDIS # once used by an archived staff member stays reserved forever —
+// loadBoard() only fetches active=true staff, so the UI has no way to show
+// the admin who's holding it. Used to turn a dead-end "already in use"
+// error into an offer to reactivate that person instead of picking a new #.
+export async function findArchivedStaffByTdis({ tdisNumber }) {
+  const { data, error } = await supabase
+    .from('staff')
+    .select('id, name')
+    .eq('tdis_number', tdisNumber)
+    .eq('active', false)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function reactivateStaff(fields) {
+  const { error } = await supabase.from('staff').update({ ...staffRow(fields), active: true }).eq('id', fields.staffId);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: fields.actingAccountId,
+    action: 'reactivate_staff',
+    description: `reactivated ${fields.name}`,
+    staff_id: fields.staffId,
+  });
+}
+
 function areaRow({ name, color, capacity, departmentId, fixed }) {
   return {
     name,
@@ -1624,6 +1652,8 @@ window.RC = {
   updateStaff,
   updateStaffBreakTime,
   archiveStaff,
+  findArchivedStaffByTdis,
+  reactivateStaff,
   createArea,
   updateArea,
   deleteArea,
