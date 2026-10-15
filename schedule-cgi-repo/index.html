@@ -4327,7 +4327,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
 .pb-signin-icon{font-size:14px;}
 .pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
-.pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--md-space-4);}
+.pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--md-space-4);}
 .pb-card{
     background:var(--md-sys-color-surface-container-low);
     border-radius:var(--md-sys-shape-corner-medium);
@@ -4340,10 +4340,13 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-area-name{font-weight:700;font-size:var(--md-sys-typescale-title-small-size);flex:1;color:var(--md-sys-color-on-surface);}
 .pb-count{font-family:var(--mono);font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);}
 .pb-people{padding:var(--md-space-1) 0;}
-.pb-person{padding:var(--md-space-2) var(--md-space-3);border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
+.pb-person{padding:var(--md-space-2) var(--md-space-3);border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);display:flex;flex-direction:column;gap:3px;}
 .pb-person:last-child{border-bottom:none;}
+.pb-person-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.pb-person-name{font-weight:600;}
+.pb-person-times{font-size:var(--md-sys-typescale-label-medium-size);color:var(--md-sys-color-on-surface-variant);}
 .pb-star{color:var(--md-sys-color-primary);}
-.pb-out{font-family:var(--mono);font-size:var(--md-sys-typescale-label-small-size);font-weight:700;color:var(--md-sys-color-error);background:var(--md-sys-color-error-container);padding:1px 6px;border-radius:var(--md-sys-shape-corner-full);margin-left:4px;}
+.pb-out{font-family:var(--mono);font-size:var(--md-sys-typescale-label-small-size);font-weight:700;color:var(--md-sys-color-error);background:var(--md-sys-color-error-container);padding:1px 6px;border-radius:var(--md-sys-shape-corner-full);}
 .pb-empty{padding:var(--md-space-3);color:var(--md-sys-color-on-surface-variant);font-size:var(--md-sys-typescale-body-medium-size);}
 .pb-unassigned{margin-top:var(--md-space-4);}
 .time-pill{
@@ -23644,10 +23647,13 @@ async function runRealtimeRefresh(){
 // just the board with staff who have no account at all (supervisors keep
 // using the normal name+PIN sign-in exactly as before; this is a wholly
 // separate, additive path that never touches authState or the main
-// render() loop). Backed by public_board_snapshot() (migration 0037), a
-// SECURITY DEFINER function the anon role can call — it hands back only
-// names, team-lead flag, area placement and callout status, never TDIS
-// numbers, break times, hire dates, or anything else personal.
+// render() loop). Backed by public_board_snapshot() (migrations 0037 +
+// 0038), a SECURITY DEFINER function the anon role can call — it hands
+// back the same operational info an ordinary board card shows (name,
+// team-lead flag, TDIS number, shift/break times, supervisor, area
+// placement, callout status), but never profile-level detail: no hire
+// date, accommodations flag, language certs, AGS/subcontractor flag,
+// counter cert, or attendance/Late status, and no write access at all.
 function isPublicBoardRequest(){
   try{ return new URLSearchParams(location.search).get('public-board')==='1'; }
   catch(e){ return false; }
@@ -23667,11 +23673,24 @@ function renderPublicBoard(snapshot){
   const staffById = {};
   (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
   const unassigned = (snapshot.staff||[]).filter(s=>!staffAreaId[s.id]);
+  const supById = {};
+  (snapshot.supervisors||[]).forEach(sv=>{ supById[sv.id]=sv; });
 
   const personRow = (staffId) => {
     const s = staffById[staffId];
     if(!s) return '';
-    return `<div class="pb-person">${s.is_team_lead?'<span class="pb-star">★</span> ':''}${escapeHtml(s.name)}${calloutSet.has(s.id)?' <span class="pb-out">OUT</span>':''}</div>`;
+    const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
+    const times = [s.shift_hours_label, s.break_times_label].filter(Boolean).join(' · ');
+    return `
+    <div class="pb-person">
+      <div class="pb-person-head">
+        <span class="pb-person-name">${s.is_team_lead?'<span class="pb-star">★</span> ':''}${escapeHtml(s.name)}</span>
+        ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
+        ${calloutSet.has(s.id)?'<span class="pb-out">OUT</span>':''}
+      </div>
+      ${times?`<div class="pb-person-times">${escapeHtml(times)}</div>`:''}
+      ${sup?`<span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`:''}
+    </div>`;
   };
 
   const areas = (snapshot.areas||[]).slice().sort((a,b)=>(a.sort_order-b.sort_order)||a.name.localeCompare(b.name));
