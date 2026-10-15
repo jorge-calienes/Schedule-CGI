@@ -4327,28 +4327,6 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
 .pb-signin-icon{font-size:14px;}
 .pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
-.pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--md-space-4);}
-.pb-card{
-    background:var(--md-sys-color-surface-container-low);
-    border-radius:var(--md-sys-shape-corner-medium);
-    box-shadow:var(--md-sys-elevation-1);
-    border-top:4px solid var(--md-sys-color-outline-variant);
-    overflow:hidden;
-  }
-.pb-card-head{display:flex;align-items:center;gap:var(--md-space-2);padding:var(--md-space-3);background:var(--md-sys-color-surface-container-lowest);}
-.pb-swatch{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
-.pb-area-name{font-weight:700;font-size:var(--md-sys-typescale-title-small-size);flex:1;color:var(--md-sys-color-on-surface);}
-.pb-count{font-family:var(--mono);font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);}
-.pb-people{padding:var(--md-space-1) 0;}
-.pb-person{padding:var(--md-space-2) var(--md-space-3);border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);display:flex;flex-direction:column;gap:3px;}
-.pb-person:last-child{border-bottom:none;}
-.pb-person-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.pb-person-name{font-weight:600;}
-.pb-person-times{font-size:var(--md-sys-typescale-label-medium-size);color:var(--md-sys-color-on-surface-variant);}
-.pb-star{color:var(--md-sys-color-primary);}
-.pb-out{font-family:var(--mono);font-size:var(--md-sys-typescale-label-small-size);font-weight:700;color:var(--md-sys-color-error);background:var(--md-sys-color-error-container);padding:1px 6px;border-radius:var(--md-sys-shape-corner-full);}
-.pb-empty{padding:var(--md-space-3);color:var(--md-sys-color-on-surface-variant);font-size:var(--md-sys-typescale-body-medium-size);}
-.pb-unassigned{margin-top:var(--md-space-4);}
 .time-pill{
 
   /* ---------- flow editor: stage list ---------- */
@@ -23660,6 +23638,14 @@ function isPublicBoardRequest(){
   catch(e){ return false; }
 }
 
+// Same department-accent mapping renderBoard() uses, keyed by name since
+// that's all a department row carries — kept in sync by hand, same as the
+// original.
+const PB_DEPT_ACCENTS = {
+  'Agency':'#2F5FA8', 'Communications':'#5E9A3A',
+  'Courier / Processing / QC':'#D97706', 'Fixed Positions':'#7C3AED',
+};
+
 function renderPublicBoard(snapshot){
   const areasById = {};
   (snapshot.areas||[]).forEach(a=>{ areasById[a.id]=a; });
@@ -23675,30 +23661,82 @@ function renderPublicBoard(snapshot){
   });
   const staffById = {};
   (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
-  const unassigned = (snapshot.staff||[]).filter(s=>!staffAreaId[s.id]);
   const supById = {};
   (snapshot.supervisors||[]).forEach(sv=>{ supById[sv.id]=sv; });
+  const coverageByStaff = {};
+  (snapshot.coverage_moves||[]).forEach(cv=>{ coverageByStaff[cv.staff_id]=cv; });
+  const tempMoveByStaff = {};
+  (snapshot.temp_moves||[]).forEach(tm=>{ tempMoveByStaff[tm.staff_id]=tm; });
 
-  const personRow = (staffId) => {
+  // Same chip a supervisor sees (name, TDIS, hours, supervisor tag,
+  // out/late/left-early, today-only/this-rotation moves) built from the
+  // same .chip/.chip-* classes the real board uses — just with every
+  // write affordance (drag, name-tap-for-profile, ··· menu, action
+  // pills) left out, since there's nothing here to wire a click to.
+  const renderPublicChip = (staffId) => {
     const s = staffById[staffId];
     if(!s) return '';
+    const isOut = calloutSet.has(s.id);
+    const isLate = !isOut && lateSet.has(s.id);
+    const isEarly = !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
     const times = [s.shift_hours_label, s.break_times_label].filter(Boolean).join(' · ');
+    const coverage = coverageByStaff[s.id];
+    const tempMove = tempMoveByStaff[s.id];
     return `
-    <div class="pb-person">
-      <div class="pb-person-head">
-        <span class="pb-person-name">${s.is_team_lead?'<span class="pb-star">★</span> ':''}${escapeHtml(s.name)}</span>
-        ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
-        ${calloutSet.has(s.id)?'<span class="pb-out">OUT</span>':''}
-        ${!calloutSet.has(s.id) && lateSet.has(s.id)?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
-        ${!calloutSet.has(s.id) && leftEarlySet.has(s.id)?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
+    <div class="chip ${isOut?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}${s.tdis_number?' · TDIS '+escapeHtml(s.tdis_number):''}">
+      <div class="chip-row-header">
+        <div class="chip-name-wrap">
+          ${s.is_team_lead?'<span class="chip-lead-star">★</span>':''}
+          <span class="chip-name-btn" style="cursor:default;">${escapeHtml(s.name)}</span>
+          ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
+        </div>
+        <div class="chip-status-badges">
+          ${isOut?'<span class="chip-out-tag">Out</span>':''}
+          ${isLate?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
+          ${isEarly?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
+        </div>
       </div>
-      ${times?`<div class="pb-person-times">${escapeHtml(times)}</div>`:''}
-      ${sup?`<span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`:''}
+      ${times?`<div class="chip-hours">${escapeHtml(times)}</div>`:''}
+      ${sup?`<div class="chip-certs"><span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span></div>`:''}
+      ${coverage?`<div class="chip-covering-row">
+        <span class="chip-covering-tag">📅 Today only</span>
+        <span class="chip-covering-hint">→ ${escapeHtml(areasById[coverage.return_to_area_id]?.name||'pool')} tomorrow</span>
+      </div>`:''}
+      ${tempMove?`<div class="chip-covering-row chip-temp-move-row ${tempMove.scope==='rotation'?'rotation-scope':''}">
+        <span class="chip-covering-tag chip-temp-move-tag">${tempMove.scope==='rotation'?'🔁 This rotation':'📅 Today only'}</span>
+        <span class="chip-covering-hint">→ ${escapeHtml(areasById[tempMove.return_to_area_id]?.name||'pool')} ${tempMove.scope==='rotation'?'next rotation':'tomorrow'}</span>
+      </div>`:''}
     </div>`;
   };
 
-  const areas = (snapshot.areas||[]).slice().sort((a,b)=>(a.sort_order-b.sort_order)||a.name.localeCompare(b.name));
+  const renderPublicAreaCol = (area) => {
+    const ids = byArea[area.id]||[];
+    return `
+    <div class="area-col" style="--area-color:${area.color}">
+      <div class="area-head">
+        <div class="area-name"><span class="area-swatch" style="background:${area.color}"></span>${escapeHtml(area.name)}${area.fixed?'<span class="area-fixed-badge">Fixed</span>':''}</div>
+        <span class="area-count ${ids.length>area.capacity?'over':ids.length<area.capacity?'under':'ok'}">${ids.length}/${area.capacity}</span>
+      </div>
+      <div class="area-drop">
+        ${ids.length===0 ? '<div class="area-empty-hint">No one assigned</div>' : ids.map(renderPublicChip).join('')}
+      </div>
+    </div>`;
+  };
+
+  // Group areas by department, same shape renderBoard()'s areasByDepartment()
+  // produces — ordered by each department's own sort_order, areas within by
+  // theirs, with anything missing a department (or whose department got
+  // archived) falling into a catch-all "Other" group rather than vanishing.
+  const deptsById = {};
+  (snapshot.departments||[]).slice().sort((a,b)=>a.sort_order-b.sort_order).forEach(d=>{ deptsById[d.id] = {...d, areas:[]}; });
+  const otherDept = {id:'_other', name:'Other', areas:[]};
+  (snapshot.areas||[]).slice().sort((a,b)=>a.sort_order-b.sort_order).forEach(a=>{
+    (deptsById[a.department_id] || otherDept).areas.push(a);
+  });
+  const deptGroups = Object.values(deptsById).filter(d=>d.areas.length).concat(otherDept.areas.length?[otherDept]:[]);
+  const unassignedStaff = (snapshot.staff||[]).filter(s=>!staffAreaId[s.id]);
+
   const updatedAt = snapshot.generated_at ? new Date(snapshot.generated_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
 
   return `
@@ -23712,27 +23750,25 @@ function renderPublicBoard(snapshot){
         <span class="pb-signin-icon">👤</span> Sign in
       </a>
     </div>
-    <div class="pb-grid">
-      ${areas.map(a=>{
-        const ids = byArea[a.id]||[];
-        return `
-        <div class="pb-card" style="border-top-color:${a.color}">
-          <div class="pb-card-head">
-            <span class="pb-swatch" style="background:${a.color}"></span>
-            <span class="pb-area-name">${escapeHtml(a.name)}</span>
-            <span class="pb-count">${ids.length}/${a.capacity}</span>
+    <div class="board-wrap">
+      <div class="dept-board">
+        ${deptGroups.map(g=>`
+        <div class="dept-group">
+          <div class="dept-label" style="--dept-accent:${PB_DEPT_ACCENTS[g.name]||'#9CA3AF'}">${escapeHtml(g.name)}</div>
+          <div class="board">${g.areas.map(renderPublicAreaCol).join('')}</div>
+        </div>`).join('')}
+        ${unassignedStaff.length ? `
+        <div class="dept-group">
+          <div class="dept-label" style="--dept-accent:#9CA3AF">Unassigned</div>
+          <div class="board">
+            <div class="area-col" style="--area-color:#9CA3AF">
+              <div class="area-head"><div class="area-name"><span class="area-swatch" style="background:#9CA3AF"></span>Unassigned</div></div>
+              <div class="area-drop">${unassignedStaff.map(s=>renderPublicChip(s.id)).join('')}</div>
+            </div>
           </div>
-          <div class="pb-people">
-            ${ids.length ? ids.map(personRow).join('') : '<div class="pb-empty">No one assigned</div>'}
-          </div>
-        </div>`;
-      }).join('')}
+        </div>` : ''}
+      </div>
     </div>
-    ${unassigned.length ? `
-    <div class="pb-card pb-unassigned">
-      <div class="pb-card-head"><span class="pb-area-name">Unassigned</span></div>
-      <div class="pb-people">${unassigned.map(s=>personRow(s.id)).join('')}</div>
-    </div>` : ''}
   </div>`;
 }
 
