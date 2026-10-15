@@ -23647,13 +23647,14 @@ async function runRealtimeRefresh(){
 // just the board with staff who have no account at all (supervisors keep
 // using the normal name+PIN sign-in exactly as before; this is a wholly
 // separate, additive path that never touches authState or the main
-// render() loop). Backed by public_board_snapshot() (migrations 0037 +
-// 0038), a SECURITY DEFINER function the anon role can call — it hands
-// back the same operational info an ordinary board card shows (name,
+// render() loop). Backed by public_board_snapshot() (migrations 0037-0039),
+// a SECURITY DEFINER function the anon role can call — it hands back the
+// same rotation-relevant status an ordinary board card shows (name,
 // team-lead flag, TDIS number, shift/break times, supervisor, area
-// placement, callout status), but never profile-level detail: no hire
-// date, accommodations flag, language certs, AGS/subcontractor flag,
-// counter cert, or attendance/Late status, and no write access at all.
+// placement, out/late/left-early flags), but never profile-level detail
+// or the reason behind any of those flags: no hire date, accommodations
+// flag, language certs, AGS/subcontractor flag, counter cert, callout
+// reason, time-off label, or attendance note — and no write access at all.
 function isPublicBoardRequest(){
   try{ return new URLSearchParams(location.search).get('public-board')==='1'; }
   catch(e){ return false; }
@@ -23663,6 +23664,8 @@ function renderPublicBoard(snapshot){
   const areasById = {};
   (snapshot.areas||[]).forEach(a=>{ areasById[a.id]=a; });
   const calloutSet = new Set(snapshot.callout_staff_ids||[]);
+  const lateSet = new Set(snapshot.late_staff_ids||[]);
+  const leftEarlySet = new Set(snapshot.left_early_staff_ids||[]);
   const byArea = {};
   const staffAreaId = {};
   (snapshot.assignments||[]).forEach(row=>{
@@ -23687,6 +23690,8 @@ function renderPublicBoard(snapshot){
         <span class="pb-person-name">${s.is_team_lead?'<span class="pb-star">★</span> ':''}${escapeHtml(s.name)}</span>
         ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
         ${calloutSet.has(s.id)?'<span class="pb-out">OUT</span>':''}
+        ${!calloutSet.has(s.id) && lateSet.has(s.id)?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
+        ${!calloutSet.has(s.id) && leftEarlySet.has(s.id)?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
       </div>
       ${times?`<div class="pb-person-times">${escapeHtml(times)}</div>`:''}
       ${sup?`<span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span>`:''}
@@ -23744,7 +23749,14 @@ async function bootPublicBoard(){
     }
   };
   await refresh();
-  setInterval(refresh, 30000); // read-only poll — no realtime subscription, no write access, nothing to debounce
+  // Polls rather than subscribes to Supabase Realtime on purpose: postgres_changes
+  // requires an RLS SELECT grant on the base table itself for the subscribing
+  // role, which would let anon query staff/assignments/callouts directly via
+  // PostgREST too — reopening exactly the column-level leak (TDIS, hire date,
+  // accommodations, etc.) public_board_snapshot() exists to prevent. An 8s
+  // poll of the same safe, hand-picked function keeps this close to live
+  // without that tradeoff.
+  setInterval(refresh, 8000);
 }
 
 // ============ INIT ============
