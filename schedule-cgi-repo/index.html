@@ -9225,19 +9225,22 @@ function distinctBreakLunchLabels(){
 
 // returns staff whose break or lunch matches any of the selected labels (label-level match,
 // not a live clock — this app has no real-time clock, it's a planning tool), optionally
-// filtered to a set of area ids.
+// filtered to a set of area ids. With no break/lunch label picked at all, an area filter
+// alone still returns everyone in that area who has a recorded break/lunch time — picking
+// just an area (e.g. "Book Print") must show that area's breaks, not nothing.
 function staffOnBreakOrLunch(selectedBreakLabels, selectedLunchLabels, areaIds){
   const bSet = new Set(selectedBreakLabels||[]);
   const lSet = new Set(selectedLunchLabels||[]);
   const aSet = areaIds && areaIds.length ? new Set(areaIds) : null;
+  const anyTimeFilter = bSet.size>0 || lSet.size>0;
   return state.staff.filter(s=>{
     if(s.active===false) return false;
     const areaId = state.assignments[s.id];
     if(aSet && !aSet.has(areaId)) return false;
     const p = parseBreakTimes(s.breakTimes);
+    if(!anyTimeFilter) return !!(p.breakLabel || p.lunchLabel);
     const onBreak = p.breakLabel && bSet.has(p.breakLabel);
     const onLunch = p.lunchLabel && lSet.has(p.lunchLabel);
-    if(bSet.size===0 && lSet.size===0) return false;
     return onBreak || onLunch;
   }).map(s=>({
     staff:s,
@@ -11402,7 +11405,10 @@ let breaksFilter = { areaIds: [], breakLabels: [], lunchLabels: [] };
 
 function renderBreaksView(){
   const { breakLabels, lunchLabels } = distinctBreakLunchLabels();
-  const hasFilter = breaksFilter.breakLabels.length>0 || breaksFilter.lunchLabels.length>0;
+  const noTimeFilter = breaksFilter.breakLabels.length===0 && breaksFilter.lunchLabels.length===0;
+  // Picking just an area is its own valid filter — show that area's breaks
+  // without also requiring a specific break/lunch time to be chosen.
+  const hasFilter = breaksFilter.areaIds.length>0 || !noTimeFilter;
   const results = hasFilter ? staffOnBreakOrLunch(breaksFilter.breakLabels, breaksFilter.lunchLabels, breaksFilter.areaIds) : [];
 
   // group results by area for the coverage-impact summary
@@ -11453,11 +11459,11 @@ function renderBreaksView(){
       <div class="breaks-empty-state">
         <div class="breaks-empty-icon">☕</div>
         <div class="breaks-empty-title">See who's on break</div>
-        <div class="breaks-empty-sub">Select a break or lunch time above to see which staff are away and which areas need extra coverage.</div>
+        <div class="breaks-empty-sub">Pick an area to see that team's break/lunch times, or a break/lunch time above to see who's away and which areas need extra coverage.</div>
       </div>
     ` : `
       <div class="breaks-summary">
-        ${results.length} ${results.length===1?'person':'people'} matching${breaksFilter.areaIds.length?' in selected areas':''}
+        ${results.length} ${results.length===1?'person':'people'}${noTimeFilter?' with recorded break/lunch times':' matching'}${breaksFilter.areaIds.length?' in selected areas':''}
         ${unparseableCount>0?` · <span style="color:var(--md-sys-color-error);">${unparseableCount} have unreadable break times (e.g. "See Supervisor") and aren't counted</span>`:''}
       </div>
       <div class="breaks-results">
@@ -11478,8 +11484,8 @@ function renderBreaksView(){
               <div class="breaks-person-row">
                 <span class="breaks-person-name">${r.staff.isTeamLead?'★ ':''}${escapeHtml(r.staff.name)}${r.staff.tdisNumber?` <span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(r.staff.tdisNumber)}</span>`:''}${r.staff.isSubcontractor?' <span class="ags-badge-sm" title="AGS / Sub-contractor">AGS</span>':''}</span>
                 <span class="breaks-person-times">
-                  ${r.parsed.breakLabel && breaksFilter.breakLabels.includes(r.parsed.breakLabel)?`<span class="time-pill">break ${escapeHtml(r.parsed.breakLabel)}</span>`:''}
-                  ${r.parsed.lunchLabel && breaksFilter.lunchLabels.includes(r.parsed.lunchLabel)?`<span class="time-pill">lunch ${escapeHtml(r.parsed.lunchLabel)}</span>`:''}
+                  ${r.parsed.breakLabel && (noTimeFilter || breaksFilter.breakLabels.includes(r.parsed.breakLabel))?`<span class="time-pill">break ${escapeHtml(r.parsed.breakLabel)}</span>`:''}
+                  ${r.parsed.lunchLabel && (noTimeFilter || breaksFilter.lunchLabels.includes(r.parsed.lunchLabel))?`<span class="time-pill">lunch ${escapeHtml(r.parsed.lunchLabel)}</span>`:''}
                 </span>
               </div>`).join('')}
           </div>`;
