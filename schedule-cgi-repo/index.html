@@ -23753,11 +23753,12 @@ function renderPublicBoard(snapshot){
   const tempMoveByStaff = {};
   (snapshot.temp_moves||[]).forEach(tm=>{ tempMoveByStaff[tm.staff_id]=tm; });
 
-  // Same chip a supervisor sees (name, TDIS, hours, supervisor tag,
+  // Same chip a supervisor sees (name, TDIS, supervisor tag,
   // out/late/left-early, today-only/this-rotation moves) built from the
   // same .chip/.chip-* classes the real board uses — just with every
   // write affordance (drag, name-tap-for-profile, ··· menu, action
-  // pills) left out, since there's nothing here to wire a click to.
+  // pills) left out, since there's nothing here to wire a click to. No
+  // shift time either, per the user's request.
   const renderPublicChip = (staffId) => {
     const s = staffById[staffId];
     if(!s) return '';
@@ -23765,7 +23766,6 @@ function renderPublicBoard(snapshot){
     const isLate = !isOut && lateSet.has(s.id);
     const isEarly = !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
-    const times = s.shift_hours_label || '';
     const coverage = coverageByStaff[s.id];
     const tempMove = tempMoveByStaff[s.id];
     return `
@@ -23782,7 +23782,6 @@ function renderPublicBoard(snapshot){
           ${isEarly?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
         </div>
       </div>
-      ${times?`<div class="chip-hours">${escapeHtml(times)}</div>`:''}
       ${sup?`<div class="chip-certs"><span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span></div>`:''}
       ${coverage?`<div class="chip-covering-row">
         <span class="chip-covering-tag">📅 Today only</span>
