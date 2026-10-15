@@ -13049,15 +13049,27 @@ function renderCalloutDashModal(m){
             ?'<div class="cd-no-area">No available staff</div>'
               +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
 
-            // ── Candidate picker: best pick inline, rest collapsed ──
-            :'<div class="cd-cands">'
-              +candRow(candidates[0],sid,areaId,true)
-              +(candidates.length>1
-                ?'<details class="cd-others-details"><summary class="cd-others-bar">Others <span class="cd-others-count">'+(candidates.length-1)+'</span></summary>'
-                  +'<div class="cd-others-list">'+candidates.slice(1).map(c=>candRow(c,sid,areaId,false)).join('')+'</div>'
-                +'</details>'
-                :'')
-            +'</div>'
+            // ── Candidate picker: top picks inline, rest collapsed ──
+            // Show up to 4 ranked candidates directly, matching the Time
+            // Off tab's coverage picker — with 30+ staff on some rosters,
+            // burying everyone past the #1 pick inside a closed "Others"
+            // accordion made the #2/#3 choices invisible unless you
+            // already knew to expand it. Only tag index 0 "Best" when
+            // they're genuinely better (real experience/rating here), not
+            // just first alphabetically among equals.
+            :(()=>{
+              const topPicks = candidates.slice(0,4);
+              const rest = candidates.slice(4);
+              const bestIsGenuine = candidates.length>1 && (candidates[0].timesWorked>0 || candidates[0].rating>0 || candidates[0].manualPrior);
+              return '<div class="cd-cands">'
+                +topPicks.map((c,i)=>candRow(c,sid,areaId,i===0&&bestIsGenuine)).join('')
+                +(rest.length>0
+                  ?'<details class="cd-others-details"'+(searchQ?' open':'')+'><summary class="cd-others-bar">Others <span class="cd-others-count">'+rest.length+'</span></summary>'
+                    +'<div class="cd-others-list">'+rest.map(c=>candRow(c,sid,areaId,false)).join('')+'</div>'
+                  +'</details>'
+                  :'')
+              +'</div>';
+            })()
             +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
           )
 
@@ -19974,6 +19986,13 @@ function attachHandlers(){
             const sub  = card.querySelector('.cd-cand-sub')?.textContent?.toLowerCase()||'';
             card.style.display = (!q || name.includes(q) || sub.includes(q)) ? '' : 'none';
           });
+          // A match inside a collapsed "Others" accordion stayed invisible
+          // even with its own display set back to '' — a closed <details>
+          // doesn't render its content at all, regardless of a child's
+          // display style — so searching for someone past the top picks
+          // silently found nothing. Force every "Others" section open
+          // while there's a query so a hit in there actually surfaces.
+          if(q) document.querySelectorAll('.cd-others-details').forEach(d=>{ d.open = true; });
           // show/hide clear button
           const clr = document.getElementById('cd-search-clear');
           if(clr) clr.style.display = q ? '' : 'none';
