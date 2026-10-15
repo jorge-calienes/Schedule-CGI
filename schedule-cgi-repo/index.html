@@ -12989,11 +12989,18 @@ function renderCalloutDashModal(m){
         +'</div>'
         +'</div>';
     }
+    // A late-start flag has never excluded or deprioritized anyone from
+    // coverage ranking — rankCandidatesForArea never looks at it — but
+    // with no indicator on the card there was no way to tell a late-start
+    // candidate apart, so showing them as "Best" could look like a mistake.
+    // Surfacing the flag here confirms they're still a genuine best fit,
+    // just with a heads-up about when they're actually in.
+    const lateTag = c.staff.lateStart ? '<span class="chip-late-tag" title="Late start / partial day">⏰ '+escapeHtml(c.staff.lateStart)+'</span> ' : '';
     return '<button class="cd-cand-tap'+(isBest?' best':'')+'"'
       +' data-cover="'+c.staff.id+'" data-cover-area="'+areaId+'" data-cover-out="'+sid+'">'
       +'<div class="cd-cand-av">'+escapeHtml(c.staff.name.charAt(0))+'</div>'
       +'<div class="cd-cand-body">'
-        +'<div class="cd-cand-name">'+escapeHtml(c.staff.name)+'</div>'
+        +'<div class="cd-cand-name">'+lateTag+escapeHtml(c.staff.name)+'</div>'
         +'<div class="cd-cand-sub">'+exp+(from?(' · in '+escapeHtml(from.name)+' now'):'')+'</div>'
       +'</div>'
       +(isBest?'<div class="cd-best-tag">★ Best</div>':'')
