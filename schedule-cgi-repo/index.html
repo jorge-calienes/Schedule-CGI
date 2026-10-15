@@ -12964,7 +12964,13 @@ function renderCalloutDashModal(m){
       if((state.coverage||{})[c.staff.id]) return false;
       if(candidateClaimedThisRender.has(c.staff.id)) return false;
       if(!c.currentArea) return true;
-      return activeInArea(c.currentArea,c.staff.id).length>1;
+      // activeInArea's 2nd arg excludes the candidate themselves from the
+      // count, so this is already "how many OTHERS would be left" — >1
+      // demanded 2 others remain (3 people total before anyone could be
+      // pulled), so a normal 2-person area could never contribute a
+      // candidate even though pulling one leaves a perfectly staffed area
+      // of 1, not an empty one. Only block it if NOBODY would be left.
+      return activeInArea(c.currentArea,c.staff.id).length>0;
     });
     const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id] && !candidateClaimedThisRender.has(c.staff.id));
     // Apply search filter
