@@ -4311,9 +4311,21 @@ button{font-family:var(--sans);cursor:pointer;}
 
 /* ---------- public board (no sign-in, shared link) ---------- */
 .pb-page{min-height:100vh;background:var(--md-sys-color-surface);padding:var(--md-space-4) var(--md-space-4) var(--md-space-10);box-sizing:border-box;}
-.pb-header{padding:var(--md-space-2) var(--md-space-2) var(--md-space-4);}
+.pb-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--md-space-3);padding:var(--md-space-2) var(--md-space-2) var(--md-space-4);}
 .pb-title{font-weight:800;font-size:var(--md-sys-typescale-title-large-size);color:var(--md-sys-color-on-surface);}
 .pb-sub{font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface-variant);margin-top:2px;}
+.pb-signin-link{
+    display:flex;align-items:center;gap:6px;flex-shrink:0;
+    font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
+    color:var(--md-sys-color-on-surface-variant);
+    background:var(--md-sys-color-surface-container-low);
+    border:1px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-full);
+    padding:var(--md-space-2) var(--md-space-3);
+    text-decoration:none;
+  }
+.pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
+.pb-signin-icon{font-size:14px;}
 .pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
 .pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--md-space-4);}
 .pb-card{
@@ -23668,8 +23680,13 @@ function renderPublicBoard(snapshot){
   return `
   <div class="pb-page">
     <div class="pb-header">
-      <div class="pb-title">Schedule — Board</div>
-      <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
+      <div>
+        <div class="pb-title">Schedule — Board</div>
+        <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
+      </div>
+      <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
+        <span class="pb-signin-icon">👤</span> Sign in
+      </a>
     </div>
     <div class="pb-grid">
       ${areas.map(a=>{
