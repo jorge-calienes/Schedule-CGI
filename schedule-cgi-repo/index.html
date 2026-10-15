@@ -4308,6 +4308,44 @@ button{font-family:var(--sans);cursor:pointer;}
 .breaks-person-row:last-child{border-bottom:none;}
 .breaks-person-name{font-weight:600;color:var(--md-sys-color-on-surface);}
 .breaks-person-times{display:flex;gap:var(--md-space-1);flex-wrap:wrap;justify-content:flex-end;}
+
+/* ---------- public board (no sign-in, shared link) ---------- */
+.pb-page{min-height:100vh;background:var(--md-sys-color-surface);padding:var(--md-space-4) var(--md-space-4) var(--md-space-10);box-sizing:border-box;}
+.pb-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--md-space-3);padding:var(--md-space-2) var(--md-space-2) var(--md-space-4);}
+.pb-title{font-weight:800;font-size:var(--md-sys-typescale-title-large-size);color:var(--md-sys-color-on-surface);}
+.pb-sub{font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface-variant);margin-top:2px;}
+.pb-signin-link{
+    display:flex;align-items:center;gap:6px;flex-shrink:0;
+    font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
+    color:var(--md-sys-color-on-surface-variant);
+    background:var(--md-sys-color-surface-container-low);
+    border:1px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-full);
+    padding:var(--md-space-2) var(--md-space-3);
+    text-decoration:none;
+  }
+.pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
+.pb-signin-icon{font-size:14px;}
+.pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
+.pb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--md-space-4);}
+.pb-card{
+    background:var(--md-sys-color-surface-container-low);
+    border-radius:var(--md-sys-shape-corner-medium);
+    box-shadow:var(--md-sys-elevation-1);
+    border-top:4px solid var(--md-sys-color-outline-variant);
+    overflow:hidden;
+  }
+.pb-card-head{display:flex;align-items:center;gap:var(--md-space-2);padding:var(--md-space-3);background:var(--md-sys-color-surface-container-lowest);}
+.pb-swatch{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.pb-area-name{font-weight:700;font-size:var(--md-sys-typescale-title-small-size);flex:1;color:var(--md-sys-color-on-surface);}
+.pb-count{font-family:var(--mono);font-size:var(--md-sys-typescale-label-medium-size);font-weight:700;color:var(--md-sys-color-on-surface-variant);}
+.pb-people{padding:var(--md-space-1) 0;}
+.pb-person{padding:var(--md-space-2) var(--md-space-3);border-bottom:1px solid var(--md-sys-color-outline-variant);font-size:var(--md-sys-typescale-body-medium-size);color:var(--md-sys-color-on-surface);}
+.pb-person:last-child{border-bottom:none;}
+.pb-star{color:var(--md-sys-color-primary);}
+.pb-out{font-family:var(--mono);font-size:var(--md-sys-typescale-label-small-size);font-weight:700;color:var(--md-sys-color-error);background:var(--md-sys-color-error-container);padding:1px 6px;border-radius:var(--md-sys-shape-corner-full);margin-left:4px;}
+.pb-empty{padding:var(--md-space-3);color:var(--md-sys-color-on-surface-variant);font-size:var(--md-sys-typescale-body-medium-size);}
+.pb-unassigned{margin-top:var(--md-space-4);}
 .time-pill{
 
   /* ---------- flow editor: stage list ---------- */
@@ -23601,9 +23639,102 @@ async function runRealtimeRefresh(){
   }
 }
 
+// ============ PUBLIC BOARD (no sign-in) ============
+// A link anyone can open with zero login — ?public-board=1 — for sharing
+// just the board with staff who have no account at all (supervisors keep
+// using the normal name+PIN sign-in exactly as before; this is a wholly
+// separate, additive path that never touches authState or the main
+// render() loop). Backed by public_board_snapshot() (migration 0037), a
+// SECURITY DEFINER function the anon role can call — it hands back only
+// names, team-lead flag, area placement and callout status, never TDIS
+// numbers, break times, hire dates, or anything else personal.
+function isPublicBoardRequest(){
+  try{ return new URLSearchParams(location.search).get('public-board')==='1'; }
+  catch(e){ return false; }
+}
+
+function renderPublicBoard(snapshot){
+  const areasById = {};
+  (snapshot.areas||[]).forEach(a=>{ areasById[a.id]=a; });
+  const calloutSet = new Set(snapshot.callout_staff_ids||[]);
+  const byArea = {};
+  const staffAreaId = {};
+  (snapshot.assignments||[]).forEach(row=>{
+    if(!row.area_id || !areasById[row.area_id]) return;
+    (byArea[row.area_id] = byArea[row.area_id]||[]).push(row.staff_id);
+    staffAreaId[row.staff_id] = row.area_id;
+  });
+  const staffById = {};
+  (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
+  const unassigned = (snapshot.staff||[]).filter(s=>!staffAreaId[s.id]);
+
+  const personRow = (staffId) => {
+    const s = staffById[staffId];
+    if(!s) return '';
+    return `<div class="pb-person">${s.is_team_lead?'<span class="pb-star">★</span> ':''}${escapeHtml(s.name)}${calloutSet.has(s.id)?' <span class="pb-out">OUT</span>':''}</div>`;
+  };
+
+  const areas = (snapshot.areas||[]).slice().sort((a,b)=>(a.sort_order-b.sort_order)||a.name.localeCompare(b.name));
+  const updatedAt = snapshot.generated_at ? new Date(snapshot.generated_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
+
+  return `
+  <div class="pb-page">
+    <div class="pb-header">
+      <div>
+        <div class="pb-title">Schedule — Board</div>
+        <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
+      </div>
+      <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
+        <span class="pb-signin-icon">👤</span> Sign in
+      </a>
+    </div>
+    <div class="pb-grid">
+      ${areas.map(a=>{
+        const ids = byArea[a.id]||[];
+        return `
+        <div class="pb-card" style="border-top-color:${a.color}">
+          <div class="pb-card-head">
+            <span class="pb-swatch" style="background:${a.color}"></span>
+            <span class="pb-area-name">${escapeHtml(a.name)}</span>
+            <span class="pb-count">${ids.length}/${a.capacity}</span>
+          </div>
+          <div class="pb-people">
+            ${ids.length ? ids.map(personRow).join('') : '<div class="pb-empty">No one assigned</div>'}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${unassigned.length ? `
+    <div class="pb-card pb-unassigned">
+      <div class="pb-card-head"><span class="pb-area-name">Unassigned</span></div>
+      <div class="pb-people">${unassigned.map(s=>personRow(s.id)).join('')}</div>
+    </div>` : ''}
+  </div>`;
+}
+
+async function bootPublicBoard(){
+  const root = document.getElementById('root');
+  root.innerHTML = `<div class="pb-page"><div class="pb-loading">Loading board…</div></div>`;
+  const refresh = async () => {
+    try{
+      const snapshot = await window.RC.fetchPublicBoardSnapshot();
+      root.innerHTML = renderPublicBoard(snapshot);
+    }catch(e){
+      root.innerHTML = `<div class="pb-page"><div class="pb-loading">Could not load the board (${escapeHtml((e&&e.message)||'try again')}). Retrying…</div></div>`;
+      console.warn('Public board refresh failed:', e && e.message);
+    }
+  };
+  await refresh();
+  setInterval(refresh, 30000); // read-only poll — no realtime subscription, no write access, nothing to debounce
+}
+
 // ============ INIT ============
 (async function initAuth(){
   await waitForRC();
+  if(isPublicBoardRequest()){
+    await bootPublicBoard();
+    return;
+  }
   try{
     if(window.RC && typeof window.RC.getCurrentAccount==='function'){
       const account = await window.RC.getCurrentAccount();

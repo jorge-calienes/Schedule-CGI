@@ -1603,6 +1603,18 @@ const REALTIME_TABLES = [
   'position_requests', 'proficiency_ratings', 'team_lead_coverage_events',
 ];
 
+// ---------------------------------------------------------------------------
+// Public, unauthenticated board snapshot (migration 0037) — works with no
+// signed-in session at all, since public_board_snapshot() is a SECURITY
+// DEFINER function the anon role is explicitly granted EXECUTE on. Never
+// touches auth.setSession() or any sign-in state; safe to call from a
+// completely separate, never-signed-in page load.
+export async function fetchPublicBoardSnapshot() {
+  const { data, error } = await supabase.rpc('public_board_snapshot');
+  if (error) throw new Error(`[fetchPublicBoardSnapshot] ${error.message}`);
+  return data;
+}
+
 let realtimeChannel = null;
 
 export function subscribeToBoardChanges(onChange) {
@@ -1730,5 +1742,6 @@ window.RC = {
   fetchTimeReviewSettings,
   saveTimeReviewSettings,
   fetchRecentTimeReviewPunches,
+  fetchPublicBoardSnapshot,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
