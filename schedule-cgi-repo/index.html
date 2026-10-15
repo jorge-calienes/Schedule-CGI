@@ -8257,18 +8257,27 @@ function rankCandidatesForArea(areaId, excludeStaffIds){
     })
     .sort((a,b)=>{
       // avoid pulling team leads off their own area first; then fewer conflicts;
-      // then prefer staff who've worked this area before — ranked by most
-      // rotations in it and their best evaluation rating there, recency only
-      // breaking remaining ties — or a manually-marked prior-experience flag
-      // (ranks after any real-history match, since we don't know how recent
-      // or how well-rated it was); people with neither rank last.
+      // then prefer staff who've worked this area before — ranked by the
+      // LONGEST gap since they last did it, so coverage spreads around
+      // instead of always funneling back to whoever's done it most. Someone
+      // who just rotated through recently ranks behind someone equally
+      // qualified who hasn't done it in a while, even if the recent person
+      // has more total rotations there — rating and total times worked
+      // still break ties among people who are similarly "due". A real
+      // rotation-history match always outranks a manually-marked prior
+      // experience flag (no record of how recent or well-rated that was);
+      // people with neither rank last.
       if((a.wouldDisplaceLead?1:0) !== (b.wouldDisplaceLead?1:0)) return (a.wouldDisplaceLead?1:0)-(b.wouldDisplaceLead?1:0);
       if(a.conflicts.length!==b.conflicts.length) return a.conflicts.length-b.conflicts.length;
       if(a.hasExperience !== b.hasExperience) return a.hasExperience ? -1 : 1;
       if(a.hasExperience && b.hasExperience){
-        if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more rotations in this area = more familiar
-        if(a.rating!==b.rating) return b.rating-a.rating; // higher evaluation rating = better fit
-        if(a.sinceWorked!==b.sinceWorked) return a.sinceWorked-b.sinceWorked; // smaller gap = worked it more recently = tiebreaker
+        const aReal = a.sinceWorked !== Infinity, bReal = b.sinceWorked !== Infinity;
+        if(aReal !== bReal) return aReal ? -1 : 1;
+        if(aReal && bReal){
+          if(a.sinceWorked!==b.sinceWorked) return b.sinceWorked-a.sinceWorked; // bigger gap since last worked = more "due" to rotate back in
+          if(a.rating!==b.rating) return b.rating-a.rating; // higher evaluation rating = better fit
+          if(a.timesWorked!==b.timesWorked) return b.timesWorked-a.timesWorked; // more total rotations = remaining tiebreaker
+        }
       }
       if((a.currentArea?1:0) !== (b.currentArea?1:0)) return (a.currentArea?1:0)-(b.currentArea?1:0);
       return a.staff.name.localeCompare(b.staff.name);
