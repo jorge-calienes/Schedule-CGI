@@ -2243,7 +2243,8 @@ body{
     position:relative;
   }
 .cd-cand-tap:hover{border-color:var(--c-accent);background:#F5F8FF;}
-.cd-cand-tap.best{border-color:#34C759;}
+.cd-cand-tap.best{border-color:#C9A227;background:linear-gradient(180deg,#FFF9E6,#fff 70%);}
+.cd-cand-tap.best:hover{background:linear-gradient(180deg,#FFF3CC,#F5F8FF 70%);}
 .cd-cand-av{
     width:36px;height:36px;border-radius:50%;
     background:var(--c-surface-3);color:var(--c-text);
@@ -2255,10 +2256,11 @@ body{
 .cd-cand-name{font-size:14px;font-weight:600;color:var(--c-text);letter-spacing:-.01em;}
 .cd-cand-sub{font-size:11px;color:var(--c-text-2);margin-top:2px;}
 .cd-best-tag{
-    font-size:10px;font-weight:700;
-    background:#E8F5E9;color:#1B5E20;
-    padding:2px 7px;border-radius:99px;
+    font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;
+    background:#FFD54F;color:#6B5000;
+    padding:2px 8px;border-radius:99px;
     flex-shrink:0;
+    box-shadow:0 1px 2px rgba(0,0,0,.15);
   }
 
 /* "Others" — collapsed by default so the compact "Best" pick is the only
@@ -6435,7 +6437,8 @@ button{font-family:var(--sans);cursor:pointer;}
 :root[data-theme="dark"] .sidebar-mini-btn{color:var(--md-sys-color-on-surface);}
 :root[data-theme="dark"] .team-dash-card-name{color:var(--c-text);}
 :root[data-theme="dark"] .chip-menu-btn{color:var(--c-text-2);}
-:root[data-theme="dark"] .cd-best-tag{background:#163821;color:#8FE0A5;}
+:root[data-theme="dark"] .cd-best-tag{color:#3A2E05;background:#E0B83D;}
+:root[data-theme="dark"] .cd-cand-tap.best{border-color:#C9A227;background:linear-gradient(180deg,#352B0E,var(--c-surface-2) 70%);}
 @keyframes banner-pulse-dark{0%,100%{background:#3A1F1F;}50%{background:#4A2626;}}
 @keyframes banner-green-pulse-dark{0%{background:#1F4A2B;}100%{background:#163821;}}
 
@@ -12988,7 +12991,7 @@ function renderCalloutDashModal(m){
         +'<div class="cd-cand-name">'+escapeHtml(c.staff.name)+'</div>'
         +'<div class="cd-cand-sub">'+exp+(from?(' · '+escapeHtml(from.name)):'')+'</div>'
       +'</div>'
-      +(isBest?'<div class="cd-best-tag">Best</div>':'')
+      +(isBest?'<div class="cd-best-tag">★ Best</div>':'')
       +'</button>';
   };
 
@@ -13049,15 +13052,27 @@ function renderCalloutDashModal(m){
             ?'<div class="cd-no-area">No available staff</div>'
               +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
 
-            // ── Candidate picker: best pick inline, rest collapsed ──
-            :'<div class="cd-cands">'
-              +candRow(candidates[0],sid,areaId,true)
-              +(candidates.length>1
-                ?'<details class="cd-others-details"><summary class="cd-others-bar">Others <span class="cd-others-count">'+(candidates.length-1)+'</span></summary>'
-                  +'<div class="cd-others-list">'+candidates.slice(1).map(c=>candRow(c,sid,areaId,false)).join('')+'</div>'
-                +'</details>'
-                :'')
-            +'</div>'
+            // ── Candidate picker: top picks inline, rest collapsed ──
+            // Show up to 4 ranked candidates directly, matching the Time
+            // Off tab's coverage picker — with 30+ staff on some rosters,
+            // burying everyone past the #1 pick inside a closed "Others"
+            // accordion made the #2/#3 choices invisible unless you
+            // already knew to expand it. Only tag index 0 "Best" when
+            // they're genuinely better (real experience/rating here), not
+            // just first alphabetically among equals.
+            :(()=>{
+              const topPicks = candidates.slice(0,4);
+              const rest = candidates.slice(4);
+              const bestIsGenuine = candidates.length>1 && (candidates[0].timesWorked>0 || candidates[0].rating>0 || candidates[0].manualPrior);
+              return '<div class="cd-cands">'
+                +topPicks.map((c,i)=>candRow(c,sid,areaId,i===0&&bestIsGenuine)).join('')
+                +(rest.length>0
+                  ?'<details class="cd-others-details"'+(searchQ?' open':'')+'><summary class="cd-others-bar">Others <span class="cd-others-count">'+rest.length+'</span></summary>'
+                    +'<div class="cd-others-list">'+rest.map(c=>candRow(c,sid,areaId,false)).join('')+'</div>'
+                  +'</details>'
+                  :'')
+              +'</div>';
+            })()
             +'<button class="cd-waive-btn" data-waive="'+sid+'">Not necessary to find coverage</button>'
           )
 
@@ -19974,6 +19989,13 @@ function attachHandlers(){
             const sub  = card.querySelector('.cd-cand-sub')?.textContent?.toLowerCase()||'';
             card.style.display = (!q || name.includes(q) || sub.includes(q)) ? '' : 'none';
           });
+          // A match inside a collapsed "Others" accordion stayed invisible
+          // even with its own display set back to '' — a closed <details>
+          // doesn't render its content at all, regardless of a child's
+          // display style — so searching for someone past the top picks
+          // silently found nothing. Force every "Others" section open
+          // while there's a query so a hit in there actually surfaces.
+          if(q) document.querySelectorAll('.cd-others-details').forEach(d=>{ d.open = true; });
           // show/hide clear button
           const clr = document.getElementById('cd-search-clear');
           if(clr) clr.style.display = q ? '' : 'none';
