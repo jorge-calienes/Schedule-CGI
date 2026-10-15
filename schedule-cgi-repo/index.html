@@ -11477,6 +11477,7 @@ function renderModal(){
   else if(m.type==='placement-conflict') inner = renderPlacementConflictModal(m);
   else if(m.type==='team-lead-warning') inner = renderTeamLeadWarningModal(m);
   else if(m.type==='capacity-full') inner = renderCapacityFullModal(m);
+  else if(m.type==='thin-coverage-warning') inner = renderThinCoverageWarningModal(m);
   else if(m.type==='cert-block') inner = renderCertBlockModal(m);
   else if(m.type==='staff-manager') inner = renderStaffManagerModal(m);
   else if(m.type==='staff-stats') inner = renderStaffStatsModal(m);
@@ -11961,6 +11962,31 @@ function renderCapacityFullModal(m){
     <div class="modal-foot">
       <button class="btn btn-light" id="modal-close-cap">Choose a different area</button>
       <button class="btn btn-primary" id="modal-raise-capacity">Raise capacity…</button>
+    </div>
+  </div>`;
+}
+
+// Pulling a coverage candidate never leaves their own area with literally
+// nobody (rankCandidatesForArea already won't offer a candidate for whom
+// that's true), but it can still leave it under half-staffed — a call
+// worth putting in front of the supervisor rather than making silently.
+function renderThinCoverageWarningModal(m){
+  const staff = getStaffById(m.staffId);
+  const fromArea = getAreaById(m.fromAreaId);
+  const targetArea = getAreaById(m.targetAreaId);
+  const percent = Math.round(m.remaining/fromArea.capacity*100);
+  return `
+  <div class="modal">
+    <div class="modal-head">
+      <div><h2>⚠ This leaves ${escapeHtml(fromArea.name)} thin</h2><p>${escapeHtml(staff.name)} is currently in <b>${escapeHtml(fromArea.name)}</b>.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert-box rust"><b>${m.remaining} of ${fromArea.capacity} (${percent}%)</b> would be left in ${escapeHtml(fromArea.name)} after moving ${escapeHtml(staff.name)} to cover ${escapeHtml(targetArea?targetArea.name:'this area')} — under half-staffed. Confirm only if that's acceptable for the rest of the day.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-cancel-thin-coverage">Choose someone else</button>
+      <button class="btn btn-danger" id="modal-confirm-thin-coverage">Pull anyway</button>
     </div>
   </div>`;
 }
@@ -12964,7 +12990,13 @@ function renderCalloutDashModal(m){
       if((state.coverage||{})[c.staff.id]) return false;
       if(candidateClaimedThisRender.has(c.staff.id)) return false;
       if(!c.currentArea) return true;
-      return activeInArea(c.currentArea,c.staff.id).length>1;
+      // activeInArea's 2nd arg excludes the candidate themselves from the
+      // count, so this is already "how many OTHERS would be left" — >1
+      // demanded 2 others remain (3 people total before anyone could be
+      // pulled), so a normal 2-person area could never contribute a
+      // candidate even though pulling one leaves a perfectly staffed area
+      // of 1, not an empty one. Only block it if NOBODY would be left.
+      return activeInArea(c.currentArea,c.staff.id).length>0;
     });
     const all = cands.length ? cands : raw.filter(c=>!(state.coverage||{})[c.staff.id] && !candidateClaimedThisRender.has(c.staff.id));
     // Apply search filter
@@ -19434,6 +19466,17 @@ function attachHandlers(){
     });
   }
 
+  // --- thin-coverage warning (override allowed, unlike capacity-full) ---
+  if(activeModal.type==='thin-coverage-warning'){
+    const returnTo = activeModal.returnTo;
+    on('modal-cancel-thin-coverage', ()=>{ if(returnTo) openModal(returnTo); else closeModal(); });
+    on('modal-confirm-thin-coverage', ()=>{
+      assignCoverage(activeModal.staffId, activeModal.targetAreaId);
+      if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+      if(returnTo) openModal(returnTo); else closeModal();
+    });
+  }
+
   // --- certification-missing block modal ---
   if(activeModal.type==='cert-block'){
     on('modal-close-cert', ()=>closeModal());
@@ -20082,6 +20125,20 @@ function attachHandlers(){
       if(area && activeInArea(areaId, coverId).length >= area.capacity){
         openModal({type:'capacity-full', staffId:coverId, targetAreaId:areaId, returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
         return;
+      }
+      // Pulling someone never leaves their own area with literally nobody
+      // (that candidate wouldn't even be offered — see rankCandidatesForArea's
+      // own filtering), but it can still leave it thin. Below half-staffed is
+      // worth a heads-up and a deliberate call, not a silent pull.
+      const fromAreaId = state.assignments[coverId];
+      const fromArea = fromAreaId ? getAreaById(fromAreaId) : null;
+      if(fromArea && fromArea.capacity>0){
+        const remaining = activeInArea(fromAreaId, coverId).length;
+        if(remaining/fromArea.capacity < 0.5){
+          openModal({type:'thin-coverage-warning', staffId:coverId, targetAreaId:areaId, fromAreaId, remaining,
+            returnTo:{type:'callout-dash',selects:activeModal.selects||{}}});
+          return;
+        }
       }
       assignCoverage(coverId, areaId);
       // Check if all positions are now covered (headcount per area, not
