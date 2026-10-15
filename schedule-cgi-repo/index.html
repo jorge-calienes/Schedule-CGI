@@ -8380,15 +8380,19 @@ function unassignedSupervisorStaff(){
 }
 
 // The signed-in account's own roster for team-scoped screens (Weekly Time
-// Review today, possibly others later): admins see everyone; a supervisor
-// account only sees their team once their login is linked to a Supervisors
-// roster entry (Manage accounts → "Supervisor roster entry") — unlinked
-// returns an empty list rather than guessing, since showing the wrong
-// person's team here would be worse than showing nothing.
-function myReviewTeamStaff(){
+// Review today, possibly others later): a supervisor account only sees
+// their team once their login is linked to a Supervisors roster entry
+// (Manage accounts → "Supervisor roster entry") — unlinked returns an
+// empty list rather than guessing, since showing the wrong person's team
+// here would be worse than showing nothing. An admin isn't linked to any
+// one team, so they see nothing until they explicitly pick a supervisor
+// (supervisorFilterId, a state.supervisors roster id) — admins must never
+// get a blended "everyone" view, since that mixes every supervisor's data
+// into one screen instead of keeping each team separate.
+function myReviewTeamStaff(supervisorFilterId){
   const acct = authState.account;
   if(!acct) return [];
-  if(acct.role==='admin') return state.staff.filter(s=>s.active!==false);
+  if(acct.role==='admin') return supervisorFilterId ? staffUnderSupervisor(supervisorFilterId).filter(s=>s.active!==false) : [];
   if(acct.role==='supervisor' && acct.linked_supervisor_id) return staffUnderSupervisor(acct.linked_supervisor_id).filter(s=>s.active!==false);
   return [];
 }
@@ -8848,6 +8852,40 @@ async function loadTimeReviewPatterns(staffIds, weeksList){
     });
     if(activeModal?.type==='weekly-time-review') openModal({...activeModal, patterns});
   }catch(e){ console.warn('Could not load Weekly Time Review patterns:', e&&e.message); }
+}
+
+// Opens (or re-opens, after an admin switches teams) the Weekly Time
+// Review modal scoped to exactly one team. supervisorFilterId is only
+// meaningful for an admin account — myReviewTeamStaff() ignores it for a
+// supervisor login, who's always scoped to their own linked team.
+async function openWeeklyTimeReviewTeam(supervisorFilterId){
+  const teamStaff = myReviewTeamStaff(supervisorFilterId);
+  openModal({type:'weekly-time-review', teamStaff, supervisorFilter:supervisorFilterId||'', punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, accounts:[], focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:!!teamStaff.length, error:''});
+  if(!teamStaff.length || !window.RC) return;
+  try{
+    const staffIds = teamStaff.map(s=>s.id);
+    const [week, decisionRows, weeksList, accounts] = await Promise.all([
+      window.RC.fetchLatestTimeReviewWeek({staffIds}),
+      window.RC.fetchTimeReviewDecisions({staffIds}),
+      window.RC.fetchTimeReviewWeeksList({staffIds}),
+      window.RC.fetchAccounts().catch(()=>[]), // names for the "confirmed by" trail — not worth failing the whole screen over
+      loadTimeReviewSettingsOnce(),
+    ]);
+    // Modal closed, or admin picked a different team while this was in
+    // flight — a stale response for the team they left must not land on
+    // the team they're looking at now.
+    if(activeModal?.type!=='weekly-time-review' || activeModal.supervisorFilter!==(supervisorFilterId||'')) return;
+    const decisions = trMapDecisions(decisionRows);
+    if(week){
+      const days = week.punches.map(p=>p.day).sort();
+      openModal({...activeModal, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
+      loadTimeReviewPatterns(staffIds, weeksList||[]);
+    } else {
+      openModal({...activeModal, decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
+    }
+  }catch(e){
+    if(activeModal?.type==='weekly-time-review' && activeModal.supervisorFilter===(supervisorFilterId||'')) openModal({...activeModal, loadingSaved:false, error:'Could not load last week\'s saved data — you can still upload a fresh file. ('+((e&&e.message)||'try again')+')'});
+  }
 }
 
 // Parses an uploaded punch-report .xlsx the same way staff Import does
@@ -14604,7 +14642,20 @@ const TEAM_DASH_COLUMNS = [
 function renderWeeklyTimeReviewModal(m){
   const teamStaff = m.teamStaff||[];
   const noTeam = teamStaff.length===0;
+  const isAdmin = authState.account?.role==='admin';
   const isUnlinkedSupervisor = authState.account?.role==='supervisor' && !authState.account?.linked_supervisor_id;
+  // Admin isn't scoped to any one team, so each supervisor's data stays
+  // separate: pick exactly one team to look at, never a blended view of
+  // everyone at once.
+  const noTeamPicked = isAdmin && !m.supervisorFilter;
+  const supervisorPickerHtml = isAdmin ? `
+    <div style="margin-bottom:14px;">
+      <label class="small-muted" style="display:block;margin-bottom:4px;">Team</label>
+      <select class="roster-select" id="wtr-supervisor-filter" style="width:100%;max-width:320px;">
+        <option value="">— Select a supervisor's team —</option>
+        ${state.supervisors.map(sv=>`<option value="${sv.id}" ${m.supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+      </select>
+    </div>` : '';
 
   if(!m.punches || m.punches.length===0){
     if(m.loadingSaved){
@@ -14615,6 +14666,7 @@ function renderWeeklyTimeReviewModal(m){
           <button class="modal-close" id="modal-close-x">✕</button>
         </div>
         <div class="modal-body">
+          ${supervisorPickerHtml}
           <div class="small-muted">Loading your last saved week…</div>
         </div>
       </div>`;
@@ -14622,13 +14674,15 @@ function renderWeeklyTimeReviewModal(m){
     return `
     <div class="modal" style="max-width:640px;">
       <div class="modal-head">
-        <div><h2>⏱ Weekly Time Review</h2><p>Upload this week's punch report — shifts are already on file, so that's all you need.</p></div>
+        <div><h2>⏱ Weekly Time Review</h2><p>${noTeamPicked?'Pick a supervisor\'s team to review or upload its punches.':'Upload this week\'s punch report — shifts are already on file, so that\'s all you need.'}</p></div>
         <button class="modal-close" id="modal-close-x">✕</button>
       </div>
       <div class="modal-body">
+        ${supervisorPickerHtml}
         ${isUnlinkedSupervisor?`<div class="alert-box rust" style="margin-bottom:14px;">Your account isn't linked to a Supervisors roster entry yet, so no team can be shown. An admin can set this under Manage accounts → edit your account → "Supervisor roster entry".</div>`:''}
-        ${!isUnlinkedSupervisor && noTeam?`<div class="alert-box rust" style="margin-bottom:14px;">No active staff found on your team.</div>`:''}
-        ${!isUnlinkedSupervisor && !noTeam?`<div class="small-muted" style="margin-bottom:14px;">Your team: ${teamStaff.map(s=>escapeHtml(s.name)).join(', ')}</div>`:''}
+        ${!isUnlinkedSupervisor && !noTeamPicked && noTeam?`<div class="alert-box rust" style="margin-bottom:14px;">No active staff found on ${isAdmin?'that team':'your team'}.</div>`:''}
+        ${!isUnlinkedSupervisor && !noTeam?`<div class="small-muted" style="margin-bottom:14px;">${isAdmin?'Team':'Your team'}: ${teamStaff.map(s=>escapeHtml(s.name)).join(', ')}</div>`:''}
+        ${noTeamPicked ? '' : `
         <label for="wtr-file-input" id="wtr-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1.5px dashed var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-large);padding:36px 16px;text-align:center;cursor:pointer;color:var(--md-sys-color-on-surface-variant);">
           <span style="font-size:28px;">⬆</span>
           <b style="color:var(--md-sys-color-on-surface);">Drop the punch report here, or click to choose</b>
@@ -14636,6 +14690,7 @@ function renderWeeklyTimeReviewModal(m){
         </label>
         <input type="file" id="wtr-file-input" accept=".xlsx" hidden/>
         ${m.loading?`<div class="small-muted" style="margin-top:12px;">Reading file…</div>`:''}
+        `}
         ${m.error?`<div class="alert-box rust" style="margin-top:12px;">${escapeHtml(m.error)}</div>`:''}
       </div>
     </div>`;
@@ -14735,10 +14790,11 @@ function renderWeeklyTimeReviewModal(m){
   return `
   <div class="modal" style="max-width:1000px;">
     <div class="modal-head">
-      <div><h2>⏱ Weekly Time Review</h2><p>${escapeHtml(friendlyDate(m.weekLo))} – ${escapeHtml(friendlyDate(m.weekHi))} · ${escapeHtml(authState.account?.role==='admin'?'everyone':'your team')}</p></div>
+      <div><h2>⏱ Weekly Time Review</h2><p>${escapeHtml(friendlyDate(m.weekLo))} – ${escapeHtml(friendlyDate(m.weekHi))} · ${isAdmin?escapeHtml(getSupervisorById(m.supervisorFilter)?.name||'—')+'’s team':'your team'}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
+      ${supervisorPickerHtml}
       ${m.unmatchedTdis&&m.unmatchedTdis.length?`<div class="alert-box rust" style="margin-bottom:14px;">${m.unmatchedTdis.length} punch row${m.unmatchedTdis.length===1?'':'s'} didn't match anyone on your team (unknown TDIS number${m.unmatchedTdis.length===1?'':'s'}: ${m.unmatchedTdis.map(escapeHtml).join(', ')}).</div>`:''}
       <div class="wtr-wrap" style="padding:0;">
         <div class="wtr-hero">
@@ -19279,30 +19335,7 @@ function attachHandlers(){
   on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
   on('nav-weekly-time-review',  async ()=>{
     closeNav();
-    const teamStaff = myReviewTeamStaff();
-    openModal({type:'weekly-time-review', teamStaff, punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, accounts:[], focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:true, error:''});
-    if(!teamStaff.length || !window.RC){ if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false}); return; }
-    try{
-      const staffIds = teamStaff.map(s=>s.id);
-      const [week, decisionRows, weeksList, accounts] = await Promise.all([
-        window.RC.fetchLatestTimeReviewWeek({staffIds}),
-        window.RC.fetchTimeReviewDecisions({staffIds}),
-        window.RC.fetchTimeReviewWeeksList({staffIds}),
-        window.RC.fetchAccounts().catch(()=>[]), // names for the "confirmed by" trail — not worth failing the whole screen over
-        loadTimeReviewSettingsOnce(),
-      ]);
-      if(activeModal?.type!=='weekly-time-review') return; // modal closed/changed while this was in flight
-      const decisions = trMapDecisions(decisionRows);
-      if(week){
-        const days = week.punches.map(p=>p.day).sort();
-        openModal({...activeModal, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
-        loadTimeReviewPatterns(staffIds, weeksList||[]);
-      } else {
-        openModal({...activeModal, decisions, availableWeeks:weeksList||[], accounts:accounts||[], loadingSaved:false});
-      }
-    }catch(e){
-      if(activeModal?.type==='weekly-time-review') openModal({...activeModal, loadingSaved:false, error:'Could not load last week\'s saved data — you can still upload a fresh file. ('+((e&&e.message)||'try again')+')'});
-    }
+    await openWeeklyTimeReviewTeam('');
   });
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
@@ -22146,7 +22179,7 @@ function attachHandlers(){
       dropEl.addEventListener('drop', e=>{ e.preventDefault(); dropEl.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
     }
     on('wtr-upload-another', ()=>{
-      openModal({...m, teamStaff: myReviewTeamStaff(), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+      openModal({...m, teamStaff: myReviewTeamStaff(m.supervisorFilter), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
     });
     document.querySelectorAll('[data-wtr-focus]').forEach(el=>el.addEventListener('click', ()=>{
       m.focusStaffId = m.focusStaffId===el.dataset.wtrFocus ? '' : el.dataset.wtrFocus;
@@ -22241,6 +22274,8 @@ function attachHandlers(){
     });
     const weekPicker = document.getElementById('wtr-week-picker');
     if(weekPicker) weekPicker.addEventListener('change', ()=>loadWeek(weekPicker.value));
+    const supervisorFilterEl = document.getElementById('wtr-supervisor-filter');
+    if(supervisorFilterEl) supervisorFilterEl.addEventListener('change', ()=>openWeeklyTimeReviewTeam(supervisorFilterEl.value));
     on('wtr-toggle-rules', ()=>{ m.showRules = !m.showRules; render(); });
     on('wtr-save-rules', ()=>{
       const next = {...TR_RULES};
