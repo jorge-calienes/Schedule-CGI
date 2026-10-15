@@ -23680,7 +23680,7 @@ function renderPublicBoard(snapshot){
     const isLate = !isOut && lateSet.has(s.id);
     const isEarly = !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
-    const times = [s.shift_hours_label, s.break_times_label].filter(Boolean).join(' · ');
+    const times = s.shift_hours_label || '';
     const coverage = coverageByStaff[s.id];
     const tempMove = tempMoveByStaff[s.id];
     return `
