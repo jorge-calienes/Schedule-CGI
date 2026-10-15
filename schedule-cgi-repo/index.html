@@ -4327,6 +4327,17 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
 .pb-signin-icon{font-size:14px;}
 .pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
+.pb-view-tabs{display:flex;gap:var(--md-space-2);padding:0 var(--md-space-2) var(--md-space-3);}
+.pb-view-tab{
+    font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
+    color:var(--md-sys-color-on-surface-variant);
+    background:var(--md-sys-color-surface-container-low);
+    border:1px solid var(--md-sys-color-outline-variant);
+    border-radius:var(--md-sys-shape-corner-full);
+    padding:var(--md-space-2) var(--md-space-4);
+    cursor:pointer;
+  }
+.pb-view-tab.active{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border-color:var(--md-sys-color-primary);}
 .time-pill{
 
   /* ---------- flow editor: stage list ---------- */
@@ -23646,12 +23657,86 @@ const PB_DEPT_ACCENTS = {
   'Courier / Processing / QC':'#D97706', 'Fixed Positions':'#7C3AED',
 };
 
+// 'area' (default, grouped by department/work area) or 'supervisor'
+// (grouped by who each person reports to, same as the real app's
+// Supervisors tab) — a pure client-side toggle, no re-fetch needed, since
+// both views are built from the same already-fetched snapshot.
+let pbViewMode = 'area';
+let _pbLastSnapshot = null;
+function pbRender(){
+  const root = document.getElementById('root');
+  if(root && _pbLastSnapshot) root.innerHTML = renderPublicBoard(_pbLastSnapshot);
+}
+window.pbSetView = (mode) => { pbViewMode = mode; pbRender(); };
+
+// Name + rotation status only (Out / Schedule off / Late / Left early) —
+// no TDIS, no shift time, no supervisor badge (redundant once already
+// grouped by supervisor). Priority mirrors renderChip()'s own isScheduled
+// vs isOut ordering: a scheduled-off flag wins over a plain manual Out.
+function renderPublicStatusChip(s, sets){
+  const isScheduledOff = sets.scheduledOff.has(s.id);
+  const isOut = !isScheduledOff && sets.callout.has(s.id);
+  const isLate = !isScheduledOff && !isOut && sets.late.has(s.id);
+  const isEarly = !isScheduledOff && !isOut && sets.leftEarly.has(s.id);
+  return `
+  <div class="chip ${(isScheduledOff||isOut)?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}">
+    <div class="chip-row-header">
+      <div class="chip-name-wrap">
+        ${s.is_team_lead?'<span class="chip-lead-star">★</span>':''}
+        <span class="chip-name-btn" style="cursor:default;">${escapeHtml(s.name)}</span>
+      </div>
+      <div class="chip-status-badges">
+        ${isScheduledOff?'<span class="chip-out-tag chip-out-scheduled" title="Scheduled time off">📅 Schedule off</span>':''}
+        ${isOut?'<span class="chip-out-tag">Out</span>':''}
+        ${isLate?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
+        ${isEarly?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderPublicSupervisorSection(snapshot, sets){
+  const byStaffSupervisor = {};
+  (snapshot.staff||[]).forEach(s=>{
+    const key = s.supervisor_id || '_unassigned';
+    (byStaffSupervisor[key] = byStaffSupervisor[key]||[]).push(s);
+  });
+  const supervisors = (snapshot.supervisors||[]).slice();
+  const unassigned = byStaffSupervisor['_unassigned']||[];
+  return `
+  <div class="board-wrap">
+    <div class="board">
+      ${supervisors.map(sv=>{
+        const members = byStaffSupervisor[sv.id]||[];
+        return `
+        <div class="area-col" style="--area-color:${sv.color}">
+          <div class="area-head">
+            <div class="area-name"><span class="area-swatch" style="background:${sv.color}"></span>${escapeHtml(sv.name)}</div>
+            <span class="area-count">${members.length}</span>
+          </div>
+          <div class="area-drop">
+            ${members.length===0 ? '<div class="area-empty-hint">No one assigned</div>' : members.map(s=>renderPublicStatusChip(s, sets)).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+      ${unassigned.length ? `
+      <div class="area-col" style="--area-color:#9CA3AF">
+        <div class="area-head"><div class="area-name"><span class="area-swatch" style="background:#9CA3AF"></span>No supervisor</div></div>
+        <div class="area-drop">${unassigned.map(s=>renderPublicStatusChip(s, sets)).join('')}</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
 function renderPublicBoard(snapshot){
+  _pbLastSnapshot = snapshot;
   const areasById = {};
   (snapshot.areas||[]).forEach(a=>{ areasById[a.id]=a; });
   const calloutSet = new Set(snapshot.callout_staff_ids||[]);
   const lateSet = new Set(snapshot.late_staff_ids||[]);
   const leftEarlySet = new Set(snapshot.left_early_staff_ids||[]);
+  const scheduledOffSet = new Set(snapshot.scheduled_off_staff_ids||[]);
+  const statusSets = { callout: calloutSet, late: lateSet, leftEarly: leftEarlySet, scheduledOff: scheduledOffSet };
   const byArea = {};
   const staffAreaId = {};
   (snapshot.assignments||[]).forEach(row=>{
@@ -23739,17 +23824,7 @@ function renderPublicBoard(snapshot){
 
   const updatedAt = snapshot.generated_at ? new Date(snapshot.generated_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
 
-  return `
-  <div class="pb-page">
-    <div class="pb-header">
-      <div>
-        <div class="pb-title">Schedule — Board</div>
-        <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
-      </div>
-      <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
-        <span class="pb-signin-icon">👤</span> Sign in
-      </a>
-    </div>
+  const areaViewHtml = `
     <div class="board-wrap">
       <div class="dept-board">
         ${deptGroups.map(g=>`
@@ -23768,7 +23843,24 @@ function renderPublicBoard(snapshot){
           </div>
         </div>` : ''}
       </div>
+    </div>`;
+
+  return `
+  <div class="pb-page">
+    <div class="pb-header">
+      <div>
+        <div class="pb-title">Schedule — Board</div>
+        <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
+      </div>
+      <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
+        <span class="pb-signin-icon">👤</span> Sign in
+      </a>
     </div>
+    <div class="pb-view-tabs">
+      <button class="pb-view-tab ${pbViewMode==='area'?'active':''}" onclick="pbSetView('area')">By area</button>
+      <button class="pb-view-tab ${pbViewMode==='supervisor'?'active':''}" onclick="pbSetView('supervisor')">By supervisor</button>
+    </div>
+    ${pbViewMode==='supervisor' ? renderPublicSupervisorSection(snapshot, statusSets) : areaViewHtml}
   </div>`;
 }
 
