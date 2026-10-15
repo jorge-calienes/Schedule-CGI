@@ -638,13 +638,17 @@ export async function deleteArea({ areaId, areaName, actingAccountId }) {
 // worth revisiting if these turn out to need an audit trail too.
 // ---------------------------------------------------------------------------
 
-export async function createSupervisor({ name, color }) {
-  const { data, error } = await supabase.from('supervisors').insert({ name, color: color || '#2F5FA8' }).select().single();
+export async function createSupervisor({ name, color, tier, reportsToId }) {
+  const { data, error } = await supabase.from('supervisors').insert({
+    name, color: color || '#2F5FA8', tier: tier || 'sl', reports_to_id: reportsToId || null,
+  }).select().single();
   if (error) throw error;
   return data;
 }
-export async function updateSupervisor({ supervisorId, name, color }) {
-  const { error } = await supabase.from('supervisors').update({ name, color: color || '#2F5FA8' }).eq('id', supervisorId);
+export async function updateSupervisor({ supervisorId, name, color, tier, reportsToId }) {
+  const { error } = await supabase.from('supervisors').update({
+    name, color: color || '#2F5FA8', tier: tier || 'sl', reports_to_id: reportsToId || null,
+  }).eq('id', supervisorId);
   if (error) throw error;
 }
 export async function deleteSupervisor({ supervisorId }) {

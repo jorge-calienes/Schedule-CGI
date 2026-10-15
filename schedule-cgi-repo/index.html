@@ -5734,6 +5734,17 @@ button{font-family:var(--sans);cursor:pointer;}
   }
 .sup-card-info{flex:1;min-width:0;}
 .sup-card-name{font-weight:700;font-size:13.5px;color:var(--c-text,#1D1D1F);}
+.sup-tier-badge{
+    font-size:9.5px;font-weight:700;letter-spacing:.03em;
+    color:var(--c-text-2,#6E6E73);background:var(--c-surface-2,#F5F5F7);
+    border:1px solid var(--c-border,#E5E5EA);border-radius:5px;
+    padding:1px 5px;vertical-align:middle;
+  }
+.org-tier-badge{
+    font-size:9px;font-weight:700;letter-spacing:.03em;
+    color:#fff;background:rgba(0,0,0,.28);
+    border-radius:5px;padding:1px 5px;margin-left:2px;
+  }
 .sup-card-team{display:flex;align-items:center;gap:6px;margin-top:2px;}
 .sup-card-avatars{display:flex;}
 .sup-mini-avatar{
@@ -5755,6 +5766,7 @@ button{font-family:var(--sans);cursor:pointer;}
     background:var(--c-accent,#2F5FA8);color:#fff;font-weight:700;font-size:14px;
   }
 .org-group-list{display:flex;flex-direction:column;gap:14px;}
+.org-group-list-nested{padding-left:14px;margin:10px 0 0 13px;border-left:2px dashed var(--c-border,#E5E5EA);}
 .org-group{
     border:1px solid var(--c-border,#E5E5EA);border-radius:12px;
     padding:10px 12px 12px;background:var(--c-surface,#fff);
@@ -13373,12 +13385,20 @@ function businessDaysBetween(startIso, endIso){
 }
 
 // --- supervisor manager (add/edit/delete/list) ---
+const SUP_TIER_LABELS = {psm:'PSM', apsm:'APSM', sl:'SL'};
+// The tier directly above each tier, for filtering "Reports to" options —
+// PSM has nothing above it (top of the chart).
+const SUP_TIER_PARENT = {apsm:'psm', sl:'apsm'};
 function renderSupervisorManagerModal(m){
   const editing = m.editId ? getSupervisorById(m.editId) : null;
   const palette = ['#2D6E5E','#C24E3A','#D9A95B','#4A6FA5','#7A5C8E','#5C8A52','#B5564F','#3E8E8B','#8B6F47','#5C6B8A'];
   const chosen = m.color || (editing?editing.color:palette[state.supervisors.length%palette.length]);
   const nameVal = m.nameDraft !== undefined ? m.nameDraft : (editing?editing.name:'');
   const initials = (nameVal||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
+  const tierVal = m.tierDraft !== undefined ? m.tierDraft : (editing?editing.tier||'sl':'sl');
+  const parentTier = SUP_TIER_PARENT[tierVal]; // undefined for psm -- no "reports to" shown
+  const reportsToOptions = parentTier ? state.supervisors.filter(sv=>sv.tier===parentTier && (!editing || sv.id!==editing.id)) : [];
+  const reportsToVal = m.reportsToDraft !== undefined ? m.reportsToDraft : (editing?editing.reportsToId||'':'');
   return `
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
@@ -13400,6 +13420,23 @@ function renderSupervisorManagerModal(m){
         </div>
       </div>
       <input type="hidden" id="sup-color-input" value="${chosen}"/>
+      <div class="field">
+        <label>Tier</label>
+        <select id="sup-tier-select">
+          <option value="psm" ${tierVal==='psm'?'selected':''}>PSM</option>
+          <option value="apsm" ${tierVal==='apsm'?'selected':''}>APSM</option>
+          <option value="sl" ${tierVal==='sl'?'selected':''}>SL</option>
+        </select>
+      </div>
+      ${parentTier ? `
+      <div class="field">
+        <label>Reports to</label>
+        <select id="sup-reportsto-select">
+          <option value="">— Select a ${SUP_TIER_LABELS[parentTier]} —</option>
+          ${reportsToOptions.map(sv=>`<option value="${sv.id}" ${reportsToVal===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+        </select>
+        ${reportsToOptions.length===0?`<div class="small-muted" style="margin-top:4px;">No ${SUP_TIER_LABELS[parentTier]} exists yet — add one first, or this supervisor will sit at the top of the chart for now.</div>`:''}
+      </div>` : `<div class="small-muted" style="margin:-4px 0 14px;">Top of the org chart — nothing to report to.</div>`}
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" id="sup-save-btn" style="flex:1;">${editing?'Save changes':'Add supervisor'}</button>
         ${editing?`<button class="btn btn-danger" id="sup-delete-btn">Remove</button>
@@ -13420,7 +13457,7 @@ function renderSupervisorManagerModal(m){
           <div class="sup-card ${isActive?'active':''}" data-edit-sup="${sv.id}">
             <div class="sup-card-avatar" style="background:${sv.color};">${svInitials}</div>
             <div class="sup-card-info">
-              <div class="sup-card-name">${escapeHtml(sv.name)}</div>
+              <div class="sup-card-name">${escapeHtml(sv.name)} <span class="sup-tier-badge">${SUP_TIER_LABELS[sv.tier||'sl']}</span></div>
               <div class="sup-card-team">
                 ${team.length===0?'<span class="small-muted">No one assigned</span>':`
                   <div class="sup-card-avatars">
@@ -13450,10 +13487,41 @@ function renderOrgDiagramModal(m){
         <span class="org-leaf-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name.split(' ')[0])}${s.isSubcontractor?' <b class="org-ags-dot" title="AGS / Sub-contractor">AGS</b>':''}</span>
       </span>
     </div>`;
+
+  const byId = {};
+  state.supervisors.forEach(sv=>{ byId[sv.id]=sv; });
+  const childrenOf = pid => state.supervisors.filter(sv=>sv.reportsToId===pid);
+  // Total headcount through this node — direct staff plus everyone under
+  // every supervisor who reports up through them, so a PSM/APSM box shows
+  // the size of their whole org, not just however many people happen to
+  // report to them directly (usually none, for the top two tiers).
+  const totalHeadcount = sv => childrenOf(sv.id).reduce((sum, child)=>sum+totalHeadcount(child), staffUnderSupervisor(sv.id).length);
+  const renderOrgNode = sv => {
+    const team = staffUnderSupervisor(sv.id);
+    const kids = childrenOf(sv.id);
+    return `
+    <div class="org-group">
+      <span class="org-sup-box" style="--sv-color:${sv.color};" data-edit-sup="${sv.id}" title="Click to edit ${escapeHtml(sv.name)}">
+        <span class="org-sup-avatar" style="background:${sv.color};">${initialsOf(sv.name)}</span>
+        <span class="org-sup-name">${escapeHtml(sv.name)} <span class="org-tier-badge">${SUP_TIER_LABELS[sv.tier||'sl']}</span></span>
+        <span class="org-sup-count">${totalHeadcount(sv)}</span>
+      </span>
+      ${kids.length>0?`<div class="org-group-list org-group-list-nested">${kids.map(renderOrgNode).join('')}</div>`:''}
+      ${team.length>0?`<div class="org-leaf-list">${team.map(leafHtml).join('')}</div>`:''}
+      ${kids.length===0 && team.length===0?`<div class="small-muted org-leaf-list-empty">No one assigned</div>`:''}
+    </div>`;
+  };
+  // Roots are anyone with no valid parent in the data — not just
+  // tier==='psm' — so a supervisor whose "reports to" got deleted (or an
+  // org that's never set any hierarchy at all, where everyone is still
+  // tier 'sl' with no reports_to_id) renders exactly like the original
+  // flat list instead of silently vanishing from the chart.
+  const roots = state.supervisors.filter(sv=>!sv.reportsToId || !byId[sv.reportsToId]);
+
   return `
   <div class="modal org-diagram-modal" style="max-width:min(920px,calc(100vw - 32px));">
     <div class="modal-head">
-      <div><h2>Organization diagram</h2><p>Visual breakdown of who reports to whom, based on supervisor assignment.</p></div>
+      <div><h2>Organization diagram</h2><p>PSM → APSM → SL, based on each supervisor's tier and who they report to.</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body org-diagram-body">
@@ -13463,18 +13531,7 @@ function renderOrgDiagramModal(m){
       <div class="org-tree-wrap">
         <span class="org-root-box">🏢 All Staff (${state.staff.length})</span>
         <div class="org-group-list">
-          ${state.supervisors.map(sv=>{
-            const team = staffUnderSupervisor(sv.id);
-            return `
-            <div class="org-group">
-              <span class="org-sup-box" style="--sv-color:${sv.color};" data-edit-sup="${sv.id}" title="Click to edit ${escapeHtml(sv.name)}">
-                <span class="org-sup-avatar" style="background:${sv.color};">${initialsOf(sv.name)}</span>
-                <span class="org-sup-name">${escapeHtml(sv.name)}</span>
-                <span class="org-sup-count">${team.length}</span>
-              </span>
-              ${team.length>0?`<div class="org-leaf-list">${team.map(leafHtml).join('')}</div>`:`<div class="small-muted org-leaf-list-empty">No one assigned</div>`}
-            </div>`;
-          }).join('')}
+          ${roots.map(renderOrgNode).join('')}
           ${unassigned.length>0?`
           <div class="org-group">
             <span class="org-sup-box org-unassigned-box" title="Staff without a supervisor">
@@ -13500,33 +13557,47 @@ function renderOrgDiagramModal(m){
 function buildOrgDiagramHTML(){
   const unassigned = unassignedSupervisorStaff();
   const memberLine = s => `<div class="org-print-member">${s.isTeamLead?'★ ':''}${escapeHtml(s.name)}${s.isSubcontractor?' <span class="org-print-ags">AGS</span>':''}</div>`;
-  const cards = state.supervisors.map(sv=>{
+
+  const byId = {};
+  state.supervisors.forEach(sv=>{ byId[sv.id]=sv; });
+  const childrenOf = pid => state.supervisors.filter(sv=>sv.reportsToId===pid);
+  const nodeHtml = sv => {
     const team = staffUnderSupervisor(sv.id);
+    const kids = childrenOf(sv.id);
     return `
-    <div class="org-print-card">
-      <div class="org-print-head" style="border-color:${sv.color};"><span class="org-print-dot" style="background:${sv.color};"></span>${escapeHtml(sv.name)} <span class="org-print-count">${team.length}</span></div>
-      ${team.length ? team.map(memberLine).join('') : '<div class="org-print-member small-muted">No one assigned</div>'}
+    <div class="org-print-node">
+      <div class="org-print-head" style="border-color:${sv.color};"><span class="org-print-dot" style="background:${sv.color};"></span>${escapeHtml(sv.name)} <span class="org-print-tier">${SUP_TIER_LABELS[sv.tier||'sl']}</span><span class="org-print-count">${team.length}</span></div>
+      ${team.length ? `<div class="org-print-members">${team.map(memberLine).join('')}</div>` : (kids.length?'':'<div class="org-print-member small-muted">No one assigned</div>')}
+      ${kids.length ? `<div class="org-print-children">${kids.map(nodeHtml).join('')}</div>` : ''}
     </div>`;
-  }).join('');
+  };
+  // Same "roots are anyone with no valid parent" rule as the modal, so a
+  // from-scratch flat org (nobody's hierarchy set yet) still prints
+  // exactly like the original flat grid of cards.
+  const roots = state.supervisors.filter(sv=>!sv.reportsToId || !byId[sv.reportsToId]);
+  const tree = roots.map(nodeHtml).join('');
   const unassignedCard = unassigned.length ? `
-    <div class="org-print-card">
-      <div class="org-print-head" style="border-color:#9CA3AF;"><span class="org-print-dot" style="background:#9CA3AF;"></span>No supervisor <span class="org-print-count">${unassigned.length}</span></div>
-      ${unassigned.map(memberLine).join('')}
+    <div class="org-print-node">
+      <div class="org-print-head" style="border-color:#9CA3AF;"><span class="org-print-dot" style="background:#9CA3AF;"></span>No supervisor<span class="org-print-count">${unassigned.length}</span></div>
+      <div class="org-print-members">${unassigned.map(memberLine).join('')}</div>
     </div>` : '';
   const css = `
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:24px;color:#1a1a1a;}
     h1{font-size:20px;margin:0 0 4px;}
     p{margin:0 0 20px;color:#555;font-size:13px;}
-    .org-print-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
-    .org-print-card{border:1px solid #ddd;border-radius:10px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid;}
+    .org-print-tree{display:flex;flex-direction:column;gap:14px;}
+    .org-print-node{border:1px solid #ddd;border-radius:10px;padding:12px 14px;break-inside:avoid;page-break-inside:avoid;}
     .org-print-head{font-weight:700;font-size:15px;border-bottom:3px solid #ccc;padding-bottom:8px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
     .org-print-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;}
+    .org-print-tier{font-size:10px;font-weight:700;color:#777;background:#f2f2f2;border-radius:4px;padding:1px 5px;}
     .org-print-count{margin-left:auto;font-weight:400;color:#777;font-size:13px;}
     .org-print-member{font-size:14px;padding:3px 0;}
+    .org-print-members{margin-bottom:2px;}
     .org-print-ags{font-size:10px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;}
+    .org-print-children{margin-top:10px;padding-left:16px;border-left:2px dashed #ccc;display:flex;flex-direction:column;gap:12px;}
     @page{margin:16mm;}
   `;
-  const body = `<h1>Organization diagram</h1><p>${escapeHtml(state.staff.length+' staff · '+todayLabel())}</p><div class="org-print-grid">${cards}${unassignedCard}</div>`;
+  const body = `<h1>Organization diagram</h1><p>${escapeHtml(state.staff.length+' staff · '+todayLabel())}</p><div class="org-print-tree">${tree}${unassignedCard}</div>`;
   return { css, body };
 }
 
@@ -20917,24 +20988,33 @@ function attachHandlers(){
     }));
     on('sup-new-btn', ()=>openModal({type:'supervisor-manager'}));
     on('sup-view-org-link', ()=>openModal({type:'org-diagram'}));
+    const supTierSelect = document.getElementById('sup-tier-select');
+    if(supTierSelect) supTierSelect.addEventListener('change', ()=>{
+      // Changing tier changes which "reports to" options are even valid
+      // (an SL reports to an APSM, an APSM to a PSM) — reset the pick
+      // rather than carry over a now-mismatched id.
+      openModal({...activeModal, tierDraft: supTierSelect.value, reportsToDraft: ''});
+    });
     on('sup-save-btn', async ()=>{
       const name = document.getElementById('sup-name-input').value.trim();
       const color = document.getElementById('sup-color-input').value;
+      const tier = document.getElementById('sup-tier-select')?.value || 'sl';
+      const reportsToId = document.getElementById('sup-reportsto-select')?.value || null;
       if(!name){ showToast('Enter a name', 'rust'); return; }
       if(activeModal.editId){
         const sv = getSupervisorById(activeModal.editId);
-        const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color}));
-        sv.name = name; sv.color = color;
+        const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color, tier, reportsToId}));
+        sv.name = name; sv.color = color; sv.tier = tier; sv.reportsToId = reportsToId;
         showToast(sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       } else {
-        const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color}));
+        const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color, tier, reportsToId}));
         // A fake local id here would later be sent as a staff member's
         // supervisorId — the real supervisors table has no such row, so
         // that write is rejected outright (not even a valid uuid), and a
         // realtime refresh wipes the phantom supervisor out of the list
         // entirely. Stay on the form instead of pretending it worked.
         if(!sync.ok){ showToast(`Not saved to the database — ${sync.error?.message||'try again'}`,'rust'); return; }
-        state.supervisors.push({id: sync.result.id, name, color});
+        state.supervisors.push({id: sync.result.id, name, color, tier, reportsToId});
         showToast('Supervisor added — saved to database ✓', 'teal');
       }
       saveState();
@@ -23357,7 +23437,7 @@ function mapSupabaseBoard(board){
     callouts[row.staff_id] = true;
   });
 
-  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color }));
+  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color, tier: sv.tier||'sl', reportsToId: sv.reports_to_id||null }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
   const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0, rotates: p.rotates!==false })).sort((a,b)=>a.sortOrder-b.sortOrder);
