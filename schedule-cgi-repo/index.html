@@ -12825,6 +12825,25 @@ function buildDailyChangesEmail(){
   const lateRows  = attendanceRowsFor('late_arrival');
   const earlyRows = attendanceRowsFor('left_early');
 
+  // "Today only"/"This rotation" moves made straight on the board (drag or
+  // tap, then marking it temporary) write to state.tempMoves — a SEPARATE
+  // mechanism from state.coverage, which only the official "Assign
+  // coverage" flow (the Coverage dashboard) writes to. Reassignments made
+  // the quick way, by dragging someone over to cover for whoever's out,
+  // never showed up here at all even though it's exactly the "who's
+  // covering whom today" info this email exists to report — only the ones
+  // routed through the Coverage dashboard did.
+  const coveringIds = new Set(rows.map(r=>r.coverer?.id).filter(Boolean));
+  const tempMoveRows = Object.keys(state.tempMoves||{})
+    .filter(sid=>!coveringIds.has(sid) && getStaffById(sid))
+    .map(sid=>{
+      const s = getStaffById(sid);
+      const tm = state.tempMoves[sid];
+      const toAreaId = state.assignments[sid];
+      return {s, toArea: toAreaId?getAreaById(toAreaId):null, fromArea: getAreaById(tm.returnToAreaId)};
+    })
+    .sort((a,b)=>a.s.name.localeCompare(b.s.name));
+
   const listOrNone = list => list.length===0
     ? ['None today.']
     : list.map(r=>'- '+r.s.name+' ('+(r.area?r.area.name:'no area')+')');
@@ -12847,16 +12866,18 @@ function buildDailyChangesEmail(){
   // knowing who's missing is the one piece of real info left to give.
   lines.push('', 'REASSIGNMENTS');
   const visibleRows = rows.filter(r=>!r.waived);
-  if(rows.length===0){
-    lines.push('No call-outs today — no coverage needed.');
-  } else if(visibleRows.length===0){
-    lines.push('No reassignments needed today.');
+  if(visibleRows.length===0 && tempMoveRows.length===0){
+    lines.push(rows.length===0 ? 'No call-outs today — no coverage needed.' : 'No reassignments needed today.');
   } else {
     visibleRows.forEach(r=>{
       const areaName = r.area ? r.area.name : 'No area';
       lines.push(r.coverer
         ? r.coverer.name+(r.covererFromArea?' ('+r.covererFromArea.name+')':'')+' → '+areaName
         : r.s.name+' ('+areaName+') → NEEDS COVERAGE');
+    });
+    tempMoveRows.forEach(r=>{
+      const areaName = r.toArea ? r.toArea.name : 'No area';
+      lines.push(r.s.name+(r.fromArea?' ('+r.fromArea.name+')':'')+' → '+areaName);
     });
     const pending = rows.filter(r=>!r.coverer && !r.waived && r.area).length;
     lines.push('', pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
