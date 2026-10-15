@@ -12865,6 +12865,13 @@ function buildDailyChangesEmail(){
   // NEEDS COVERAGE, since there's no coverer name to show instead and
   // knowing who's missing is the one piece of real info left to give.
   lines.push('', 'REASSIGNMENTS');
+  // A reassigned person with a late-start flag is never excluded or
+  // filtered out here (nothing in this function looks at lateStart at
+  // all) — but with no indicator on the line, there'd be no way to tell
+  // from the email that they're not actually in yet at the start of the
+  // day, which matters for a reassignment specifically. Same "tag it
+  // instead of hiding it" treatment as the Coverage dashboard's ⏰ badge.
+  const lateTag = s => s.lateStart ? ' ⏰ late start '+s.lateStart : '';
   const visibleRows = rows.filter(r=>!r.waived);
   if(visibleRows.length===0 && tempMoveRows.length===0){
     lines.push(rows.length===0 ? 'No call-outs today — no coverage needed.' : 'No reassignments needed today.');
@@ -12872,12 +12879,12 @@ function buildDailyChangesEmail(){
     visibleRows.forEach(r=>{
       const areaName = r.area ? r.area.name : 'No area';
       lines.push(r.coverer
-        ? r.coverer.name+(r.covererFromArea?' ('+r.covererFromArea.name+')':'')+' → '+areaName
+        ? r.coverer.name+(r.covererFromArea?' ('+r.covererFromArea.name+')':'')+' → '+areaName+lateTag(r.coverer)
         : r.s.name+' ('+areaName+') → NEEDS COVERAGE');
     });
     tempMoveRows.forEach(r=>{
       const areaName = r.toArea ? r.toArea.name : 'No area';
-      lines.push(r.s.name+(r.fromArea?' ('+r.fromArea.name+')':'')+' → '+areaName);
+      lines.push(r.s.name+(r.fromArea?' ('+r.fromArea.name+')':'')+' → '+areaName+lateTag(r.s));
     });
     const pending = rows.filter(r=>!r.coverer && !r.waived && r.area).length;
     lines.push('', pending>0 ? pending+' area(s) still need coverage.' : 'All areas covered.');
