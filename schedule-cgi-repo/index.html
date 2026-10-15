@@ -12972,8 +12972,13 @@ function renderCalloutDashModal(m){
   // requested shows as a non-interactive "waiting" row rather than
   // offering to request it again.
   const candRow = (c,sid,areaId,isBest) => {
+    // "exp" is their history in the area that NEEDS coverage, while "from"
+    // is where they're currently placed (i.e. where pulling them pulls
+    // them FROM) — two unrelated facts that used to run together as plain
+    // text ("2× · Counter Acceptance") with nothing distinguishing which
+    // was which, reading like one confusing phrase instead of two.
     const from = getAreaById(c.currentArea);
-    const exp  = c.hasExperience?(c.sinceWorked===0?'Last rotation':c.timesWorked+'×'):'New here';
+    const exp  = c.hasExperience?(c.sinceWorked===0?'Worked here last rotation':c.timesWorked+'× here before'):'No experience here';
     const alreadyRequested = isTeamLeadRole() && myReassignRequests.some(r=>r.status==='pending' && r.candidate_staff_id===c.staff.id && r.area_id===areaId);
     if(alreadyRequested){
       return '<div class="cd-cand-tap" style="opacity:.6;cursor:default;">'
@@ -12989,7 +12994,7 @@ function renderCalloutDashModal(m){
       +'<div class="cd-cand-av">'+escapeHtml(c.staff.name.charAt(0))+'</div>'
       +'<div class="cd-cand-body">'
         +'<div class="cd-cand-name">'+escapeHtml(c.staff.name)+'</div>'
-        +'<div class="cd-cand-sub">'+exp+(from?(' · '+escapeHtml(from.name)):'')+'</div>'
+        +'<div class="cd-cand-sub">'+exp+(from?(' · from '+escapeHtml(from.name)):'')+'</div>'
       +'</div>'
       +(isBest?'<div class="cd-best-tag">★ Best</div>':'')
       +'</button>';
