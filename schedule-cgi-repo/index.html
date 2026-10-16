@@ -14987,6 +14987,14 @@ function renderWeeklyTimeReviewModal(m){
   const weekDates = m.weekStart ? Array.from({length:7}, (_,i)=>{
     const d = new Date(m.weekStart+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+i); return d.toISOString().slice(0,10);
   }) : daysSeen;
+  // Mon-Fri always show as the upload-progress boxes — the normal work
+  // week. Sat/Sun only join the strip once something's actually been
+  // uploaded for them, instead of sitting there empty every week for a
+  // team that doesn't work weekends.
+  const progressDates = weekDates.filter(d=>{
+    const dow = new Date(d+'T00:00:00Z').getUTCDay();
+    return (dow>=1 && dow<=5) || daysSeen.includes(d);
+  });
   const reportDays = m.reportDays || daysSeen;
   const reportStaffIds = m.reportStaffIds || teamStaff.map(s=>s.id);
   const rows = trBuildRows(teamStaff, m.punches, decisions, daysSeen, state.timeOff, state.attendanceEvents);
@@ -15142,9 +15150,9 @@ function renderWeeklyTimeReviewModal(m){
             <div style="display:flex;gap:14px;align-items:center;">
               <div class="wtr-bignum"><b>${goodN}</b><span>/ ${cards.length}</span></div>
               <div class="wtr-biglbl">
-                <strong>in good standing</strong><small>${daysSeen.length} of 7 days uploaded</small>
+                <strong>in good standing</strong><small>${daysSeen.length} of ${progressDates.length} days uploaded</small>
                 <div class="wtr-upload-progress" title="Upload one day at a time or the whole week — this fills in as each day lands">
-                  ${weekDates.map(d=>{
+                  ${progressDates.map(d=>{
                     const got = daysSeen.includes(d);
                     const lab = new Date(d+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).slice(0,1);
                     return `<span class="wtr-upload-seg${got?' done':''}" title="${escapeHtml(friendlyDate(d))}${got?' — uploaded':' — not uploaded yet'}">${lab}</span>`;
