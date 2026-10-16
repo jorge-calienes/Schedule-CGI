@@ -5259,6 +5259,26 @@ button{font-family:var(--sans);cursor:pointer;}
 .wtr-late-resolved-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .wtr-link-btn{background:none;border:none;padding:0;color:var(--md-sys-color-primary);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
 
+/* Per-card "N to review" count — lets a supervisor size up the whole
+   team at a glance instead of opening every card to find out. */
+.wtr-pending-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:18px;height:18px;padding:0 5px;margin-left:6px;
+    border-radius:999px;background:#8E2023;color:#fff;
+    font-size:10px;font-weight:700;vertical-align:middle;
+  }
+:root[data-theme="dark"] .wtr-pending-badge{background:var(--md-sys-color-error);color:var(--md-sys-color-on-error);}
+
+/* "Up next" prompt — once the focused person's queue clears, this is the
+   one click that keeps a team walkthrough moving instead of scrolling
+   back up to the grid and picking the next person by hand. */
+.wtr-next-up{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    margin-top:10px;padding:12px 14px;border-radius:var(--md-sys-shape-corner-medium);
+    background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);
+    font-size:13px;
+  }
+
 /* ── Coverage planning dashboard ── */
 .to-toolbar{display:flex;gap:8px;align-items:center;padding:var(--md-space-3) 0 var(--md-space-3);position:sticky;top:0;background:var(--md-sys-color-surface);z-index:2;border-bottom:1px solid var(--md-sys-color-outline-variant);margin-bottom:var(--md-space-3);}
 .to-toolbar input[type="text"]{flex:1;padding:6px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);font-family:var(--sans);font-size:var(--md-sys-typescale-body-medium-size);}
@@ -14966,6 +14986,13 @@ function renderWeeklyTimeReviewModal(m){
   const openRows = rows.filter(r=>r.d.open);
   const focusCard = cards.find(c=>c.s.staff.id===m.focusStaffId);
   const queueRows = openRows.filter(r=>(!m.focusStaffId || r.staff.id===m.focusStaffId) && (!m.standingFilter || levelByStaffId[r.staff.id]===m.standingFilter));
+  // Walk-the-team order: whoever still has an open item, action-level
+  // first (cards is already sorted that way). Recomputed fresh every
+  // render straight from decisions, so the moment the focused person's
+  // last item is accepted/approved they drop out of this list on their
+  // own — no separate "mark done" bookkeeping needed.
+  const needsReview = cards.filter(c=>(!m.standingFilter || c.st.level===m.standingFilter) && c.rows.some(r=>r.d.open));
+  const nextPerson = (m.focusStaffId && !needsReview.some(c=>c.s.staff.id===m.focusStaffId)) ? needsReview[0] : null;
 
   const dayStrip = (sRows) => {
     const byDay = new Map(sRows.map(r=>[r.day, r]));
@@ -15155,18 +15182,21 @@ function renderWeeklyTimeReviewModal(m){
         <div class="wtr-filter-chip">Showing ${escapeHtml(FILTER_LABELS[m.standingFilter])}<button id="wtr-clear-filter" title="Clear filter">✕</button></div>`:''}
         ${visibleCards.length?`
         <div class="wtr-people">
-          ${visibleCards.map(c=>`
+          ${visibleCards.map(c=>{
+            const openN = c.rows.filter(r=>r.d.open).length;
+            return `
           <div class="wtr-pc ${c.st.tone}${m.focusStaffId===c.s.staff.id?' sel':''}" data-wtr-focus="${c.s.staff.id}" style="cursor:pointer;">
             <div class="wtr-pc-body">
-              <div class="wtr-pc-head"><span class="wtr-av">${escapeHtml((c.s.staff.name.split(' ').map(p=>p[0]).join('').slice(0,2)||'').toUpperCase())}</span><div><b>${escapeHtml(c.s.staff.name)}</b><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></div></div>
+              <div class="wtr-pc-head"><span class="wtr-av">${escapeHtml((c.s.staff.name.split(' ').map(p=>p[0]).join('').slice(0,2)||'').toUpperCase())}</span><div><b>${escapeHtml(c.s.staff.name)}</b><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></div>${openN?`<span class="wtr-pending-badge" title="${openN} item${openN===1?'':'s'} to review">${openN}</span>`:''}</div>
               <div><div class="wtr-ptime"><span class="t">${trHm(c.s.worked)}</span><span class="small-muted">of ${trHm(c.s.sched)}</span></div><div class="wtr-prog"><i style="width:${c.s.sched?Math.min(100,c.s.worked/c.s.sched*100):0}%"></i></div></div>
               <div class="wtr-dstrip" style="--n:${daysSeen.length};">${dayStrip(c.rows)}</div>
               <ul class="wtr-why">${c.st.reasons.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
               <div class="wtr-last-reviewed">${c.lastReviewedAt?`Last reviewed ${escapeHtml(friendlyDate(c.lastReviewedAt.slice(0,10)))}`:'Not reviewed yet'}</div>
             </div>
-          </div>`).join('')}
+          </div>`;}).join('')}
         </div>`:`<div class="small-muted" style="padding:16px 0;text-align:center;">Nobody matches this filter right now.</div>`}
 
+        <div id="wtr-queue-anchor">
         ${queueRows.length?`
         <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
           <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
@@ -15175,7 +15205,13 @@ function renderWeeklyTimeReviewModal(m){
         <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
           ${queueRows.map(itemHtml).join('')}
         </div>`:`
-        <div class="wtr-section-head ok" style="margin-top:16px;"><span class="wtr-section-icon">✓</span>Nothing waiting on you${focusCard?' for '+escapeHtml(focusCard.s.staff.name):(m.standingFilter?' in this view':'')}</div>`}
+        <div class="wtr-section-head ok" style="margin-top:16px;"><span class="wtr-section-icon">✓</span>Nothing waiting on you${focusCard?' for '+escapeHtml(focusCard.s.staff.name):(m.standingFilter?' in this view':'')}</div>
+        ${nextPerson?`
+        <div class="wtr-next-up">
+          <span>Up next: <b>${escapeHtml(nextPerson.s.staff.name)}</b> — ${nextPerson.rows.filter(r=>r.d.open).length} item${nextPerson.rows.filter(r=>r.d.open).length===1?'':'s'} to review</span>
+          <button class="btn btn-sm btn-primary" data-wtr-focus="${nextPerson.s.staff.id}">Review next →</button>
+        </div>` : (m.focusStaffId ? `<p class="small-muted" style="margin-top:8px;">That's everyone${m.standingFilter?' in this view':''} — nothing left to review.</p>` : '')}`}
+        </div>
 
         ${(()=>{
           const lateRows = rows.filter(r=>r.d.late>0);
@@ -22490,8 +22526,16 @@ function attachHandlers(){
       openModal({...m, teamStaff: myReviewTeamStaff(m.supervisorFilter), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
     });
     document.querySelectorAll('[data-wtr-focus]').forEach(el=>el.addEventListener('click', ()=>{
-      m.focusStaffId = m.focusStaffId===el.dataset.wtrFocus ? '' : el.dataset.wtrFocus;
+      const wasFocused = m.focusStaffId===el.dataset.wtrFocus;
+      m.focusStaffId = wasFocused ? '' : el.dataset.wtrFocus;
       render();
+      // Focusing someone (a card, or the "Review next" button) jumps
+      // straight to their items instead of leaving the click to scroll
+      // down manually — un-focusing (the toggle-off case) stays put.
+      if(!wasFocused){
+        const anchor = document.getElementById('wtr-queue-anchor');
+        if(anchor) anchor.scrollIntoView({behavior:'smooth', block:'start'});
+      }
     }));
     document.querySelectorAll('[data-wtr-editslot]').forEach(el=>el.addEventListener('click', ()=>{
       m.editSlot = el.dataset.wtrEditslot;
