@@ -5237,6 +5237,28 @@ button{font-family:var(--sans);cursor:pointer;}
 [data-wtr-accept][disabled]{opacity:.45;cursor:not-allowed;}
 .wtr-late-btn.sel{box-shadow:inset 0 0 0 1.5px currentColor;font-weight:700;}
 
+/* Hero health bar + clickable KPI filters — turns the dashboard from a
+   readout into a filter for the team grid and approval queue below it. */
+.wtr-health-bar{display:flex;height:9px;border-radius:999px;overflow:hidden;gap:2px;background:var(--md-sys-color-surface-container-high);}
+.wtr-health-seg{min-width:4px;}
+.wtr-health-seg.bad{background:#8E2023;} .wtr-health-seg.warn{background:#d19a1c;} .wtr-health-seg.ok{background:#165A39;}
+.wtr-kpi-click{cursor:pointer;border:2px solid transparent;font:inherit;appearance:none;transition:border-color .15s,transform .1s,box-shadow .15s;}
+.wtr-kpi-click:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.08);}
+.wtr-kpi-click.active{border-color:currentColor;}
+.wtr-filter-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--md-sys-color-on-surface-variant);background:var(--md-sys-color-surface-container-high);border-radius:999px;padding:5px 6px 5px 11px;margin-bottom:10px;}
+.wtr-filter-chip button{background:none;border:none;cursor:pointer;color:inherit;font-size:13px;line-height:1;padding:3px 5px;border-radius:50%;}
+.wtr-filter-chip button:hover{background:rgba(0,0,0,.08);}
+
+/* Collapsible section header (Week log) — plain button reset to a text
+   row with a chevron, same pattern used for the KPI filter chips above. */
+.wtr-collapsible-head{display:flex;align-items:center;gap:8px;cursor:pointer;background:none;border:none;font:inherit;padding:0;width:100%;text-align:left;color:var(--md-sys-color-on-surface);}
+.wtr-collapsible-chevron{font-size:10px;transition:transform .15s;flex:none;display:inline-block;}
+.wtr-collapsible-chevron.open{transform:rotate(90deg);}
+
+/* Resolved-items summary line (late starts once nothing's pending) */
+.wtr-late-resolved-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.wtr-link-btn{background:none;border:none;padding:0;color:var(--md-sys-color-primary);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+
 /* ── Coverage planning dashboard ── */
 .to-toolbar{display:flex;gap:8px;align-items:center;padding:var(--md-space-3) 0 var(--md-space-3);position:sticky;top:0;background:var(--md-sys-color-surface);z-index:2;border-bottom:1px solid var(--md-sys-color-outline-variant);margin-bottom:var(--md-space-3);}
 .to-toolbar input[type="text"]{flex:1;padding:6px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);font-family:var(--sans);font-size:var(--md-sys-typescale-body-medium-size);}
@@ -8967,7 +8989,7 @@ async function loadTimeReviewPatterns(staffIds, weeksList){
 // supervisor login, who's always scoped to their own linked team.
 async function openWeeklyTimeReviewTeam(supervisorFilterId){
   const teamStaff = myReviewTeamStaff(supervisorFilterId);
-  openModal({type:'weekly-time-review', teamStaff, supervisorFilter:supervisorFilterId||'', punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, accounts:[], focusStaffId:'', editSlot:'', showRules:false, loading:false, loadingSaved:!!teamStaff.length, error:''});
+  openModal({type:'weekly-time-review', teamStaff, supervisorFilter:supervisorFilterId||'', punches:null, unmatchedTdis:[], decisions:{}, availableWeeks:[], patterns:{}, accounts:[], focusStaffId:'', editSlot:'', showRules:false, standingFilter:'', showAllLate:false, showDayLog:false, loading:false, loadingSaved:!!teamStaff.length, error:''});
   if(!teamStaff.length || !window.RC) return;
   try{
     const staffIds = teamStaff.map(s=>s.id);
@@ -14934,9 +14956,16 @@ function renderWeeklyTimeReviewModal(m){
   }).sort((a,b)=>(TR_LEVEL_ORDER[a.st.level]-TR_LEVEL_ORDER[b.st.level])||a.s.staff.name.localeCompare(b.s.staff.name));
   const totWorked = summary.reduce((a,s)=>a+s.worked,0), totSched = summary.reduce((a,s)=>a+s.sched,0);
   const goodN = cards.filter(c=>c.st.level==='good').length, actionN = cards.filter(c=>c.st.level==='action').length, watchN = cards.filter(c=>c.st.level==='watch').length;
+  // Clicking a standing KPI in the hero (data-wtr-filter) narrows both the
+  // team grid and the approval queue below to just that group — the hero
+  // becomes a filter, not just a readout, so "3 need action" is one click
+  // away from being the only thing on screen.
+  const levelByStaffId = {}; cards.forEach(c=>{ levelByStaffId[c.s.staff.id] = c.st.level; });
+  const visibleCards = m.standingFilter ? cards.filter(c=>c.st.level===m.standingFilter) : cards;
+  const FILTER_LABELS = {action:'people who need action', watch:'people to keep an eye on', good:'people in good standing'};
   const openRows = rows.filter(r=>r.d.open);
   const focusCard = cards.find(c=>c.s.staff.id===m.focusStaffId);
-  const queueRows = openRows.filter(r=>!m.focusStaffId || r.staff.id===m.focusStaffId);
+  const queueRows = openRows.filter(r=>(!m.focusStaffId || r.staff.id===m.focusStaffId) && (!m.standingFilter || levelByStaffId[r.staff.id]===m.standingFilter));
 
   const dayStrip = (sRows) => {
     const byDay = new Map(sRows.map(r=>[r.day, r]));
@@ -15010,6 +15039,41 @@ function renderWeeklyTimeReviewModal(m){
     </div>`;
   };
 
+  // Shared table body for the late-starts section below — called once for
+  // whatever subset is currently in view (just the pending ones by
+  // default, everything once "Show all" is clicked) so the table markup
+  // isn't duplicated per state.
+  const lateTableHtml = (rowsList) => !rowsList.length ? '' : `
+    <div class="wtr-table-scroll" style="margin-top:10px;">
+      <table class="wtr-table">
+        <thead><tr><th>Person</th><th>Day</th><th>Started</th><th>Late</th><th>Lunch</th><th>Shortened</th><th>Time counted</th><th>Status</th><th>Your decision</th></tr></thead>
+        <tbody>
+          ${rowsList.map(r=>{
+            const dec = decisions[r.key]||{};
+            const k = escapeHtml(r.key);
+            const st = trLateStatus(r.d, dec);
+            return `<tr>
+              <td><b>${escapeHtml(r.staff.name)}</b></td>
+              <td>${escapeHtml(friendlyDate(r.day))}</td>
+              <td class="t">${trFmtClock(r.d.sl[0])} <span class="small-muted">(sched ${trFmtClock(r.sched.s)})</span></td>
+              <td class="t">${r.d.late}m</td>
+              <td class="t">${r.d.lun==null?'—':r.d.lun+'m'}</td>
+              <td class="t">${r.d.cut==null?'—':r.d.cut+'m'}</td>
+              <td class="t">${r.d.netMin==null?'—':trHm(r.d.netMin)}${r.d.vs!=null?` <span class="small-muted">(${r.d.vs>0?'+':''}${r.d.vs}m)</span>`:''}</td>
+              <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span></td>
+              <td>
+                <div class="wtr-qrow" style="flex-wrap:nowrap;">
+                  <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#165A39;color:#165A39;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
+                  <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#8E2023;color:#8E2023;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
+                  <input type="text" class="wtr-note-input" style="width:140px;" data-wtr-latenote-key="${k}" placeholder="Who approved" value="${escapeHtml(dec.lateNote||'')}"/>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
   return `
   <div class="modal" style="max-width:1000px;">
     <div class="modal-head">
@@ -15035,10 +15099,17 @@ function renderWeeklyTimeReviewModal(m){
               <button class="btn btn-light btn-sm" id="wtr-toggle-rules">⚙ Rules</button>
             </div>
           </div>
+
+          <div class="wtr-health-bar" title="${actionN} need action · ${watchN} to keep an eye on · ${goodN} in good standing">
+            ${actionN?`<div class="wtr-health-seg bad" style="flex-grow:${actionN};"></div>`:''}
+            ${watchN?`<div class="wtr-health-seg warn" style="flex-grow:${watchN};"></div>`:''}
+            ${goodN?`<div class="wtr-health-seg ok" style="flex-grow:${goodN};"></div>`:''}
+          </div>
+
           <div class="wtr-hero-row">
             <div class="wtr-kpis">
-              ${actionN?`<span class="wtr-kpi bad"><b>${actionN}</b>need${actionN===1?'s':''} action</span>`:''}
-              ${watchN?`<span class="wtr-kpi warn"><b>${watchN}</b>to keep an eye on</span>`:''}
+              <button class="wtr-kpi bad wtr-kpi-click${m.standingFilter==='action'?' active':''}" data-wtr-filter="action"><b>${actionN}</b>need${actionN===1?'s':''} action</button>
+              <button class="wtr-kpi warn wtr-kpi-click${m.standingFilter==='watch'?' active':''}" data-wtr-filter="watch"><b>${watchN}</b>to keep an eye on</button>
               ${openRows.length?`<span class="wtr-kpi bad"><b>${openRows.length}</b>item${openRows.length===1?'':'s'} to check</span>`:`<span class="wtr-kpi ok"><b>0</b>items open</span>`}
               <span class="wtr-kpi ${(totWorked-totSched)<-TR_RULES.standTol||(totWorked-totSched)>TR_RULES.overTol?'warn':'ok'}"><b>${trHm(totWorked)}</b>worked of ${trHm(totSched)} scheduled</span>
             </div>
@@ -15079,9 +15150,12 @@ function renderWeeklyTimeReviewModal(m){
           </div>
         </div>`:''}
 
-        <h2 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--md-sys-color-on-surface-variant);margin:16px 0 10px;">${authState.account?.role==='admin'?'Team':'Your team'} · click a person to see just their items</h2>
+        <h2 style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--md-sys-color-on-surface-variant);margin:16px 0 10px;">${authState.account?.role==='admin'?'Team':'Your team'} · click a person, or a status above, to focus</h2>
+        ${m.standingFilter?`
+        <div class="wtr-filter-chip">Showing ${escapeHtml(FILTER_LABELS[m.standingFilter])}<button id="wtr-clear-filter" title="Clear filter">✕</button></div>`:''}
+        ${visibleCards.length?`
         <div class="wtr-people">
-          ${cards.map(c=>`
+          ${visibleCards.map(c=>`
           <div class="wtr-pc ${c.st.tone}${m.focusStaffId===c.s.staff.id?' sel':''}" data-wtr-focus="${c.s.staff.id}" style="cursor:pointer;">
             <div class="wtr-pc-body">
               <div class="wtr-pc-head"><span class="wtr-av">${escapeHtml((c.s.staff.name.split(' ').map(p=>p[0]).join('').slice(0,2)||'').toUpperCase())}</span><div><b>${escapeHtml(c.s.staff.name)}</b><span class="wtr-standing ${c.st.tone}">${escapeHtml(c.st.label)}</span></div></div>
@@ -15091,62 +15165,73 @@ function renderWeeklyTimeReviewModal(m){
               <div class="wtr-last-reviewed">${c.lastReviewedAt?`Last reviewed ${escapeHtml(friendlyDate(c.lastReviewedAt.slice(0,10)))}`:'Not reviewed yet'}</div>
             </div>
           </div>`).join('')}
+        </div>`:`<div class="small-muted" style="padding:16px 0;text-align:center;">Nobody matches this filter right now.</div>`}
+
+        ${queueRows.length?`
+        <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
+          ${focusCard && queueRows.some(r=>r.d.issueOpen && !r.d.needV) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
         </div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
+          ${queueRows.map(itemHtml).join('')}
+        </div>`:`
+        <div class="wtr-section-head ok" style="margin-top:16px;"><span class="wtr-section-icon">✓</span>Nothing waiting on you${focusCard?' for '+escapeHtml(focusCard.s.staff.name):(m.standingFilter?' in this view':'')}</div>`}
 
         ${(()=>{
           const lateRows = rows.filter(r=>r.d.late>0);
           if(!lateRows.length) return '';
+          const pendingLate = lateRows.filter(r=>r.d.lateOpen);
+          const resolvedLate = lateRows.filter(r=>!r.d.lateOpen);
           const okN = lateRows.filter(r=>trLateStatus(r.d, decisions[r.key]||{})[1]==='ok').length;
-          const waitN = lateRows.filter(r=>r.d.lateOpen).length;
+          const waitN = pendingLate.length;
           const noN = lateRows.filter(r=>r.d.lateNo).length;
           const lateMin = lateRows.reduce((a,r)=>a+r.d.late,0);
           const madeMin = lateRows.filter(r=>r.d.cut!=null).reduce((a,r)=>a+Math.min(r.d.late,r.d.cut),0);
+          const approvedN = lateRows.filter(r=>decisions[r.key]?.late==='Yes').length;
+
+          // Nothing left to decide — this is history, not work. One line
+          // instead of a whole table + KPI row, with an escape hatch for
+          // whoever actually wants to audit it.
+          if(waitN===0){
+            return `
+            <div class="wtr-item" style="margin-top:16px;">
+              <div class="wtr-late-resolved-line">
+                <span class="wtr-section-icon" style="background:#e0f2e8;color:#165A39;">✓</span>
+                <span><b>${lateRows.length}</b> late start${lateRows.length===1?'':'s'} this week — all reviewed (${approvedN} approved${noN?`, ${noN} not approved`:''}).</span>
+                <button class="wtr-link-btn" id="wtr-toggle-late-detail">${m.showAllLate?'Hide detail':'Show detail'}</button>
+              </div>
+              ${m.showAllLate ? lateTableHtml(lateRows) : ''}
+            </div>`;
+          }
+
           return `
           <div class="wtr-item" style="margin-top:16px;">
             <b>Late starts &amp; make-up approvals</b>
             <div class="wtr-kpis" style="margin-top:8px;">
-              <span class="wtr-kpi info"><b>${lateRows.length}</b>late start${lateRows.length===1?'':'s'}</span>
-              <span class="wtr-kpi ${okN?'ok':'info'}"><b>${okN}</b>approved and made up ✓</span>
-              <span class="wtr-kpi ${waitN?'warn':'ok'}"><b>${waitN}</b>waiting for your approval</span>
+              <span class="wtr-kpi bad"><b>${waitN}</b>waiting for your approval</span>
+              ${okN?`<span class="wtr-kpi ok"><b>${okN}</b>approved and made up ✓</span>`:''}
               ${noN?`<span class="wtr-kpi bad"><b>${noN}</b>not approved</span>`:''}
               <span class="wtr-kpi info"><b>${madeMin} of ${lateMin} min</b>made up through shorter lunch</span>
             </div>
-            <div class="wtr-table-scroll" style="margin-top:10px;">
-              <table class="wtr-table">
-                <thead><tr><th>Person</th><th>Day</th><th>Started</th><th>Late</th><th>Lunch</th><th>Shortened</th><th>Time counted</th><th>Status</th><th>Your decision</th></tr></thead>
-                <tbody>
-                  ${lateRows.map(r=>{
-                    const dec = decisions[r.key]||{};
-                    const k = escapeHtml(r.key);
-                    const st = trLateStatus(r.d, dec);
-                    return `<tr>
-                      <td><b>${escapeHtml(r.staff.name)}</b></td>
-                      <td>${escapeHtml(friendlyDate(r.day))}</td>
-                      <td class="t">${trFmtClock(r.d.sl[0])} <span class="small-muted">(sched ${trFmtClock(r.sched.s)})</span></td>
-                      <td class="t">${r.d.late}m</td>
-                      <td class="t">${r.d.lun==null?'—':r.d.lun+'m'}</td>
-                      <td class="t">${r.d.cut==null?'—':r.d.cut+'m'}</td>
-                      <td class="t">${r.d.netMin==null?'—':trHm(r.d.netMin)}${r.d.vs!=null?` <span class="small-muted">(${r.d.vs>0?'+':''}${r.d.vs}m)</span>`:''}</td>
-                      <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span></td>
-                      <td>
-                        <div class="wtr-qrow" style="flex-wrap:nowrap;">
-                          <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#165A39;color:#165A39;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
-                          <button class="btn btn-sm wtr-late-btn${dec.late==='No'?' sel':''}" style="border-color:#8E2023;color:#8E2023;" data-wtr-late="${k}" data-wtr-late-val="No">Not approved</button>
-                          <input type="text" class="wtr-note-input" style="width:140px;" data-wtr-latenote-key="${k}" placeholder="Who approved" value="${escapeHtml(dec.lateNote||'')}"/>
-                        </div>
-                      </td>
-                    </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
+            ${lateTableHtml(pendingLate)}
+            ${resolvedLate.length?`
+            <div class="wtr-late-resolved-line" style="margin-top:4px;">
+              <span class="small-muted">${resolvedLate.length} more already reviewed.</span>
+              <button class="wtr-link-btn" id="wtr-toggle-late-detail">${m.showAllLate?'Hide':'Show all'}</button>
             </div>
+            ${m.showAllLate ? lateTableHtml(resolvedLate) : ''}` : ''}
             <p class="small-muted" style="margin-top:8px;">A late start made up by a shorter lunch is counted as made up only after you approve it. Each decision updates the person's standing right away.</p>
           </div>`;
         })()}
 
         ${cards.length?`
         <div class="wtr-item" style="margin-top:16px;">
-          <b>Week log · day by day</b>
+          <button class="wtr-collapsible-head" id="wtr-toggle-daylog">
+            <span class="wtr-collapsible-chevron${m.showDayLog?' open':''}">▸</span>
+            <b>Week log · day by day</b>
+            <span class="small-muted">${m.showDayLog?'':'— full detail, hidden by default'}</span>
+          </button>
+          ${m.showDayLog?`
           <div class="wtr-table-scroll" style="margin-top:10px;">
             <table class="wtr-table">
               <thead><tr><th>Person</th>${daysSeen.map(d=>`<th>${escapeHtml(friendlyDate(d))} <button class="wtr-del-icon" data-wtr-del-day="${d}" title="Delete ${escapeHtml(friendlyDate(d))} for everyone">🗑</button></th>`).join('')}<th>Week so far</th><th>Standing</th></tr></thead>
@@ -15168,17 +15253,8 @@ function renderWeeklyTimeReviewModal(m){
             </table>
           </div>
           <p class="small-muted" style="margin-top:8px;">Hours worked each day (* estimated). Green clean, amber check, red incomplete, gray day off/called out, blank = not uploaded yet. 🗑 deletes a whole day/person; hover a cell for × to delete just that one day for that person.</p>
+          `:''}
         </div>`:''}
-
-        ${queueRows.length?`
-        <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-          <div class="wtr-section-head warn" style="margin:0;"><span class="wtr-section-icon">⚠</span>${queueRows.length} item${queueRows.length===1?'':'s'} waiting on you${focusCard?' · '+escapeHtml(focusCard.s.staff.name):''}</div>
-          ${focusCard && queueRows.some(r=>r.d.issueOpen && !r.d.needV) ? `<button class="btn btn-sm btn-primary" id="wtr-accept-all">✓ Accept all for ${escapeHtml(focusCard.s.staff.name)}</button>` : ''}
-        </div>
-        <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px;">
-          ${queueRows.map(itemHtml).join('')}
-        </div>`:`
-        <div class="wtr-section-head ok" style="margin-top:16px;"><span class="wtr-section-icon">✓</span>Nothing waiting on you${focusCard?' for '+escapeHtml(focusCard.s.staff.name):''}</div>`}
       </div>
     </div>
   </div>`;
@@ -22329,7 +22405,7 @@ function attachHandlers(){
         openModal({...m, punches, unmatchedTdis:result.unmatchedTdis, weekStart,
           weekLo:days[0], weekHi:days[days.length-1], decisions:trMapDecisions(decisionRows),
           availableWeeks:(weeksList&&weeksList.length)?weeksList:[weekStart],
-          focusStaffId:'', editSlot:'', loading:false, error:''});
+          focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
       }catch(e){
         openModal({...m, loading:false, error:(e&&e.message)||'Could not read that file.'});
       }
@@ -22345,7 +22421,7 @@ function attachHandlers(){
         ]);
         if(!week){ openModal({...m, loading:false}); return; }
         const days = week.punches.map(p=>p.day).sort();
-        openModal({...m, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions:trMapDecisions(decisionRows), unmatchedTdis:[], focusStaffId:'', editSlot:'', loading:false});
+        openModal({...m, punches:week.punches, weekStart:week.weekStart, weekLo:days[0], weekHi:days[days.length-1], decisions:trMapDecisions(decisionRows), unmatchedTdis:[], focusStaffId:'', editSlot:'', standingFilter:'', loading:false});
       }catch(e){
         openModal({...m, loading:false, error:'Could not load that week. ('+((e&&e.message)||'try again')+')'});
       }
@@ -22370,14 +22446,14 @@ function attachHandlers(){
         const decisions = trMapDecisions(decisionRows);
         if(week){
           const days = week.punches.map(p=>p.day).sort();
-          openModal({...m, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], focusStaffId:'', editSlot:'', loading:false, error:''});
+          openModal({...m, punches:week.punches, weekLo:days[0], weekHi:days[days.length-1], decisions, availableWeeks:weeksList||[], focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
         } else if(weeksList && weeksList.length){
           const nextStart = weeksList[0];
           const week2 = await window.RC.fetchTimeReviewWeekByStart({staffIds, weekStart:nextStart});
           const days2 = week2 ? week2.punches.map(p=>p.day).sort() : [];
-          openModal({...m, punches:week2?week2.punches:null, weekStart:nextStart, weekLo:days2[0]||'', weekHi:days2[days2.length-1]||'', decisions, availableWeeks:weeksList, focusStaffId:'', editSlot:'', loading:false, error:''});
+          openModal({...m, punches:week2?week2.punches:null, weekStart:nextStart, weekLo:days2[0]||'', weekHi:days2[days2.length-1]||'', decisions, availableWeeks:weeksList, focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
         } else {
-          openModal({...m, punches:null, weekStart:'', weekLo:'', weekHi:'', decisions:{}, availableWeeks:[], focusStaffId:'', editSlot:'', loading:false, error:''});
+          openModal({...m, punches:null, weekStart:'', weekLo:'', weekHi:'', decisions:{}, availableWeeks:[], focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
         }
       }catch(e){
         openModal({...m, loading:false, error:(e&&e.message)||'Could not delete that.'});
@@ -22411,7 +22487,7 @@ function attachHandlers(){
       dropEl.addEventListener('drop', e=>{ e.preventDefault(); dropEl.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
     }
     on('wtr-upload-another', ()=>{
-      openModal({...m, teamStaff: myReviewTeamStaff(m.supervisorFilter), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', loading:false, error:''});
+      openModal({...m, teamStaff: myReviewTeamStaff(m.supervisorFilter), punches:null, unmatchedTdis:[], decisions:{}, focusStaffId:'', editSlot:'', standingFilter:'', loading:false, error:''});
     });
     document.querySelectorAll('[data-wtr-focus]').forEach(el=>el.addEventListener('click', ()=>{
       m.focusStaffId = m.focusStaffId===el.dataset.wtrFocus ? '' : el.dataset.wtrFocus;
@@ -22509,6 +22585,14 @@ function attachHandlers(){
     const supervisorFilterEl = document.getElementById('wtr-supervisor-filter');
     if(supervisorFilterEl) supervisorFilterEl.addEventListener('change', ()=>openWeeklyTimeReviewTeam(supervisorFilterEl.value));
     on('wtr-toggle-rules', ()=>{ m.showRules = !m.showRules; render(); });
+    document.querySelectorAll('[data-wtr-filter]').forEach(el=>el.addEventListener('click', ()=>{
+      const val = el.dataset.wtrFilter;
+      m.standingFilter = m.standingFilter===val ? '' : val;
+      render();
+    }));
+    on('wtr-clear-filter', ()=>{ m.standingFilter = ''; render(); });
+    on('wtr-toggle-late-detail', ()=>{ m.showAllLate = !m.showAllLate; render(); });
+    on('wtr-toggle-daylog', ()=>{ m.showDayLog = !m.showDayLog; render(); });
     on('wtr-save-rules', ()=>{
       const next = {...TR_RULES};
       document.querySelectorAll('[data-wtr-rule]').forEach(el=>{
