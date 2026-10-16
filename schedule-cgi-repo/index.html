@@ -5825,6 +5825,53 @@ button{font-family:var(--sans);cursor:pointer;}
     .org-sup-name{flex-basis:90px;font-size:12.5px;}
     .org-sup-avatar{width:24px;height:24px;font-size:10px;}
   }
+
+/* ---------- org diagram — classic connected tree (tablet/desktop) ----------
+   Same supervisor boxes as the list above, laid out as a real top-down
+   org chart with connector lines via the standard <ul>/<li> half-border
+   trick (no JS measuring needed). Below 700px this stays hidden and the
+   indented .org-tree-wrap list above is what's shown instead — a true
+   box-and-line tree can't shrink to phone width without either illegible
+   boxes or forced horizontal scrolling, so the list is the phone layout
+   by design, not a fallback that "didn't get styled". */
+.org-chart-tree{display:none;}
+@media(min-width:700px){
+    .org-tree-wrap{display:none;}
+    .org-chart-tree{display:flex;}
+  }
+.org-chart-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:6px;}
+.org-chart-tree{justify-content:center;min-width:fit-content;}
+.org-chart-tree, .org-chart-tree ul{margin:0;padding:0;list-style:none;}
+.org-chart-tree ul{display:flex;justify-content:center;position:relative;}
+.org-chart-tree li{
+    display:flex;flex-direction:column;align-items:center;
+    list-style:none;position:relative;padding:28px 12px 0;
+  }
+.org-chart-tree li::before,.org-chart-tree li::after{
+    content:'';position:absolute;top:0;right:50%;
+    width:50%;height:28px;border-top:2px solid var(--c-border,#D4D4D8);
+  }
+.org-chart-tree li::after{right:auto;left:50%;border-left:2px solid var(--c-border,#D4D4D8);}
+.org-chart-tree li:only-child{padding-top:0;}
+.org-chart-tree li:only-child::before,.org-chart-tree li:only-child::after{display:none;}
+.org-chart-tree li:first-child::before,.org-chart-tree li:last-child::after{border:0 none;}
+.org-chart-tree li:last-child::before{border-right:2px solid var(--c-border,#D4D4D8);border-radius:0 8px 0 0;}
+.org-chart-tree li:first-child::after{border-radius:8px 0 0 0;}
+.org-chart-tree ul ul::before{
+    content:'';position:absolute;top:0;left:50%;
+    border-left:2px solid var(--c-border,#D4D4D8);width:0;height:28px;
+  }
+.org-chart-node{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.org-chart-tree .org-sup-box{width:auto;min-width:150px;max-width:220px;}
+.org-chart-tree .org-sup-name{flex-basis:auto;}
+.org-chart-chip-list{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:220px;}
+.org-chart-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:3px 8px 3px 3px;border-radius:99px;
+    background:var(--c-surface-2,#F5F5F7);border:1px solid var(--c-border,#E5E5EA);
+    font-size:10.5px;white-space:nowrap;
+  }
+.org-chart-chip.lead{border-color:var(--c-accent,#2F5FA8);background:#EAF1FC;}
 .org-ags-dot{
     font-size:8.5px;font-weight:700;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A;
     padding:0 4px;border-radius:99px;margin-left:2px;
@@ -13536,6 +13583,47 @@ function renderOrgDiagramModal(m){
   // flat list instead of silently vanishing from the chart.
   const roots = state.supervisors.filter(sv=>!sv.reportsToId || !byId[sv.reportsToId]);
 
+  // Classic connected box-and-line tree (desktop/tablet, >=700px — see
+  // .org-chart-tree media query). Same data, same click-to-edit boxes, but
+  // laid out as a real top-down org chart via the standard <ul>/<li>
+  // CSS-connector-line trick instead of an indented list. Below ~700px
+  // this is hidden in favor of the .org-tree-wrap list above, which is the
+  // layout that actually stays legible without horizontal scrolling once a
+  // name or two pushes past phone width.
+  const chartChip = s => `
+    <span class="org-chart-chip ${s.isTeamLead?'lead':''}" title="${escapeHtml(s.name)}${s.isSubcontractor?' · AGS':''}">
+      <span class="org-leaf-avatar">${initialsOf(s.name)}</span>
+      <span class="org-leaf-name">${s.isTeamLead?'★ ':''}${escapeHtml(s.name.split(' ')[0])}${s.isSubcontractor?' <b class="org-ags-dot" title="AGS / Sub-contractor">AGS</b>':''}</span>
+    </span>`;
+  const renderChartNode = sv => {
+    const team = staffUnderSupervisor(sv.id);
+    const kids = childrenOf(sv.id);
+    return `
+    <li>
+      <div class="org-chart-node">
+        <span class="org-sup-box" style="--sv-color:${sv.color};" data-edit-sup="${sv.id}" title="Click to edit ${escapeHtml(sv.name)}">
+          <span class="org-sup-avatar" style="background:${sv.color};">${initialsOf(sv.name)}</span>
+          <span class="org-sup-name">${escapeHtml(sv.name)} <span class="org-tier-badge">${SUP_TIER_LABELS[sv.tier||'sl']}</span></span>
+          <span class="org-sup-count">${totalHeadcount(sv)}</span>
+        </span>
+        ${team.length>0?`<div class="org-chart-chip-list">${team.map(chartChip).join('')}</div>`:''}
+        ${kids.length===0 && team.length===0?`<div class="small-muted" style="font-size:11px;">No one assigned</div>`:''}
+      </div>
+      ${kids.length>0?`<ul>${kids.map(renderChartNode).join('')}</ul>`:''}
+    </li>`;
+  };
+  const unassignedChartLi = unassigned.length>0 ? `
+    <li>
+      <div class="org-chart-node">
+        <span class="org-sup-box org-unassigned-box" title="Staff without a supervisor">
+          <span class="org-sup-avatar org-sup-avatar-unassigned">?</span>
+          <span class="org-sup-name">No supervisor</span>
+          <span class="org-sup-count">${unassigned.length}</span>
+        </span>
+        <div class="org-chart-chip-list">${unassigned.map(chartChip).join('')}</div>
+      </div>
+    </li>` : '';
+
   return `
   <div class="modal org-diagram-modal" style="max-width:min(920px,calc(100vw - 32px));">
     <div class="modal-head">
@@ -13559,6 +13647,16 @@ function renderOrgDiagramModal(m){
             </span>
             <div class="org-leaf-list">${unassigned.map(leafHtml).join('')}</div>
           </div>` : ''}
+        </div>
+      </div>
+      <div class="org-chart-scroll">
+        <div class="org-chart-tree">
+          <ul>
+            <li>
+              <div class="org-chart-node"><span class="org-root-box">🏢 All Staff (${state.staff.length})</span></div>
+              ${roots.length>0 || unassigned.length>0 ? `<ul>${roots.map(renderChartNode).join('')}${unassignedChartLi}</ul>` : ''}
+            </li>
+          </ul>
         </div>
       </div>
       `}
