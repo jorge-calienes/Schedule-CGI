@@ -5279,6 +5279,24 @@ button{font-family:var(--sans);cursor:pointer;}
     font-size:13px;
   }
 
+/* Day-by-day upload progress — a 7-box Mon-Sun strip so uploading one
+   day at a time still shows the week filling in, instead of just a
+   plain "N days uploaded" count. */
+.wtr-upload-progress{display:flex;gap:3px;margin-top:5px;}
+.wtr-upload-seg{
+    width:17px;height:17px;border-radius:5px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:8.5px;font-weight:700;
+    background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant);
+  }
+.wtr-upload-seg.done{background:#165A39;color:#fff;}
+:root[data-theme="dark"] .wtr-upload-seg.done{background:#1F7A4D;}
+
+/* Report picker — day/person checkboxes before the Excel download,
+   same card shell as the Rules panel above it. */
+.wtr-report-check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px 12px;}
+.wtr-report-check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--md-sys-color-on-surface);cursor:pointer;}
+
 /* ── Coverage planning dashboard ── */
 .to-toolbar{display:flex;gap:8px;align-items:center;padding:var(--md-space-3) 0 var(--md-space-3);position:sticky;top:0;background:var(--md-sys-color-surface);z-index:2;border-bottom:1px solid var(--md-sys-color-outline-variant);margin-bottom:var(--md-space-3);}
 .to-toolbar input[type="text"]{flex:1;padding:6px 12px;border:1.5px solid var(--md-sys-color-outline-variant);border-radius:var(--md-sys-shape-corner-full);font-family:var(--sans);font-size:var(--md-sys-typescale-body-medium-size);}
@@ -14963,6 +14981,14 @@ function renderWeeklyTimeReviewModal(m){
 
   const decisions = m.decisions||{};
   const daysSeen = [...new Set(m.punches.map(p=>p.day))].sort();
+  // The 7 calendar dates of this Monday-anchored week, regardless of which
+  // ones actually have an upload yet — what the day-by-day progress strip
+  // in the hero fills in against.
+  const weekDates = m.weekStart ? Array.from({length:7}, (_,i)=>{
+    const d = new Date(m.weekStart+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+i); return d.toISOString().slice(0,10);
+  }) : daysSeen;
+  const reportDays = m.reportDays || daysSeen;
+  const reportStaffIds = m.reportStaffIds || teamStaff.map(s=>s.id);
   const rows = trBuildRows(teamStaff, m.punches, decisions, daysSeen, state.timeOff, state.attendanceEvents);
   const summary = trSummaryByStaff(rows);
   // Needs-action first, then keep-an-eye, then good standing (name as the
@@ -15115,7 +15141,16 @@ function renderWeeklyTimeReviewModal(m){
           <div class="wtr-hero-row">
             <div style="display:flex;gap:14px;align-items:center;">
               <div class="wtr-bignum"><b>${goodN}</b><span>/ ${cards.length}</span></div>
-              <div class="wtr-biglbl"><strong>in good standing</strong><small>${daysSeen.length} day${daysSeen.length===1?'':'s'} uploaded</small></div>
+              <div class="wtr-biglbl">
+                <strong>in good standing</strong><small>${daysSeen.length} of 7 days uploaded</small>
+                <div class="wtr-upload-progress" title="Upload one day at a time or the whole week — this fills in as each day lands">
+                  ${weekDates.map(d=>{
+                    const got = daysSeen.includes(d);
+                    const lab = new Date(d+'T00:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).slice(0,1);
+                    return `<span class="wtr-upload-seg${got?' done':''}" title="${escapeHtml(friendlyDate(d))}${got?' — uploaded':' — not uploaded yet'}">${lab}</span>`;
+                  }).join('')}
+                </div>
+              </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
               ${m.loading?`<span class="small-muted">Loading…</span>`:''}
@@ -15174,6 +15209,28 @@ function renderWeeklyTimeReviewModal(m){
           <div class="wtr-qrow" style="margin-top:4px;">
             <button class="btn btn-sm btn-primary" id="wtr-save-rules">Save rules</button>
             <span class="small-muted" id="wtr-rules-msg"></span>
+          </div>
+        </div>`:''}
+
+        ${m.showReportPicker?`
+        <div class="wtr-item wtr-rules-panel" style="margin-top:12px;">
+          <div><b>Pull a report</b><p class="small-muted" style="margin:2px 0 0;">Pick which day(s) and which team members to include, then download.</p></div>
+          <div class="wtr-rules-group">
+            <div class="wtr-rules-group-head">Days (${reportDays.length} of ${daysSeen.length})</div>
+            <div class="wtr-report-check-grid">
+              ${daysSeen.map(d=>`<label class="wtr-report-check"><input type="checkbox" data-wtr-report-day="${d}" ${reportDays.includes(d)?'checked':''}> ${escapeHtml(friendlyDate(d))}</label>`).join('')}
+            </div>
+          </div>
+          <div class="wtr-rules-group">
+            <div class="wtr-rules-group-head">Team members (${reportStaffIds.length} of ${teamStaff.length})</div>
+            <div class="wtr-report-check-grid">
+              ${teamStaff.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<label class="wtr-report-check"><input type="checkbox" data-wtr-report-staff="${s.id}" ${reportStaffIds.includes(s.id)?'checked':''}> ${escapeHtml(s.name)}</label>`).join('')}
+            </div>
+          </div>
+          <div class="wtr-qrow" style="margin-top:4px;">
+            <button class="btn btn-sm btn-light" id="wtr-report-select-all">Select all</button>
+            <button class="btn btn-sm btn-light" id="wtr-report-select-none">Select none</button>
+            <button class="btn btn-sm btn-primary" id="wtr-report-download" style="margin-left:auto;" ${(!reportDays.length||!reportStaffIds.length)?'disabled':''}>⬇ Download (.xls)</button>
           </div>
         </div>`:''}
 
@@ -15292,6 +15349,9 @@ function renderWeeklyTimeReviewModal(m){
           `:''}
         </div>`:''}
       </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="wtr-toggle-report" style="margin-left:auto;">📄 Pull report</button>
     </div>
   </div>`;
 }
@@ -22648,6 +22708,87 @@ function attachHandlers(){
       render();
       const msg = document.getElementById('wtr-rules-msg');
       if(msg) msg.textContent = 'Saved — applied to every day shown.';
+    });
+
+    // --- report picker: which day(s) and which team members to export ---
+    const daysSeenNow = () => [...new Set((m.punches||[]).map(p=>p.day))].sort();
+    on('wtr-toggle-report', ()=>{
+      if(!m.showReportPicker){
+        // Opening fresh each time — default to everything on screen so
+        // picking a report never silently starts from an empty, stale
+        // selection left over from a previous week's punches.
+        m.reportDays = daysSeenNow();
+        m.reportStaffIds = m.teamStaff.map(s=>s.id);
+      }
+      m.showReportPicker = !m.showReportPicker;
+      render();
+    });
+    document.querySelectorAll('[data-wtr-report-day]').forEach(el=>el.addEventListener('change', ()=>{
+      const day = el.dataset.wtrReportDay;
+      const set = new Set(m.reportDays || daysSeenNow());
+      if(el.checked) set.add(day); else set.delete(day);
+      m.reportDays = [...set];
+      render();
+    }));
+    document.querySelectorAll('[data-wtr-report-staff]').forEach(el=>el.addEventListener('change', ()=>{
+      const id = el.dataset.wtrReportStaff;
+      const set = new Set(m.reportStaffIds || m.teamStaff.map(s=>s.id));
+      if(el.checked) set.add(id); else set.delete(id);
+      m.reportStaffIds = [...set];
+      render();
+    }));
+    on('wtr-report-select-all', ()=>{
+      m.reportDays = daysSeenNow();
+      m.reportStaffIds = m.teamStaff.map(s=>s.id);
+      render();
+    });
+    on('wtr-report-select-none', ()=>{ m.reportDays = []; m.reportStaffIds = []; render(); });
+    on('wtr-report-download', ()=>{
+      const selDays = new Set(m.reportDays||[]), selStaff = new Set(m.reportStaffIds||[]);
+      if(!selDays.size || !selStaff.size) return;
+      const allRows = trBuildRows(m.teamStaff, m.punches, m.decisions, daysSeenNow(), state.timeOff, state.attendanceEvents);
+      const reportRows = allRows.filter(r=>selDays.has(r.day) && selStaff.has(r.staff.id))
+        .sort((a,b)=>a.staff.name.localeCompare(b.staff.name) || a.day.localeCompare(b.day));
+      const escXml = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const header = ['Person','Day','Scheduled','Clock in','Clock out','Hours worked','Status','Late (min)','Late approved','Verified','Notes'];
+      const sheetRows = [header, ...reportRows.map(r=>{
+        const dec = (m.decisions||{})[r.key]||{};
+        return [
+          r.staff.name, friendlyDate(r.day),
+          r.sched ? trFmtClock(r.sched.s)+' - '+trFmtClock(r.sched.e) : '',
+          (r.d.sl&&r.d.sl[0]!=null) ? trFmtClock(r.d.sl[0]) : '',
+          (r.d.sl&&r.d.sl[5]!=null) ? trFmtClock(r.d.sl[5]) : '',
+          r.d.netMin!=null ? Number((r.d.netMin/60).toFixed(2)) : '',
+          r.d.final, r.d.late||0, dec.late||'', dec.ver||'',
+          (r.d.issues||[]).join('; '),
+        ];
+      })];
+      let body = '<ss:Worksheet ss:Name="Time Review"><ss:Table>';
+      sheetRows.forEach((row,ri)=>{
+        body += '<ss:Row>';
+        row.forEach(cell=>{
+          const v = cell==null?'':cell;
+          const type = typeof v==='number'?'Number':'String';
+          body += '<ss:Cell ss:StyleID="'+(ri===0?'s1':'s0')+'"><ss:Data ss:Type="'+type+'">'+escXml(v)+'</ss:Data></ss:Cell>';
+        });
+        body += '</ss:Row>';
+      });
+      body += '</ss:Table></ss:Worksheet>';
+      const xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>'+
+        '<ss:Workbook xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
+        '<ss:Styles>'+
+          '<ss:Style ss:ID="s0"><ss:Alignment ss:WrapText="0"/></ss:Style>'+
+          '<ss:Style ss:ID="s1"><ss:Font ss:Bold="1"/><ss:Interior ss:Color="#2A85FF" ss:Pattern="Solid"/><ss:Font ss:Color="#FFFFFF" ss:Bold="1"/></ss:Style>'+
+        '</ss:Styles>'+body+'</ss:Workbook>';
+      const blob = new Blob([xml], {type:'application/vnd.ms-excel;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const teamSlug = (getSupervisorById(m.supervisorFilter)?.name || 'team').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+      a.href = url;
+      a.download = 'time-review-'+(teamSlug||'team')+'-'+todayLabel()+'.xls';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+      showToast('Report downloaded — '+reportRows.length+' row'+(reportRows.length===1?'':'s'), 'teal');
     });
   }
 
