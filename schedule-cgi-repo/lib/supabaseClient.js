@@ -895,17 +895,29 @@ export async function fetchTimeReviewWeeksList({ staffIds }) {
 // instead of doubling it up. `staffDays` is the deduped set of pairs the
 // parsed punches actually touch.
 export async function saveTimeReviewPunches({ weekStart, staffDays, punches, actingAccountId }) {
+  // Capture the rows this upload is replacing by id *before* touching anything,
+  // then insert the new rows, and only delete the captured stale ids once the
+  // insert has actually succeeded. Deleting first (the old order) could wipe a
+  // day's punches permanently if the insert that followed failed.
+  const staleIds = [];
   for (const { staffId, day } of staffDays) {
-    const { error } = await supabase.from('time_review_punches').delete().eq('staff_id', staffId).eq('day', day);
+    const { data, error } = await supabase.from('time_review_punches')
+      .select('id').eq('staff_id', staffId).eq('day', day);
+    if (error) throw error;
+    (data || []).forEach(r => staleIds.push(r.id));
+  }
+  if (punches.length) {
+    const rows = punches.map(p => ({
+      staff_id: p.staffId, week_start: weekStart, day: p.day,
+      description: p.desc, punch_minutes: p.t, uploaded_by: actingAccountId,
+    }));
+    const { error } = await supabase.from('time_review_punches').insert(rows);
     if (error) throw error;
   }
-  if (!punches.length) return;
-  const rows = punches.map(p => ({
-    staff_id: p.staffId, week_start: weekStart, day: p.day,
-    description: p.desc, punch_minutes: p.t, uploaded_by: actingAccountId,
-  }));
-  const { error } = await supabase.from('time_review_punches').insert(rows);
-  if (error) throw error;
+  if (staleIds.length) {
+    const { error } = await supabase.from('time_review_punches').delete().in('id', staleIds);
+    if (error) throw error;
+  }
 }
 
 const addDaysISO = (dateStr, n) => {

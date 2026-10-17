@@ -8405,6 +8405,7 @@ function rankCandidatesForArea(areaId, excludeStaffIds){
   return state.staff
     .filter(s=>{
       if(s.active===false || exclude.has(s.id) || state.callouts[s.id]) return false;
+      if(state.coverage[s.id]) return false; // already covering elsewhere — don't double-book them
       if(state.assignments[s.id]===areaId) return false;
       // staff permanently in a fixed area can't be pulled for coverage
       const homeArea = getAreaById(state.assignments[s.id]);
@@ -8537,6 +8538,26 @@ function areasByDepartment(){
 }
 
 function getSupervisorById(id){ return state.supervisors.find(sv=>sv.id===id); }
+
+// Would setting svId's "reports to" to newParentId create a cycle? Walks up
+// newParentId's own chain of parents — if it ever reaches svId, newParentId
+// is a descendant of svId, and pointing svId at it would loop the hierarchy
+// back on itself. The org-chart tree only renders from true roots down, so
+// a cyclic branch (no member of it reachable from any root) just silently
+// vanishes instead of erroring — this is what stops that before it happens.
+function wouldCreateSupervisorCycle(svId, newParentId){
+  if(!newParentId) return false;
+  const byId = Object.fromEntries(state.supervisors.map(s=>[s.id,s]));
+  const seen = new Set();
+  let cur = newParentId;
+  while(cur){
+    if(cur===svId) return true;
+    if(seen.has(cur)) return false; // pre-existing unrelated cycle elsewhere; not this edit's problem
+    seen.add(cur);
+    cur = byId[cur]?.reportsToId || null;
+  }
+  return false;
+}
 
 function staffUnderSupervisor(supervisorId){
   return state.staff.filter(s=>s.supervisorId===supervisorId);
@@ -8788,7 +8809,7 @@ function trAnalyzeDay(dayPunches){
       const exp=['SOS','SOB','EOB','EOS'];
       if(P.some((p,i)=>p.k!==exp[i])) iss.push('Punch names did not match their order ('+P.map(p=>p.desc).join(', ')+'). Counted by order, and the middle pair by length ('+(isL?'lunch':'break')+')');
     }
-    return {slots, n:P.length, issues:iss, raw:rawAll};
+    return {slots, n:P.length, issues:iss, raw:rawAll, extraMin:0};
   }
 
   const relIssues=[];
@@ -8802,8 +8823,8 @@ function trAnalyzeDay(dayPunches){
   if(end==null&&eob.length>sob.length&&eob.length){ end=eob.pop(); issues.push('Sign-out at '+trFmtClock(end)+' was punched as "End of Break" (no End of Shift), treated as end of shift'); }
   const pairs=[],unpaired=[]; let left=eob.slice().sort((a,b)=>a-b);
   sob.slice().sort((a,b)=>a-b).forEach(s=>{ const i=left.findIndex(e=>e>s); if(i>=0){pairs.push([s,left[i]]);left.splice(i,1);} else unpaired.push(s); });
-  let brk=null,lun=null;
-  pairs.forEach(([s,e])=>{ if(e-s>=30&&!lun) lun=[s,e]; else if(!brk&&e-s<30) brk=[s,e]; else issues.push('Extra break pair '+trFmtClock(s)+' to '+trFmtClock(e)); });
+  let brk=null,lun=null,extraMin=0;
+  pairs.forEach(([s,e])=>{ if(e-s>=30&&!lun) lun=[s,e]; else if(!brk&&e-s<30) brk=[s,e]; else { extraMin+=(e-s); issues.push('Extra break pair '+trFmtClock(s)+' to '+trFmtClock(e)+' ('+(e-s)+' min, not counted as worked time)'); } });
   unpaired.forEach(s=>{ if(s<720&&!brk){brk=[s,null];issues.push('Break start '+trFmtClock(s)+' has no matching End of Break');}
     else if(!lun){lun=[s,null];issues.push('Lunch start '+trFmtClock(s)+' has no matching End of Break (lunch return missing)');}
     else issues.push('Extra break start '+trFmtClock(s)); });
@@ -8812,16 +8833,19 @@ function trAnalyzeDay(dayPunches){
   if(eos.length>1) issues.push(eos.length+' End of Shift punches ('+eos.map(trFmtClock).join(', ')+')');
   const slots=[start,brk&&brk[0],brk&&brk[1],lun&&lun[0],lun&&lun[1],end].map(v=>v==null?null:v);
   if(P.length!==6) issues.push(P.length+' punches (expected 6)');
-  return {slots, n:P.length, issues, raw:rawAll};
+  return {slots, n:P.length, issues, raw:rawAll, extraMin};
 }
 
 // Folds a day's analyzed slots + this supervisor's in-modal decisions (not
 // yet persisted — see note above) into everything the UI needs: net worked
 // minutes, variance vs. the shift on file, and whether this day is clean,
 // needs a look, or is still waiting on a decision.
-function trDeriveDay(sched, slots, issuesIn, decision){
+function trDeriveDay(sched, slots, issuesIn, decision, extraMin){
   const d={}, dec=decision||{}, fix=dec.fix||{};
-  const sl = slots.map((x,i)=>{ const f=fix[i]!=null?trParseTime(fix[i]):null; return f!=null?f:x; });
+  // Real punch data always wins over a manual fix — the fix exists to patch
+  // a slot that was missing, not to override a slot a later corrected
+  // upload actually filled in with real data.
+  const sl = slots.map((x,i)=>{ if(x!=null) return x; const f=fix[i]!=null?trParseTime(fix[i]):null; return f!=null?f:x; });
   d.sl=sl; d.added=slots.map((x,i)=>x==null&&sl[i]!=null);
   const missing = TR_SLOTN.filter((n,i)=>sl[i]==null);
   d.missing=missing;
@@ -8836,7 +8860,10 @@ function trDeriveDay(sched, slots, issuesIn, decision){
   if(d.spanMin!=null){
     let unpaid; if(d.lun!=null) unpaid=Math.max(0,d.lun-TR_RULES.lunchPaid); else { unpaid=Math.max(0,TR_RULES.lunchMin-TR_RULES.lunchPaid); d.est=true; }
     let bd=0; if(d.brk!=null) bd=d.brk; else { bd=TR_RULES.breakMin; d.est=true; }
-    d.netMin=Math.round(d.spanMin-unpaid-bd);
+    // Extra break/lunch pairs beyond the one break + one lunch already
+    // deducted above are still time off the floor — without this they'd
+    // count as worked, inflating hours for anyone who took more than one.
+    d.netMin=Math.round(d.spanMin-unpaid-bd-(extraMin||0));
   }
   // The shift on file is a raw clock-in/out span (e.g. 7:30–4:00 = 8.5h),
   // but netMin above already has the unpaid part of lunch subtracted out —
@@ -8932,7 +8959,7 @@ function trBuildRows(teamStaff, punches, decisions, daysSeen, timeOffByStaff, ca
         return;
       }
       const a = trAnalyzeDay(byStaffDay.get(key)||[]);
-      const d = trDeriveDay(sched, a.slots, a.issues, decisions[key]);
+      const d = trDeriveDay(sched, a.slots, a.issues, decisions[key], a.extraMin);
       rows.push({staff:s, day, key, sched, slots:a.slots, raw:a.raw, n:a.n, d});
     });
   });
@@ -9007,7 +9034,7 @@ async function loadTimeReviewPatterns(staffIds, weeksList){
       if(!staff) return;
       const sched = parseShiftHoursRange(staff.shiftHours);
       const a = trAnalyzeDay(dayPunches);
-      const d = trDeriveDay(sched, a.slots, a.issues, null);
+      const d = trDeriveDay(sched, a.slots, a.issues, null, a.extraMin);
       if(d.late>0){
         (lateWeeksByStaff[staffId] = lateWeeksByStaff[staffId]||new Set()).add(weekStart);
       }
@@ -9246,7 +9273,13 @@ function computeFlowAdvancement(){
 function simulateFlowAdvancement(suggestions){
   const occupancy = {};
   state.areas.forEach(a=>{ occupancy[a.id] = 0; });
-  Object.values(state.assignments).forEach(areaId=>{ if(areaId && occupancy[areaId]!==undefined) occupancy[areaId]++; });
+  // Called-out staff still hold an assignment but don't occupy a slot — match
+  // activeInArea()'s capacity semantics, or this overcounts and blocks advances
+  // into areas that actually have room.
+  state.staff.forEach(s=>{
+    const areaId = state.assignments[s.id];
+    if(areaId && occupancy[areaId]!==undefined && !state.callouts[s.id]) occupancy[areaId]++;
+  });
   const workingArea = Object.assign({}, state.assignments);
   return suggestions.map(sug=>{
     if(sug.type!=='advance' || !sug.toAreaId) return sug;
@@ -9425,6 +9458,11 @@ let activeModal = null; // {type, ...payload}
 // on-board drags so the realtime refresh (see scheduleRealtimeRefresh below)
 // knows to wait rather than re-render immediately.
 let boardInteractionInProgress = false;
+// Staff ids with a board write still in flight to Supabase — see
+// syncBoardWrite()'s affectedStaffIds param and runRealtimeRefresh() below,
+// which keeps these ids' local values instead of a freshly-loaded server
+// snapshot that predates the write landing.
+let pendingWriteStaffIds = new Set();
 // Guards the auto-derived coverage/callout syncs in _applyTodayTimeOff()/
 // applyScheduledTimeOff() — those run against whatever's in state.staff/
 // state.timeOff at the moment, which during the brief window between
@@ -11904,8 +11942,8 @@ function renderStaffStatsModal(m){
   <div class="modal pm-scope">
     <div class="modal-head">
       <div>
-        <h2>${s.isTeamLead?'★ ':''}${s.needsAccommodations?'♿ ':''}${escapeHtml(s.name)}</h2>
-        <p>${escapeHtml(s.department||'')}${s.tags?' · '+escapeHtml(s.tags):''}${s.needsAccommodations?' · <b>Needs accommodations</b>':''}</p>
+        <h2>${s.isTeamLead?'★ ':''}${s.needsAccommodations&&!isTeamLeadRole()?'♿ ':''}${escapeHtml(s.name)}</h2>
+        <p>${escapeHtml(s.department||'')}${s.tags?' · '+escapeHtml(s.tags):''}${s.needsAccommodations&&!isTeamLeadRole()?' · <b>Needs accommodations</b>':''}</p>
         ${(()=>{
           const certs=[];
           if(s.counterCert) certs.push('<span class="cert-badge cert-counter">✅ Counter Acceptance Certified</span>');
@@ -16887,7 +16925,7 @@ function renderFeedbackModal(m){
         <button class="btn btn-primary" id="feedback-tl-next" ${tlRating===0?'disabled':''}>Next: Supervisor →</button>
       `:`
         <button class="btn btn-danger" id="feedback-block">Block — keep in ${area?escapeHtml(area.name):'area'}</button>
-        <button class="btn btn-primary" id="feedback-approve" ${supRating===0?'disabled':''}>✓ Approve advance</button>
+        <button class="btn btn-primary" id="feedback-approve" ${(supRating===0||(wouldBlock&&!overrideNote))?'disabled':''}>✓ Approve advance</button>
       `}
     </div>
   </div>`;
@@ -17046,11 +17084,29 @@ function renderRotatePreviewModal(m){
 // been applied to local state + rendered (Step 3: board writes go to
 // Supabase, but never block the UI on network latency). On failure the local
 // change stands — just tell the user it didn't sync.
-function syncBoardWrite(fn, label){
+// `rollback`, when given, undoes the local optimistic change on a failed
+// write (reverting the specific field(s) it touched) instead of leaving
+// local state as the only record of a change the server never got — called
+// at the highest-traffic board-mutation sites; most callers still pass none,
+// so a failure there still just leaves the (reported) local change standing.
+// `affectedStaffIds`, when given, marks those staff as having a write in
+// flight (see pendingWriteStaffIds) so a realtime refresh landing before
+// this write is confirmed doesn't clobber the local change with a server
+// snapshot that predates it.
+function syncBoardWrite(fn, label, rollback, affectedStaffIds){
   if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  if(affectedStaffIds) affectedStaffIds.forEach(id=>pendingWriteStaffIds.add(id));
   Promise.resolve().then(fn).catch(e=>{
     console.warn(label+' sync failed:', e && e.message);
-    showToast(`Saved here, but didn't sync to the server (${label})`, 'rust');
+    if(rollback){
+      rollback();
+      saveState(); render();
+      showToast(`Didn't sync to the server (${label}) — reverted`, 'rust');
+    } else {
+      showToast(`Saved here, but didn't sync to the server (${label})`, 'rust');
+    }
+  }).finally(()=>{
+    if(affectedStaffIds) affectedStaffIds.forEach(id=>pendingWriteStaffIds.delete(id));
   });
 }
 
@@ -17206,7 +17262,7 @@ function tempScopeSuffix(scope){
 // scope ('day'|'rotation'|falsy) marks this specific placement temporary —
 // see doSwap() and reconcileStaleTempMoves()/endAllTempMoves() for the
 // matching swap path and the two revert timings.
-function attemptPlace(staffId, areaId, force, scope){
+function attemptPlace(staffId, areaId, forceTeamLead, scope, forceConflict){
   // Counter Acceptance cert check — hard block regardless of force
   if(areaId){
     const area = getAreaById(areaId);
@@ -17216,7 +17272,7 @@ function attemptPlace(staffId, areaId, force, scope){
       return;
     }
   }
-  if(!force){
+  if(!forceTeamLead){
     if(isTeamLeadDisplaced(staffId, areaId)){
       openModal({type:'team-lead-warning', staffId, targetAreaId:areaId, scope});
       return;
@@ -17237,7 +17293,7 @@ function attemptPlace(staffId, areaId, force, scope){
       return;
     }
   }
-  if(!force){
+  if(!forceConflict){
     const conflicts = areaId ? blockConflictsIn(staffId, areaId) : [];
     const repeat = areaId ? isRepeatArea(staffId, areaId) : false;
     if(conflicts.length>0 || repeat){
@@ -17260,7 +17316,7 @@ function attemptPlace(staffId, areaId, force, scope){
   syncBoardWrite(()=>window.RC.moveStaff({
     staffId, areaId, actingAccountId: authState.account.id,
     staffName: staffMoved?.name, fromAreaName: fromArea?.name, toAreaName: areaMoved?.name,
-  }), 'move');
+  }), 'move', ()=>{ state.assignments[staffId] = fromAreaId||null; if(scope) delete state.tempMoves[staffId]; }, [staffId]);
   if(staffMoved){
     const dest = areaMoved ? `moved to ${areaMoved.name}` : 'unassigned';
     showToast(`${staffMoved.name.split(' ')[0]} ${dest}${tempScopeSuffix(scope)}`, 'teal');
@@ -17738,17 +17794,19 @@ function attachHandlers(){
       }
       delete state.callouts[sid];
       logDailyEvent('return',sid,null,state.assignments[sid],'Arrived '+_actualTime);
-      syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout');
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_sr?.name}), 'callout', ()=>{ state.callouts[sid] = true; }, [sid]);
       if((state.coverageWaived||{})[sid]){
         delete state.coverageWaived[sid];
         syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:sid}), 'coverage waive');
       }
       maybeReturnCoverageFor(state.assignments[sid]);
+      clearCalloutAttendanceEvent(sid);
       showToast((_sr?.name?.split(' ')[0]||'?')+' back — '+_actualTime,'teal');
     } else {
       state.callouts[sid] = true;
       logDailyEvent('callout',sid,state.assignments[sid],null,'Quick callout');
       logCallout(sid);
+      recordCalloutAttendanceEvent(sid);
       // Team lead: auto-log coverage need
       const _stl=getStaffById(sid);
       if(_stl?.isTeamLead && state.assignments[sid]){
@@ -17766,7 +17824,7 @@ function attachHandlers(){
           }), 'team lead coverage');
         }
       }
-      syncBoardWrite(()=>window.RC.setCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_stl?.name}), 'callout');
+      syncBoardWrite(()=>window.RC.setCallout({staffId:sid, actingAccountId:authState.account.id, staffName:_stl?.name}), 'callout', ()=>{ delete state.callouts[sid]; }, [sid]);
       showToast((getStaffById(sid)?.name?.split(' ')[0]||'?')+' called out','rust');
     }
     chipMenuOpen = null;
@@ -17805,36 +17863,19 @@ function attachHandlers(){
     chipMenuOpen = null;
     const id = b.dataset.id;
     const _person = getStaffById(id);
-    const today = todayLabel();
     if(state.callouts[id]){
       delete state.callouts[id];
-      syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      syncBoardWrite(()=>window.RC.clearCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout', ()=>{ state.callouts[id] = true; }, [id]);
       if((state.coverageWaived||{})[id]){
         delete state.coverageWaived[id];
         syncBoardWrite(()=>window.RC.unwaiveCoverage({staffId:id}), 'coverage waive');
       }
       maybeReturnCoverageFor(state.assignments[id]);
-      // undo today's durable callout record too, so the attendance report /
-      // Outlook export don't keep counting a callout that's since been undone
-      const existingEvent = (state.attendanceEvents||[]).find(ev=>ev.staffId===id && ev.eventType==='callout' && ev.eventDate===today);
-      if(existingEvent){
-        state.attendanceEvents = state.attendanceEvents.filter(ev=>ev!==existingEvent);
-        syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existingEvent.id}), 'attendance event');
-      }
+      clearCalloutAttendanceEvent(id);
     } else {
       state.callouts[id] = true;
-      syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
-      // also log a durable attendance_events row — this is what the
-      // Attendance Report's callout column and "Export today to Outlook"
-      // actually read from; state.callouts alone is only today's live
-      // board flag and isn't visible to either of those.
-      const localId = uid('ae');
-      state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId:id, eventType:'callout', eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
-      syncBoardWrite(async ()=>{
-        const row = await window.RC.markAttendanceEvent({staffId:id, eventType:'callout', eventDate:today, actingAccountId:authState.account.id});
-        const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
-        if(ev && row) ev.id = row.id; // reconcile so a later undo targets the real row
-      }, 'attendance event');
+      syncBoardWrite(()=>window.RC.setCallout({staffId:id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout', ()=>{ delete state.callouts[id]; }, [id]);
+      recordCalloutAttendanceEvent(id);
     }
     saveState(); render();
   }));
@@ -17890,7 +17931,8 @@ function attachHandlers(){
   }));
   document.querySelectorAll('[data-show-stats]').forEach(el=>el.addEventListener('click', e=>{
     e.stopPropagation();
-    openModal({type:'staff-manager', editId:el.dataset.showStats, staffTab:'stats'});
+    if(isTeamLeadRole()) openModal({type:'staff-stats', staffId:el.dataset.showStats});
+    else openModal({type:'staff-manager', editId:el.dataset.showStats, staffTab:'stats'});
     render();
   }));
   // Chip name + Edit button → open profile modal
@@ -19924,7 +19966,7 @@ function attachHandlers(){
   // --- placement conflict modal ---
   if(activeModal.type==='placement-conflict'){
     on('modal-place-anyway', ()=>{
-      attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
+      attemptPlace(activeModal.staffId, activeModal.targetAreaId, false, activeModal.scope, true);
       closeModal();
     });
     document.querySelectorAll('[data-pick-area]').forEach(el=>el.addEventListener('click', ()=>{
@@ -20641,7 +20683,8 @@ function attachHandlers(){
       const _id = el.dataset.doCallout;
       const _person = getStaffById(_id);
       state.callouts[_id] = true;
-      syncBoardWrite(()=>window.RC.setCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout');
+      syncBoardWrite(()=>window.RC.setCallout({staffId:_id, actingAccountId:authState.account.id, staffName:_person?.name}), 'callout', ()=>{ delete state.callouts[_id]; }, [_id]);
+      recordCalloutAttendanceEvent(_id);
       saveState();
       closeModal();
       showToast(_person.name + ' marked out', 'rust');
@@ -21297,6 +21340,10 @@ function attachHandlers(){
       const tier = document.getElementById('sup-tier-select')?.value || 'sl';
       const reportsToId = document.getElementById('sup-reportsto-select')?.value || null;
       if(!name){ showToast('Enter a name', 'rust'); return; }
+      if(activeModal.editId && wouldCreateSupervisorCycle(activeModal.editId, reportsToId)){
+        showToast("Can't set that — it would make the hierarchy report to itself", 'rust');
+        return;
+      }
       if(activeModal.editId){
         const sv = getSupervisorById(activeModal.editId);
         const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color, tier, reportsToId}));
@@ -21863,7 +21910,7 @@ function attachHandlers(){
         const staff = getStaffById(staffId);
         const area = getAreaById(areaId);
         if(!staff || !area) return;
-        const already = staffInArea(areaId, staffId).length;
+        const already = activeInArea(areaId, staffId).length; // excludes callouts — they don't occupy a slot
         if(already >= area.capacity) return;
         const fromArea = getAreaById(state.assignments[staffId]);
         state.assignments[staffId] = areaId;
@@ -21937,11 +21984,23 @@ function attachHandlers(){
     });
 
     // supervisor approve
+    document.getElementById('override-note-input')?.addEventListener('input', (e)=>{
+      const btn = document.getElementById('feedback-approve');
+      if(!btn) return;
+      const avgRating = m.tlRating && m.supRating ? Math.round((m.tlRating+m.supRating)*10/2)/10 : (m.tlRating||m.supRating||0);
+      const wouldBlock = avgRating>0 && avgRating<3;
+      btn.disabled = !m.supRating || (wouldBlock && !e.target.value.trim());
+    });
+
     on('feedback-approve', ()=>{
       const supRating = m.supRating;
       const overrideNote = document.getElementById('override-note-input')?.value||'';
-      const avgRating = (m.tlRating+supRating)/2;
-      const status = (avgRating>=3||overrideNote) ? (avgRating<3?'override':'approved') : 'approved';
+      const avgRating = m.tlRating && supRating ? Math.round((m.tlRating+supRating)*10/2)/10 : (m.tlRating||supRating||0);
+      if(avgRating<3 && !overrideNote.trim()){
+        showToast('Add an override reason to advance below the 3.0 threshold, or click Block.', 'rust');
+        return;
+      }
+      const status = avgRating<3 ? 'override' : 'approved';
       // save to pendingFeedback
       const existing = state.pendingFeedback.findIndex(f=>f.staffId===sug.staff.id&&f.areaId===sug.fromAreaId);
       const entry = {staffId:sug.staff.id, areaId:sug.fromAreaId, toAreaId:sug.toAreaId,
@@ -23278,8 +23337,62 @@ function isUnderStaffed(areaId){
 function doSwap(idA, idB, scope){
   const areaA = state.assignments[idA];
   const areaB = state.assignments[idB];
-  const nameA = getStaffById(idA)?.name||'?';
-  const nameB = getStaffById(idB)?.name||'?';
+  const staffA = getStaffById(idA), staffB = getStaffById(idB);
+  const nameA = staffA?.name||'?';
+  const nameB = staffB?.name||'?';
+
+  // A swap is two placements at once (idA into areaB, idB into areaA), so
+  // both legs need the same cert/team-lead/blocked-pair/repeat-area checks
+  // attemptPlace() enforces for a single move — not a free pass just
+  // because it's phrased as a swap. Capacity is deliberately not checked:
+  // swapping two already-placed people can never change either area's
+  // headcount, so there's nothing for it to violate. Unlike attemptPlace(),
+  // there's no "place anyway" override here — a swap that trips one of
+  // these is blocked outright; the override path is already two individual
+  // forced moves through attemptPlace(), which already has the UI for it.
+  const areaAObj = areaA ? getAreaById(areaA) : null;
+  const areaBObj = areaB ? getAreaById(areaB) : null;
+  if(areaBObj?.name==='Counter Acceptance' && staffA && !staffA.counterCert){
+    showToast(`Can't swap — ${nameA.split(' ')[0]} isn't Counter Acceptance certified`, 'rust');
+    return;
+  }
+  if(areaAObj?.name==='Counter Acceptance' && staffB && !staffB.counterCert){
+    showToast(`Can't swap — ${nameB.split(' ')[0]} isn't Counter Acceptance certified`, 'rust');
+    return;
+  }
+  if(areaB && isTeamLeadDisplaced(idA, areaB)){
+    showToast(`Can't swap — ${nameA.split(' ')[0]} is a Team Lead and would leave their home area`, 'rust');
+    return;
+  }
+  if(areaA && isTeamLeadDisplaced(idB, areaA)){
+    showToast(`Can't swap — ${nameB.split(' ')[0]} is a Team Lead and would leave their home area`, 'rust');
+    return;
+  }
+  if(areaB){
+    const partnersA = new Set(blockPartnersOf(idA));
+    const conflict = partnersA.size ? staffInArea(areaB, idA).find(s=>s.id!==idB && partnersA.has(s.id)) : null;
+    if(conflict){
+      showToast(`Can't swap — ${nameA.split(' ')[0]} can't be paired with ${conflict.name.split(' ')[0]}`, 'rust');
+      return;
+    }
+    if(isRepeatArea(idA, areaB)){
+      showToast(`Can't swap — ${nameA.split(' ')[0]} has already worked ${areaBObj?.name||'that area'} the last two rotations`, 'rust');
+      return;
+    }
+  }
+  if(areaA){
+    const partnersB = new Set(blockPartnersOf(idB));
+    const conflict = partnersB.size ? staffInArea(areaA, idB).find(s=>s.id!==idA && partnersB.has(s.id)) : null;
+    if(conflict){
+      showToast(`Can't swap — ${nameB.split(' ')[0]} can't be paired with ${conflict.name.split(' ')[0]}`, 'rust');
+      return;
+    }
+    if(isRepeatArea(idB, areaA)){
+      showToast(`Can't swap — ${nameB.split(' ')[0]} has already worked ${areaAObj?.name||'that area'} the last two rotations`, 'rust');
+      return;
+    }
+  }
+
   state.assignments[idA] = areaB;
   state.assignments[idB] = areaA;
   if(scope){
@@ -23293,7 +23406,10 @@ function doSwap(idA, idB, scope){
   logDailyEvent('swap', idB, areaB, areaA, `Swapped with ${getStaffById(idA)?.name||'?'}`);
   swapMode = null;
   saveState();
-  syncBoardWrite(()=>window.RC.swapStaff({idA, idB, areaA, areaB, actingAccountId:authState.account.id, nameA, nameB}), 'swap');
+  syncBoardWrite(()=>window.RC.swapStaff({idA, idB, areaA, areaB, actingAccountId:authState.account.id, nameA, nameB}), 'swap', ()=>{
+    state.assignments[idA] = areaA; state.assignments[idB] = areaB;
+    if(scope){ delete state.tempMoves[idA]; delete state.tempMoves[idB]; }
+  }, [idA, idB]);
   render();
   showToast(`Swapped ${nameA} ↔ ${nameB}${tempScopeSuffix(scope)}`, 'teal');
 }
@@ -23320,6 +23436,30 @@ function logCallout(staffId, reason=''){
   if(!state.calloutHistory[staffId]) state.calloutHistory[staffId]=[];
   state.calloutHistory[staffId].push({date:todayLabel(), period:state.currentPeriod, reason});
   saveState();
+}
+
+// Shared by every entry point that marks/clears a callout (chip menu,
+// quick-out dot, "Mark someone out" modal) so all three leave the same
+// durable record — this is what the Attendance Report's callout column
+// and "Export today to Outlook" actually read from; state.callouts alone
+// is only today's live board flag and isn't visible to either of those.
+function recordCalloutAttendanceEvent(staffId){
+  const today = todayLabel();
+  const localId = uid('ae');
+  state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId, eventType:'callout', eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+  syncBoardWrite(async ()=>{
+    const row = await window.RC.markAttendanceEvent({staffId, eventType:'callout', eventDate:today, actingAccountId:authState.account.id});
+    const ev = (state.attendanceEvents||[]).find(e=>e.id===localId);
+    if(ev && row) ev.id = row.id; // reconcile so a later undo targets the real row
+  }, 'attendance event');
+}
+function clearCalloutAttendanceEvent(staffId){
+  const today = todayLabel();
+  const existingEvent = (state.attendanceEvents||[]).find(ev=>ev.staffId===staffId && ev.eventType==='callout' && ev.eventDate===today);
+  if(existingEvent){
+    state.attendanceEvents = state.attendanceEvents.filter(ev=>ev!==existingEvent);
+    syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existingEvent.id}), 'attendance event');
+  }
 }
 
 
@@ -23480,6 +23620,13 @@ function endAllTempMoves(){
 function applyTimeOffCoverage(sid, rid, covId){
   const entry = (state.timeOff[sid]||[]).find(r=>r.id===rid);
   if(!entry) return;
+  // Reassigning the coverer: release whoever was covering before, or they're
+  // left stuck in the area they moved into (and it stays double-booked once
+  // the new coverer also moves in).
+  const prevCovId = entry.coverageStaffId;
+  if(prevCovId && prevCovId!==covId && state.coverage[prevCovId]){
+    returnFromCoverage(prevCovId);
+  }
   entry.coverageStaffId = covId;
   syncBoardWrite(()=>window.RC.setTimeOffCoverage({timeOffId:rid, coveringStaffId:covId}), 'time off coverage');
   const today = todayLabel();
@@ -24092,7 +24239,19 @@ async function runRealtimeRefresh(){
   }
   try{
     const board = await window.RC.loadBoard();
-    applyMappedBoard(mapSupabaseBoard(board));
+    const mapped = mapSupabaseBoard(board);
+    // This snapshot was fetched before any write still in flight landed —
+    // keep this client's own local value for those staff instead of
+    // overwriting it with a server read that predates the write it's about
+    // to confirm.
+    const preserveLocal = (map, id, val) => { if(val===undefined) delete map[id]; else map[id] = val; };
+    pendingWriteStaffIds.forEach(id=>{
+      mapped.assignments[id] = state.assignments[id];
+      preserveLocal(mapped.callouts, id, state.callouts[id]);
+      preserveLocal(mapped.coverage, id, state.coverage[id]);
+      preserveLocal(mapped.tempMoves, id, state.tempMoves[id]);
+    });
+    applyMappedBoard(mapped);
     reconcileStaleCoverage();
     reconcileStaleTempMoves();
     saveState();
