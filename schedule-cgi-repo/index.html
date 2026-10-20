@@ -12863,17 +12863,20 @@ function renderStaffManagerModal(m){
         '</div>';
       })():'')+
 
-      // ── Never worked — the flip side of proficiency, so a supervisor
-      // sees what's left for this person before the detail list of what
-      // they've already covered. Same data as the app-wide Experience
-      // gaps report, scoped to just this one person. ──
-      (gapAreas.length>0 ?
-        '<p class="pm-section-label">Never worked</p>'+
-        '<div class="pm-card">'+
-          '<div class="pm-fit-header"><p class="pm-fit-name">🧭 '+gapAreas.length+' area'+(gapAreas.length===1?'':'s')+' not yet tried</p></div>'+
-          '<p class="pm-card-footnote">'+gapAreas.map(a=>escapeHtml(a.name)).join(', ')+'</p>'+
-        '</div>'
-      : '')+
+      // ── Rotation history timeline ──
+      (state.history.length>0 ?
+        '<p class="pm-section-label" style="margin-top:24px;">Rotation history</p>'+
+        '<div class="timeline-row">'+
+        state.history.slice(-12).reverse().map(h=>{
+          const aId = h.assignments[editing.id];
+          const a   = aId ? getAreaById(aId) : null;
+          return '<div class="timeline-stop">'
+            +'<div class="timeline-dot" style="background:'+(a?a.color:'var(--md-sys-color-outline)')+'" title="'+(a?escapeHtml(a.name):'Unassigned')+'"></div>'
+            +'<div class="timeline-label">'+(a?escapeHtml(a.name.slice(0,8)):'—')+'</div>'
+            +'<div class="timeline-period">'+escapeHtml(h.period)+'</div>'
+            +'</div>';
+        }).join('<div class="timeline-arrow">←</div>')+
+        '</div>' : '')+
 
       // ── Worked areas with proficiency — at 100% coverage, the full list
       // is just every area saying "yes" back at you; a single callout to
@@ -12904,20 +12907,17 @@ function renderStaffManagerModal(m){
       '</div>'
       ))+
 
-      // ── Rotation history timeline ──
-      (state.history.length>0 ?
-        '<p class="pm-section-label" style="margin-top:24px;">Rotation history</p>'+
-        '<div class="timeline-row">'+
-        state.history.slice(-12).reverse().map(h=>{
-          const aId = h.assignments[editing.id];
-          const a   = aId ? getAreaById(aId) : null;
-          return '<div class="timeline-stop">'
-            +'<div class="timeline-dot" style="background:'+(a?a.color:'var(--md-sys-color-outline)')+'" title="'+(a?escapeHtml(a.name):'Unassigned')+'"></div>'
-            +'<div class="timeline-label">'+(a?escapeHtml(a.name.slice(0,8)):'—')+'</div>'
-            +'<div class="timeline-period">'+escapeHtml(h.period)+'</div>'
-            +'</div>';
-        }).join('<div class="timeline-arrow">←</div>')+
-        '</div>' : '')+
+      // ── Never worked — the flip side of proficiency, so a supervisor
+      // sees what's left for this person after the detail list of what
+      // they've already covered. Same data as the app-wide Experience
+      // gaps report, scoped to just this one person. ──
+      (gapAreas.length>0 ?
+        '<p class="pm-section-label" style="margin-top:24px;">Never worked</p>'+
+        '<div class="pm-card">'+
+          '<div class="pm-fit-header"><p class="pm-fit-name">🧭 '+gapAreas.length+' area'+(gapAreas.length===1?'':'s')+' not yet tried</p></div>'+
+          '<p class="pm-card-footnote">'+gapAreas.map(a=>escapeHtml(a.name)).join(', ')+'</p>'+
+        '</div>'
+      : '')+
 
       // ── Call-out history ──
       ((((state.calloutHistory||{})[editing.id]||[]).length>0) ?
