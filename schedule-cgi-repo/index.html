@@ -12763,12 +12763,17 @@ function renderStaffManagerModal(m){
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
     const worked = rows.filter(r=>r.hasExperience);
-    // "Areas covered" below is scored against rotating (non-fixed) areas
-    // only, same as staffReadyForNewPath()/neverWorkedGapAreasFor() org-wide
-    // — counting a fixed area here let the numerator run past the
-    // non-fixed-only denominator (a 110% reading) and could hit exactly
-    // 100% while a real non-fixed area was still missing.
     const workedRotating = worked.filter(r=>!r.area.fixed);
+    // Someone who isn't the position permanently fixed into an area (e.g.
+    // CO1 in Book Print) can still cover it, and real experience there is
+    // still real experience — it shouldn't vanish from "Areas covered"
+    // just because the area is flagged fixed. But counting it in the
+    // numerator without also counting it in the denominator is what let
+    // this read over 100% and could hit exactly 100% while a real
+    // non-fixed area was still missing. So a fixed area only joins the
+    // denominator once this person actually has experience there — it
+    // adds credit without adding a requirement nobody else has to meet.
+    const workedFixed = worked.filter(r=>r.area.fixed);
     // New headline metric (Avg evaluation) — same approved-evaluation
     // average already computed for the stars summary above, just also
     // surfaced as a single number up top.
@@ -12831,14 +12836,14 @@ function renderStaffManagerModal(m){
     +(editing?`<button class="btn btn-light btn-sm" id="btn-submit-pos-req" style="width:100%;margin-top:8px;">+ Submit position request</button>`:'');
 
     if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>'+positionRequestsSection;
-    const total  = state.areas.filter(a=>!a.fixed).length;
-    const pct    = total>0 ? Math.round(workedRotating.length/total*100) : 0;
+    const total  = state.areas.filter(a=>!a.fixed).length + workedFixed.length;
+    const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
     const gapAreas = neverWorkedGapAreasFor(editing.id);
 
     return (
       // ── Headline metrics ──
       '<div class="pm-metric-grid">'+
-      '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+workedRotating.length+' of '+total+' areas</p></div>'+
+      '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
       '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
       '</div>'+
 
