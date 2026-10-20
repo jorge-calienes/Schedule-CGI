@@ -9513,7 +9513,11 @@ let _prevChipAreas = {};        // staffId -> areaId, for the chip-enter pop whe
 let _prevAreaCounts = {};       // areaId -> present headcount, for the capacity-badge pulse
 let viewMode = 'board'; // 'board' | 'overview'
 let drawerOpen = false; // mobile-only: whether the pool sidebar overlay is open
-let sidebarForceExpanded = false; // user manually pinned the sidebar open despite an empty pool
+// null = no explicit choice yet, follow the auto behavior (collapse once
+// the pool is empty); true/false = the user's own pin, which overrides
+// that auto behavior either way (collapse it with people still in the
+// pool, or keep it open with none) until they toggle it again.
+let sidebarCollapsedOverride = null;
 let selectedStaffId = null; // tap-to-move: staff currently selected, awaiting a destination tap
 let tempMoveScope = null; // null|'day'|'rotation' — cycled by the "Today only"/"This rotation" toggle while a move/swap is in progress; reset once it completes or is cancelled
 let navDrawerOpen = false;
@@ -10813,16 +10817,18 @@ function renderSidebar(){
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
 
-  // Nobody to place and nothing pinned open — collapse to a slim rail so
-  // the board columns can use that width instead of an empty "Everyone is
-  // placed" panel. Still a drop target (drag a chip here to unassign them)
+  // Collapses to a slim rail so the board columns can use that width
+  // instead of a full-size panel — automatically once the pool is empty,
+  // or any time the user pins it either way (the ☰/◂ toggle below). Still
+  // a drop target either way (drag a chip onto the rail to unassign them)
   // and still surfaces Quick actions as icon buttons. A tap-to-move in
   // progress always forces it back open so the target button has room.
-  const collapsed = unplaced.length===0 && !sidebarForceExpanded && !isTapTarget;
+  const autoCollapsed = unplaced.length===0;
+  const collapsed = !isTapTarget && (sidebarCollapsedOverride!==null ? sidebarCollapsedOverride : autoCollapsed);
   if(collapsed){
     return `
     <div class="sidebar sidebar-collapsed ${drawerOpen?'drawer-open':''}" data-dropzone="pool" title="Drop here to unassign">
-      <button class="sidebar-expand-btn" id="btn-sidebar-expand" title="Show unassigned pool &amp; quick actions">☰</button>
+      <button class="sidebar-expand-btn" id="btn-sidebar-expand" style="position:relative;" title="Show unassigned pool &amp; quick actions">☰${unplaced.length>0?'<span class="pool-count-badge" style="position:absolute;top:-6px;right:-6px;">'+ unplaced.length +'</span>':''}</button>
       ${readOnly ? '' : `
       <button class="sidebar-mini-btn" id="btn-add-area" title="Add work area">➕</button>
       <button class="sidebar-mini-btn" id="btn-mark-callout" title="Mark someone out">⚠️</button>
@@ -10835,7 +10841,7 @@ function renderSidebar(){
   <div class="sidebar ${drawerOpen?'drawer-open':''}">
     <div class="sidebar-head-row">
       <h3>Unassigned pool ${unplaced.length>0?'<span class="pool-count-badge">'+ unplaced.length +'</span>':''}</h3>
-      ${unplaced.length===0 && !isTapTarget ? `<button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="Collapse — everyone's placed">◂</button>` : ''}
+      ${!isTapTarget ? `<button class="sidebar-collapse-btn" id="btn-sidebar-collapse" title="${unplaced.length===0?'Collapse — everyone placed':'Minimize'}">◂</button>` : ''}
     </div>
     <div class="pool-zone ${isTapTarget?'tap-target':''}" data-dropzone="pool">
       ${isTapTarget?`<button class="tap-target-btn" data-tap-place-area="">Move here (unassign)</button>`:''}
@@ -19738,8 +19744,8 @@ function attachHandlers(){
   on('btn-add-area-2', ()=>openModal({type:'area-editor'}));
   on('btn-mark-callout', ()=>openModal({type:'mark-callout'}));
   on('btn-unassign-all', ()=>openModal({type:'unassign-all-confirm'}));
-  on('btn-sidebar-expand', ()=>{ sidebarForceExpanded=true; render(); });
-  on('btn-sidebar-collapse', ()=>{ sidebarForceExpanded=false; render(); });
+  on('btn-sidebar-expand', ()=>{ sidebarCollapsedOverride=false; render(); });
+  on('btn-sidebar-collapse', ()=>{ sidebarCollapsedOverride=true; render(); });
 
   // --- tab bar (view switcher) ---
   on('btn-view-board',       ()=>{ viewMode='board';       navDrawerOpen=false; render(); });
