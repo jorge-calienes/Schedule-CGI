@@ -7791,15 +7791,22 @@ function attachSignInHandlers(){
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
+// toISOString() converts to UTC first, so for any timezone west of UTC the
+// calendar date it prints rolls over several hours before local midnight —
+// in that window this would auto-apply tomorrow's time off early, auto-clear
+// today's leave while the person is still out locally, and mark the wrong
+// day "today". Build the label from the Date's own local fields instead.
+function localDateLabel(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
 function todayLabel(){
-  const d = new Date();
-  return d.toISOString().slice(0,10);
+  return localDateLabel(new Date());
 }
 
 function yesterdayLabel(){
   const d = new Date();
   d.setDate(d.getDate()-1);
-  return d.toISOString().slice(0,10);
+  return localDateLabel(d);
 }
 
 function friendlyDate(isoStr){
@@ -8563,6 +8570,18 @@ function staffUnderSupervisor(supervisorId){
   return state.staff.filter(s=>s.supervisorId===supervisorId);
 }
 
+// Team Dashboard already scopes a supervisor to their own linked team by
+// default (myReviewTeamStaff) — the Attendance Report's supervisor filter
+// should default the same way instead of opening on "All supervisors" and
+// quietly letting any supervisor browse every other team's attendance
+// history. An admin has no one team to default to, so "All supervisors"
+// stays their default — that breadth is intended for that role.
+function defaultAttendanceSupervisorFilter(){
+  const acct = authState.account;
+  if(acct?.role==='supervisor' && acct.linked_supervisor_id) return acct.linked_supervisor_id;
+  return '';
+}
+
 function unassignedSupervisorStaff(){
   return state.staff.filter(s=>!s.supervisorId);
 }
@@ -8612,6 +8631,10 @@ const TR_HOW = ['Email','Teams / chat','Text message','In person','Phone call'];
 // these starting values just match that row's own defaults so the screen
 // behaves sensibly for the brief window before that fetch resolves.
 let TR_RULES = {lateGrace:2, earlyGrace:5, lunchMin:60, lunchPaid:15, breakMin:15, standTol:15, overTol:60, fallbackTargetMin:8*60, tol:5};
+// How long a punch pair has to be to count as lunch rather than a break —
+// the midpoint between the configured break and lunch lengths, so this
+// tracks the Rules panel instead of assuming the 15/60 defaults forever.
+function trBreakLunchCutoffMin(){ return (TR_RULES.breakMin + TR_RULES.lunchMin) / 2; }
 let _trSettingsLoaded = false;
 async function loadTimeReviewSettingsOnce(){
   if(_trSettingsLoaded || !window.RC) return;
@@ -8798,12 +8821,13 @@ function trAnalyzeDay(dayPunches){
     let slots;
     if(P.length===6){
       let [s,b1,b2,l1,l2,e]=T;
-      if(b2-b1>=30&&l2-l1<30){ [b1,b2,l1,l2]=[l1,l2,b1,b2]; iss.push('The first pair was longer than the second, so it was counted as lunch and the shorter pair as the break'); }
+      const cutoff6 = trBreakLunchCutoffMin();
+      if(b2-b1>=cutoff6&&l2-l1<cutoff6){ [b1,b2,l1,l2]=[l1,l2,b1,b2]; iss.push('The first pair was longer than the second, so it was counted as lunch and the shorter pair as the break'); }
       slots=[s,b1,b2,l1,l2,e];
       const exp=['SOS','SOB','EOB','SOB','EOB','EOS'];
       if(P.some((p,i)=>p.k!==exp[i])) iss.push('Punch names did not match their order ('+P.map(p=>p.desc).join(', ')+'). Counted by order: start, break out, break in, lunch out, lunch in, end');
     } else {
-      const [s,a,b,e]=T; const isL=b-a>=30;
+      const [s,a,b,e]=T; const isL=b-a>=trBreakLunchCutoffMin();
       slots=[s,isL?null:a,isL?null:b,isL?a:null,isL?b:null,e];
       iss.push('4 punches (expected 6)');
       const exp=['SOS','SOB','EOB','EOS'];
@@ -8824,7 +8848,8 @@ function trAnalyzeDay(dayPunches){
   const pairs=[],unpaired=[]; let left=eob.slice().sort((a,b)=>a-b);
   sob.slice().sort((a,b)=>a-b).forEach(s=>{ const i=left.findIndex(e=>e>s); if(i>=0){pairs.push([s,left[i]]);left.splice(i,1);} else unpaired.push(s); });
   let brk=null,lun=null,extraMin=0;
-  pairs.forEach(([s,e])=>{ if(e-s>=30&&!lun) lun=[s,e]; else if(!brk&&e-s<30) brk=[s,e]; else { extraMin+=(e-s); issues.push('Extra break pair '+trFmtClock(s)+' to '+trFmtClock(e)+' ('+(e-s)+' min, not counted as worked time)'); } });
+  const cutoff = trBreakLunchCutoffMin();
+  pairs.forEach(([s,e])=>{ if(e-s>=cutoff&&!lun) lun=[s,e]; else if(!brk&&e-s<cutoff) brk=[s,e]; else { extraMin+=(e-s); issues.push('Extra break pair '+trFmtClock(s)+' to '+trFmtClock(e)+' ('+(e-s)+' min, not counted as worked time)'); } });
   unpaired.forEach(s=>{ if(s<720&&!brk){brk=[s,null];issues.push('Break start '+trFmtClock(s)+' has no matching End of Break');}
     else if(!lun){lun=[s,null];issues.push('Lunch start '+trFmtClock(s)+' has no matching End of Break (lunch return missing)');}
     else issues.push('Extra break start '+trFmtClock(s)); });
@@ -8880,7 +8905,10 @@ function trDeriveDay(sched, slots, issuesIn, decision, extraMin){
   d.issues=iss;
   d.base = missing.length ? 'Incomplete' : (iss.length ? 'Review' : 'OK');
   d.needV = slots.some(v=>v==null) || (issuesIn||[]).some(x=>/punched as|Shift punches|punches \(expected|no matching/.test(x));
-  d.final = d.base==='OK' ? 'OK' : (dec.ver==='Yes' ? 'Verified' : (d.needV ? 'Unverified' : d.base));
+  // A still-pending late-start approval is its own open item even on a day
+  // with no other issues — an otherwise-clean "OK" shouldn't bury it.
+  const lateStillOpen = d.late>0 && dec.late!=='Yes' && dec.late!=='No';
+  d.final = d.base!=='OK' ? (dec.ver==='Yes' ? 'Verified' : (d.needV ? 'Unverified' : d.base)) : (lateStillOpen ? 'Review' : 'OK');
   d.lateRes='';
   if(d.late>0){
     if(d.cut==null) d.lateRes='LATE - cannot verify (lunch missing)';
@@ -9916,7 +9944,7 @@ const TOUR_STEPS = [
   { title: 'Export a period to Outlook',
     body: "Whatever period you're viewing here — a month, a quarter, a custom range — exports as one calendar file covering everyone in it, so those events land on a shared calendar without re-entering them by hand. Only the type (scheduled leave, late arrival, left early) goes into it — not the personal reason, except a clock time if the note has one.",
     selector: '#ar-export-ics',
-    before(){ activeModal=null; navDrawerOpen=false; openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); } },
+    before(){ activeModal=null; navDrawerOpen=false; openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:'', supervisorFilter:defaultAttendanceSupervisorFilter()}); } },
   { title: "Export today's changes",
     body: "One click drafts an email summarizing today's call-outs and moves — handy for keeping the next shift's supervisor in the loop. \"Export today to Outlook\" (right below it) does the same as a calendar event instead.",
     selector: '#nav-email-changes',
@@ -10176,7 +10204,7 @@ function renderTimeOffView(){
       allOff.push({...r, staff:s, area, covStaff});
     });
   });
-  const weekEnd = (() => { const d=new Date(); d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
+  const weekEnd = (() => { const d=new Date(); d.setDate(d.getDate()+6); return localDateLabel(d); })();
   const filterFn = timeOffFilter==='today' ? r=>r.startDate<=today&&r.endDate>=today
     : timeOffFilter==='week' ? r=>r.startDate<=weekEnd&&r.endDate>=today
     : r=>r.endDate>=today;
@@ -10261,7 +10289,7 @@ function renderTimeOffView(){
 
   // ── LIST ──────────────────────────────────────────────────────────
   const renderList = () => {
-    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return localDateLabel(d); };
 
     // Merge one staff member's consecutive/overlapping time-off records into
     // a single row — otherwise a week requested as separate daily entries
@@ -11879,7 +11907,7 @@ function renderStaffStatsModal(m){
 
     // Same "merge back-to-back days off into one range" grouping the full
     // editor's Time tab uses — late/early events stay one row per day.
-    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return localDateLabel(d); };
     const groupConsecutive = rowsIn => {
       const sorted = rowsIn.slice().sort((a,b)=>a.sortDate.localeCompare(b.sortDate));
       const groups = [];
@@ -12288,7 +12316,9 @@ function renderPlacementConflictModal(m){
   const targetArea = getAreaById(m.targetAreaId);
   const conflicts = blockConflictsIn(m.staffId, m.targetAreaId);
   const repeat = isRepeatArea(m.staffId, m.targetAreaId);
-  const suggestions = suggestAreasFor(m.staffId).filter(s=>s.area.id!==m.targetAreaId);
+  // A coverage assignment goes to the one area that needs covering, not
+  // anywhere else — area suggestions (for a normal placement) don't apply.
+  const suggestions = m.isCoverage ? [] : suggestAreasFor(m.staffId).filter(s=>s.area.id!==m.targetAreaId);
 
   let alertHtml = '';
   if(repeat){
@@ -12301,11 +12331,12 @@ function renderPlacementConflictModal(m){
   return `
   <div class="modal">
     <div class="modal-head">
-      <div><h2>Heads up before placing ${escapeHtml(staff.name)}</h2><p>Choose to proceed anyway or pick a better-fit area below.</p></div>
+      <div><h2>Heads up before ${m.isCoverage?'assigning':'placing'} ${escapeHtml(staff.name)}</h2><p>${m.isCoverage?'Choose to assign them to cover anyway, or pick someone else from the candidate list.':'Choose to proceed anyway or pick a better-fit area below.'}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       ${alertHtml}
+      ${m.isCoverage ? '' : `
       <div class="small-muted" style="margin-bottom:8px;font-weight:700;">Suggested areas, best fit first</div>
       <div class="option-list">
         ${suggestions.map((s,i)=>`
@@ -12316,11 +12347,11 @@ function renderPlacementConflictModal(m){
             </div>
             ${i===0 && s.conflicts.length===0 && !s.repeat ? '<span class="badge best">Best fit</span>' : (s.conflicts.length? '<span class="badge conflict">Blocked</span>' : (s.repeat?'<span class="badge conflict">Repeat</span>':''))}
           </div>`).join('')}
-      </div>
+      </div>`}
     </div>
     <div class="modal-foot">
-      <button class="btn btn-light" id="modal-cancel">Cancel placement</button>
-      <button class="btn btn-danger" id="modal-place-anyway">Place anyway</button>
+      <button class="btn btn-light" id="modal-cancel">Cancel ${m.isCoverage?'coverage':'placement'}</button>
+      <button class="btn btn-danger" id="modal-place-anyway">${m.isCoverage?'Assign anyway':'Place anyway'}</button>
     </div>
   </div>`;
 }
@@ -12501,7 +12532,7 @@ function renderStaffManagerModal(m){
     // someone's whole record on screen; presets are day-offsets from today,
     // 'custom' reveals a from/to date pair.
     const histRange = m.histRange || '30';
-    const daysAgo = n => { const d=new Date(today+'T00:00:00'); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
+    const daysAgo = n => { const d=new Date(today+'T00:00:00'); d.setDate(d.getDate()-n); return localDateLabel(d); };
     const histFrom = histRange==='custom' ? (m.histFrom || daysAgo(30)) : (histRange==='all' ? null : daysAgo(Number(histRange)));
     const histTo   = histRange==='custom' ? (m.histTo   || today) : today;
     const past = allPast.filter(r => (!histFrom || r.sortDate>=histFrom) && r.sortDate<=histTo);
@@ -12546,7 +12577,7 @@ function renderStaffManagerModal(m){
     // arrival". A group stays collapsed to its range summary until tapped
     // open, since editing/removing one day out of a merged range needs the
     // individual record, not the summary.
-    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+    const nextDay = iso => { const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+1); return localDateLabel(d); };
     // "Consecutive" has to mean touching OR overlapping, not just exactly
     // back-to-back — a bulk import or a manually-added range can easily
     // produce two rows like Oct 13→15 and Oct 15→16 (sharing the 15th)
@@ -13506,7 +13537,7 @@ function addDaysToDateStr(isoStr, days){
   const [y,m,d] = (isoStr||todayLabel()).split('-').map(Number);
   const dt = new Date(y, (m||1)-1, d||1);
   dt.setDate(dt.getDate()+days);
-  return dt.toISOString().slice(0,10);
+  return localDateLabel(dt);
 }
 
 // A rotation's "N weeks" counts business days (Mon-Fri), not calendar days —
@@ -13526,7 +13557,7 @@ function addBusinessWeeksToDateStr(isoStr, weeks){
     if(count>=targetWeekdays) break;
     dt.setDate(dt.getDate()+1);
   }
-  return dt.toISOString().slice(0,10);
+  return localDateLabel(dt);
 }
 
 // Counts weekdays (Mon-Fri) inclusive of both ends between two ISO date
@@ -15099,9 +15130,10 @@ function renderWeeklyTimeReviewModal(m){
     const key=r.key, k=escapeHtml(key), dec=decisions[key]||{};
     const tone = {OK:'ok',Review:'warn',Incomplete:'bad',Verified:'ok',Unverified:'bad'}[r.d.final]||'warn';
     const why = r.d.issues.filter(x=>!/^Missing:|punches \(expected/.test(x));
+    const unsynced = !!(m.unsyncedKeys && m.unsyncedKeys[key]);
     return `
     <div class="wtr-item">
-      <div class="wtr-ihead"><b>${escapeHtml(r.staff.name)}</b><span class="small-muted">${escapeHtml(friendlyDate(r.day))}</span>${r.sched?`<span class="small-muted">scheduled ${trFmtClock(r.sched.s)} – ${trFmtClock(r.sched.e)}</span>`:''}<span class="grow"></span><span class="wtr-tone ${tone}">${escapeHtml(r.d.final)}</span></div>
+      <div class="wtr-ihead"><b>${escapeHtml(r.staff.name)}</b><span class="small-muted">${escapeHtml(friendlyDate(r.day))}</span>${r.sched?`<span class="small-muted">scheduled ${trFmtClock(r.sched.s)} – ${trFmtClock(r.sched.e)}</span>`:''}<span class="grow"></span>${unsynced?`<span class="wtr-tone bad" title="This decision didn't save to the database — it will revert if the screen reloads. Click to retry." style="cursor:pointer;" data-wtr-retry-sync="${k}">⚠ Not saved — retry</span>`:''}<span class="wtr-tone ${tone}">${escapeHtml(r.d.final)}</span></div>
       <div class="wtr-slots">${[0,1,2,3,4,5].map(i=>slotHtml(r,i)).join('')}</div>
       ${why.length?`<ul class="wtr-why">${why.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`:''}
       <div class="wtr-note">${r.d.netMin==null?'Worked time cannot be counted yet — start or end of shift is missing.':`Counts <b>${trHm(r.d.netMin)}</b>${r.d.est?' (estimated — a lunch or break punch is missing)':''} · target ${trHm(r.d.target)} (${r.d.vs>0?'+':''}${r.d.vs} min)`}</div>
@@ -15159,7 +15191,7 @@ function renderWeeklyTimeReviewModal(m){
               <td class="t">${r.d.lun==null?'—':r.d.lun+'m'}</td>
               <td class="t">${r.d.cut==null?'—':r.d.cut+'m'}</td>
               <td class="t">${r.d.netMin==null?'—':trHm(r.d.netMin)}${r.d.vs!=null?` <span class="small-muted">(${r.d.vs>0?'+':''}${r.d.vs}m)</span>`:''}</td>
-              <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span></td>
+              <td class="wrap"><span class="wtr-tone ${st[1]}">${escapeHtml(st[0])}</span>${(m.unsyncedKeys&&m.unsyncedKeys[r.key])?`<br><span class="wtr-tone bad" title="This decision didn't save to the database — it will revert if the screen reloads. Click to retry." style="cursor:pointer;" data-wtr-retry-sync="${k}">⚠ Not saved — retry</span>`:''}</td>
               <td>
                 <div class="wtr-qrow" style="flex-wrap:nowrap;">
                   <button class="btn btn-sm wtr-late-btn${dec.late==='Yes'?' sel':''}" style="border-color:#165A39;color:#165A39;" data-wtr-late="${k}" data-wtr-late-val="Yes">Approved</button>
@@ -15327,16 +15359,23 @@ function renderWeeklyTimeReviewModal(m){
           const lateMin = lateRows.reduce((a,r)=>a+r.d.late,0);
           const madeMin = lateRows.filter(r=>r.d.cut!=null).reduce((a,r)=>a+Math.min(r.d.late,r.d.cut),0);
           const approvedN = lateRows.filter(r=>decisions[r.key]?.late==='Yes').length;
+          const unsyncedLateN = lateRows.filter(r=>m.unsyncedKeys&&m.unsyncedKeys[r.key]).length;
 
           // Nothing left to decide — this is history, not work. One line
           // instead of a whole table + KPI row, with an escape hatch for
-          // whoever actually wants to audit it.
+          // whoever actually wants to audit it. A decision marked here
+          // leaves the open queue the instant it's clicked (optimistic),
+          // before its save to the database is even confirmed — if that
+          // save then fails, this collapsed line is the only thing left
+          // showing, so it needs its own "didn't save" note too, not just
+          // the expanded per-row table unsyncedKeys already flags.
           if(waitN===0){
             return `
             <div class="wtr-item" style="margin-top:16px;">
               <div class="wtr-late-resolved-line">
                 <span class="wtr-section-icon" style="background:#e0f2e8;color:#165A39;">✓</span>
                 <span><b>${lateRows.length}</b> late start${lateRows.length===1?'':'s'} this week — all reviewed (${approvedN} approved${noN?`, ${noN} not approved`:''}).</span>
+                ${unsyncedLateN?`<span class="wtr-tone bad" title="Didn't save to the database — will revert on reload">⚠ ${unsyncedLateN} didn't save</span>`:''}
                 <button class="wtr-link-btn" id="wtr-toggle-late-detail">${m.showAllLate?'Hide detail':'Show detail'}</button>
               </div>
               ${m.showAllLate ? lateTableHtml(lateRows) : ''}
@@ -15404,7 +15443,18 @@ function renderWeeklyTimeReviewModal(m){
 
 function renderTeamDashboardModal(m){
   const search = (m.search||'').trim().toLowerCase();
-  const rows = m.loading ? [] : aggregateTeamPerformance(m.raw);
+  const teamStaffIds = new Set((m.teamStaff||[]).map(s=>s.id));
+  const isAdmin = authState.account?.role==='admin';
+  const noTeamPicked = isAdmin && !m.supervisorFilter;
+  const supervisorPickerHtml = isAdmin ? `
+    <div style="margin-bottom:14px;">
+      <label class="small-muted" style="display:block;margin-bottom:4px;">Team</label>
+      <select class="roster-select" id="team-dash-supervisor-filter" style="width:100%;max-width:320px;">
+        <option value="">— Select a supervisor's team —</option>
+        ${state.supervisors.map(sv=>`<option value="${sv.id}" ${m.supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+      </select>
+    </div>` : '';
+  const rows = (m.loading || noTeamPicked) ? [] : aggregateTeamPerformance(m.raw).filter(r=>teamStaffIds.has(r.staffId));
   const visible = search ? rows.filter(r=>r.name.toLowerCase().includes(search)) : rows;
   const evaluatedRows = rows.filter(r=>r.count>0);
   const teamAvg = key => evaluatedRows.length ? evaluatedRows.reduce((sum,r)=>sum+r[key],0)/evaluatedRows.length : 0;
@@ -15431,6 +15481,9 @@ function renderTeamDashboardModal(m){
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
+      ${supervisorPickerHtml}
+      ${!isAdmin && teamStaffIds.size===0 ? `<div class="alert-box rust" style="margin-bottom:14px;">Your account isn't linked to a Supervisors roster entry yet, so no team can be shown. An admin can set this under Manage accounts → edit your account → "Supervisor roster entry".</div>` : ''}
+      ${noTeamPicked ? '' : `
       ${m.loading ? `<div class="small-muted">Loading team performance…</div>` : ''}
       ${!m.loading && m.error ? `<div class="alert-box rust">Couldn't load team performance: ${escapeHtml(m.error)}</div>` : ''}
       ${!m.loading && !m.error ? `
@@ -15455,6 +15508,7 @@ function renderTeamDashboardModal(m){
           }).join('')}
         </div>
       ` : ''}
+      `}
     </div>
   </div>`;
 }
@@ -17093,7 +17147,11 @@ function renderRotatePreviewModal(m){
 // flight (see pendingWriteStaffIds) so a realtime refresh landing before
 // this write is confirmed doesn't clobber the local change with a server
 // snapshot that predates it.
-function syncBoardWrite(fn, label, rollback, affectedStaffIds){
+// `onFail`, when given, runs in addition to the toast — for a caller that
+// needs a persistent (not toast-only) record that this particular write
+// hasn't actually synced, since a missed toast otherwise leaves no trace
+// before a reload quietly reverts it.
+function syncBoardWrite(fn, label, rollback, affectedStaffIds, onFail){
   if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
   if(affectedStaffIds) affectedStaffIds.forEach(id=>pendingWriteStaffIds.add(id));
   Promise.resolve().then(fn).catch(e=>{
@@ -17105,6 +17163,7 @@ function syncBoardWrite(fn, label, rollback, affectedStaffIds){
     } else {
       showToast(`Saved here, but didn't sync to the server (${label})`, 'rust');
     }
+    if(onFail) onFail(e);
   }).finally(()=>{
     if(affectedStaffIds) affectedStaffIds.forEach(id=>pendingWriteStaffIds.delete(id));
   });
@@ -17161,8 +17220,7 @@ function defaultReportDateRange(){
   const end = new Date();
   const start = new Date();
   start.setDate(start.getDate() - 29); // last 30 days, inclusive of today
-  const fmt = d => d.toISOString().slice(0,10);
-  return { startDate: fmt(start), endDate: fmt(end) };
+  return { startDate: localDateLabel(start), endDate: localDateLabel(end) };
 }
 
 // Opens the Report Builder and (re)loads the Daily Activity Log from the
@@ -17188,13 +17246,20 @@ async function openReportBuilder(extra={}){
   }
 }
 
-async function openTeamDashboard(){
-  openModal({type:'team-dashboard', loading:true, raw:[], search:''});
+// Scoped the same way openWeeklyTimeReviewTeam() is: a supervisor always
+// sees their own linked team, an admin must explicitly pick one team at a
+// time (myReviewTeamStaff() enforces both) — otherwise this screen lets
+// any supervisor browse every other team's eval scores with nothing in
+// the UI saying that's intended.
+async function openTeamDashboard(supervisorFilterId){
+  const teamStaff = myReviewTeamStaff(supervisorFilterId);
+  openModal({type:'team-dashboard', loading:true, raw:[], search:'', teamStaff, supervisorFilter:supervisorFilterId||''});
+  if(!teamStaff.length){ openModal({type:'team-dashboard', loading:false, raw:[], search:'', teamStaff, supervisorFilter:supervisorFilterId||''}); return; }
   try{
     const raw = await window.RC.fetchTeamPerformanceOverview();
-    openModal({type:'team-dashboard', loading:false, raw: raw||[], search:''});
+    openModal({type:'team-dashboard', loading:false, raw: raw||[], search:'', teamStaff, supervisorFilter:supervisorFilterId||''});
   }catch(e){
-    openModal({type:'team-dashboard', loading:false, raw:[], search:'', error: (e && e.message) || 'Could not load team performance.'});
+    openModal({type:'team-dashboard', loading:false, raw:[], search:'', teamStaff, supervisorFilter:supervisorFilterId||'', error: (e && e.message) || 'Could not load team performance.'});
   }
 }
 
@@ -18317,7 +18382,7 @@ function attachHandlers(){
     // days — see openReportBuilder()) via the same durable, server-synced
     // attendance_events + time_off data the standalone Attendance Report
     // uses, rather than the old all-time/upcoming-only local counts.
-    const attendanceRangeStart = opts.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+    const attendanceRangeStart = opts.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return localDateLabel(d); })();
     const attendanceRangeEnd   = opts.reportEndDate   || today;
     const attendanceByStaff = {};
     computeAttendanceReportForRange({start:attendanceRangeStart, end:attendanceRangeEnd}).rows.forEach(r=>{ attendanceByStaff[r.staffId] = r; });
@@ -19777,7 +19842,7 @@ function attachHandlers(){
   on('nav-manage-accounts',     ()=>{ closeNav(); openManageAccounts(); });
   on('nav-audit-log',           ()=>{ closeNav(); openAuditLog(); });
   on('nav-team-dashboard',      ()=>{ closeNav(); openTeamDashboard(); });
-  on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:''}); });
+  on('nav-attendance-report',   ()=>{ closeNav(); openModal({type:'attendance-report', periodType:'month', anchorMonth:todayLabel().slice(0,7), search:'', supervisorFilter:defaultAttendanceSupervisorFilter()}); });
   on('nav-weekly-time-review',  async ()=>{
     closeNav();
     await openWeeklyTimeReviewTeam('');
@@ -19915,12 +19980,15 @@ function attachHandlers(){
       // the board same as a normal placement, but leave the callout they
       // were covering permanently stuck showing "needs coverage".
       if(activeModal.isCoverage){
-        assignCoverage(activeModal.staffId, activeModal.targetAreaId);
-        // Reopen rather than auto-close, even when this closes the last gap —
-        // see the .cd-cand-tap handler below for why: a pick shouldn't feel
-        // final the instant it's made.
-        if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
-        if(returnTo) openModal(returnTo);
+        const assigned = assignCoverage(activeModal.staffId, activeModal.targetAreaId, false, returnTo);
+        if(assigned){
+          // Reopen rather than auto-close, even when this closes the last gap —
+          // see the .cd-cand-tap handler below for why: a pick shouldn't feel
+          // final the instant it's made.
+          if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+          if(returnTo) openModal(returnTo);
+        }
+        // else: a blocked-pair/repeat-area conflict deferred to its own modal — leave it open
         return;
       }
       attemptPlace(activeModal.staffId, activeModal.targetAreaId, true, activeModal.scope);
@@ -19949,9 +20017,12 @@ function attachHandlers(){
     const returnTo = activeModal.returnTo;
     on('modal-cancel-thin-coverage', ()=>{ if(returnTo) openModal(returnTo); else closeModal(); });
     on('modal-confirm-thin-coverage', ()=>{
-      assignCoverage(activeModal.staffId, activeModal.targetAreaId);
-      if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
-      if(returnTo) openModal(returnTo); else closeModal();
+      const assigned = assignCoverage(activeModal.staffId, activeModal.targetAreaId, false, returnTo);
+      if(assigned){
+        if(calloutCoverageGaps().length===0) showToast('All positions covered ✓','teal');
+        if(returnTo) openModal(returnTo); else closeModal();
+      }
+      // else: a blocked-pair/repeat-area conflict deferred to its own modal — leave it open
     });
   }
 
@@ -19966,6 +20037,11 @@ function attachHandlers(){
   // --- placement conflict modal ---
   if(activeModal.type==='placement-conflict'){
     on('modal-place-anyway', ()=>{
+      if(activeModal.isCoverage){
+        assignCoverage(activeModal.staffId, activeModal.targetAreaId, true, activeModal.returnTo);
+        if(activeModal.returnTo) openModal(activeModal.returnTo); else closeModal();
+        return;
+      }
       attemptPlace(activeModal.staffId, activeModal.targetAreaId, false, activeModal.scope, true);
       closeModal();
     });
@@ -20618,7 +20694,8 @@ function attachHandlers(){
           return;
         }
       }
-      assignCoverage(coverId, areaId);
+      const assigned = assignCoverage(coverId, areaId, false, {type:'callout-dash', selects:activeModal.selects||{}});
+      if(!assigned) return; // a blocked-pair/repeat-area conflict deferred to its own modal — leave it open
       // Check if all positions are now covered (headcount per area, not
       // just "is anyone covering it" — see calloutCoverageGaps()). Reopen
       // either way rather than auto-closing on the last gap — a pick
@@ -21346,9 +21423,25 @@ function attachHandlers(){
       }
       if(activeModal.editId){
         const sv = getSupervisorById(activeModal.editId);
+        const tierChanged = sv.tier !== tier;
+        // A child's "reports to" pick is only valid for a specific parent
+        // tier (SUP_TIER_PARENT) — re-tiering the parent can leave existing
+        // children pointing at a parent whose tier no longer matches what
+        // their own tier requires, skipping a level in the chart (an SL
+        // nested directly under a PSM) until someone notices. Re-parenting
+        // automatically isn't safe (there's no single correct new parent to
+        // guess), so clear the now-invalid link instead of leaving it
+        // silently wrong, and tell the admin who needs a new pick.
+        const orphaned = tierChanged ? state.supervisors.filter(s=>s.reportsToId===sv.id && SUP_TIER_PARENT[s.tier]!==tier) : [];
         const sync = await syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: sv.id, name, color, tier, reportsToId}));
         sv.name = name; sv.color = color; sv.tier = tier; sv.reportsToId = reportsToId;
-        showToast(sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+        orphaned.forEach(child=>{
+          child.reportsToId = null;
+          syncCrudWrite(()=>window.RC.updateSupervisor({supervisorId: child.id, name: child.name, color: child.color, tier: child.tier, reportsToId: null}));
+        });
+        const savedMsg = sync.ok ? 'Supervisor updated — saved to database ✓' : `Saved here, but not to the database — ${sync.error?.message||'try again'}`;
+        const orphanMsg = orphaned.length ? ` ${orphaned.length} supervisor${orphaned.length>1?'s':''} who reported to ${name.split(' ')[0]} need${orphaned.length>1?'':'s'} a new "reports to" pick — the tier change no longer fits.` : '';
+        showToast(savedMsg+orphanMsg, orphaned.length ? 'rust' : (sync.ok?'teal':'rust'));
       } else {
         const sync = await syncCrudWrite(()=>window.RC.createSupervisor({name, color, tier, reportsToId}));
         // A fake local id here would later be sent as a staff member's
@@ -21488,7 +21581,7 @@ function attachHandlers(){
         // Same range-scoped attendance data (server-synced attendance_events
         // + time_off) the Staff Performance Report page and the standalone
         // Attendance Report use — see computeAttendanceReportForRange().
-        const xlsAttendanceStart = m.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+        const xlsAttendanceStart = m.reportStartDate || (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return localDateLabel(d); })();
         const xlsAttendanceEnd   = m.reportEndDate   || today;
         const xlsAttendanceByStaff = {};
         computeAttendanceReportForRange({start:xlsAttendanceStart, end:xlsAttendanceEnd}).rows.forEach(r=>{ xlsAttendanceByStaff[r.staffId] = r; });
@@ -21742,7 +21835,7 @@ function attachHandlers(){
         const days = Number(preset)||30;
         const d = new Date();
         d.setDate(d.getDate() - (days-1));
-        startVal = d.toISOString().slice(0,10);
+        startVal = localDateLabel(d);
       }
       openReportBuilder({...activeModal, reportStartDate:startVal, reportEndDate:endVal});
     }));
@@ -22472,6 +22565,8 @@ function attachHandlers(){
     document.querySelectorAll('[data-team-staff]').forEach(el=>el.addEventListener('click', ()=>{
       openModal({type:'staff-manager', editId:el.dataset.teamStaff, staffTab:'stats'});
     }));
+    const teamDashSupervisorFilterEl = document.getElementById('team-dash-supervisor-filter');
+    if(teamDashSupervisorFilterEl) teamDashSupervisorFilterEl.addEventListener('change', ()=>openTeamDashboard(teamDashSupervisorFilterEl.value));
   }
 
   // --- attendance report ---
@@ -22538,7 +22633,11 @@ function attachHandlers(){
     const m = activeModal;
     const saveDecision = (key) => {
       const i = key.indexOf('|'), staffId = key.slice(0,i), day = key.slice(i+1);
-      syncBoardWrite(()=>window.RC.saveTimeReviewDecision({staffId, day, decision: m.decisions[key]||{}, actingAccountId: authState.account.id}), 'time review decision');
+      if(m.unsyncedKeys && m.unsyncedKeys[key]){ m.unsyncedKeys = {...m.unsyncedKeys}; delete m.unsyncedKeys[key]; }
+      syncBoardWrite(()=>window.RC.saveTimeReviewDecision({staffId, day, decision: m.decisions[key]||{}, actingAccountId: authState.account.id}), 'time review decision', null, null, ()=>{
+        m.unsyncedKeys = {...(m.unsyncedKeys||{}), [key]:true};
+        render();
+      });
     };
     const loadFile = async (file) => {
       if(!file) return;
@@ -22677,6 +22776,9 @@ function attachHandlers(){
       m.editSlot = '';
       render();
       saveDecision(key);
+    }));
+    document.querySelectorAll('[data-wtr-retry-sync]').forEach(el=>el.addEventListener('click', ()=>{
+      saveDecision(el.dataset.wtrRetrySync);
     }));
     // Stamped on every actual confirm (late decision, accept, bulk-accept —
     // not the plain punch-time fix inputs, which aren't a confirmation by
@@ -23469,7 +23571,18 @@ function clearCalloutAttendanceEvent(staffId){
 // the UI on network latency" pattern as every other board write) and fire
 // the Supabase write in the background via syncBoardWrite, covering both
 // the coverage_assignments row and the actual board-position move.
-function assignCoverage(staffId, coverAreaId){
+function assignCoverage(staffId, coverAreaId, force, returnToModal){
+  // Pulling someone in to cover is still a placement — it should warn on the
+  // same blocked-pair/repeat-area conflicts a normal board move would, not
+  // just use that info to rank candidates and then skip the warning.
+  if(!force){
+    const conflicts = blockConflictsIn(staffId, coverAreaId);
+    const repeat = isRepeatArea(staffId, coverAreaId);
+    if(conflicts.length>0 || repeat){
+      openModal({type:'placement-conflict', staffId, targetAreaId:coverAreaId, isCoverage:true, returnTo:returnToModal});
+      return false; // deferred to the conflict modal — caller shouldn't treat this as done
+    }
+  }
   const returnTo = state.assignments[staffId];
   state.coverage[staffId] = {returnToAreaId: returnTo, date: todayLabel()};
   state.assignments[staffId] = coverAreaId;
@@ -23482,6 +23595,7 @@ function assignCoverage(staffId, coverAreaId){
     staffId, coverAreaId, returnToAreaId: returnTo, actingAccountId: authState.account.id,
     staffName: name, coverAreaName: area,
   }), 'coverage assign');
+  return true;
 }
 
 // A team lead's side of the same tap that would call assignCoverage() for
@@ -24229,6 +24343,16 @@ function scheduleRealtimeRefresh(){
 }
 async function runRealtimeRefresh(){
   _realtimeRefreshTimer = null;
+  // Weekly Time Review's punch/decision/settings data isn't part of the
+  // board payload below — refresh it directly via the same fetch the
+  // modal's own team-switch uses, instead of falling through to the
+  // "any modal open, skip" rule, so two supervisors reviewing the same
+  // team concurrently see each other's decisions without closing and
+  // reopening the modal.
+  if(activeModal?.type==='weekly-time-review'){
+    openWeeklyTimeReviewTeam(activeModal.supervisorFilter);
+    return;
+  }
   // Applying mid-drag would replace the DOM under an in-progress native
   // drag; applying while a modal is open risks wiping unsaved form input
   // (render() rebuilds innerHTML from state, not from live DOM values).
@@ -24395,15 +24519,18 @@ function renderPublicBoard(snapshot){
   const renderPublicChip = (staffId) => {
     const s = staffById[staffId];
     if(!s) return '';
-    const isOut = calloutSet.has(s.id);
-    const isLate = !isOut && lateSet.has(s.id);
-    const isEarly = !isOut && leftEarlySet.has(s.id);
+    // Same priority as renderPublicStatusChip()/renderChip(): a scheduled
+    // time-off record wins over a plain manual callout.
+    const isScheduledOff = scheduledOffSet.has(s.id);
+    const isOut = !isScheduledOff && calloutSet.has(s.id);
+    const isLate = !isScheduledOff && !isOut && lateSet.has(s.id);
+    const isEarly = !isScheduledOff && !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
     const times = s.shift_hours_label || '';
     const coverage = coverageByStaff[s.id];
     const tempMove = tempMoveByStaff[s.id];
     return `
-    <div class="chip ${isOut?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}${s.tdis_number?' · TDIS '+escapeHtml(s.tdis_number):''}">
+    <div class="chip ${(isScheduledOff||isOut)?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}${s.tdis_number?' · TDIS '+escapeHtml(s.tdis_number):''}">
       <div class="chip-row-header">
         <div class="chip-name-wrap">
           ${s.is_team_lead?'<span class="chip-lead-star">★</span>':''}
@@ -24411,6 +24538,7 @@ function renderPublicBoard(snapshot){
           ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
         </div>
         <div class="chip-status-badges">
+          ${isScheduledOff?'<span class="chip-out-tag chip-out-scheduled" title="Scheduled time off">📅 Schedule off</span>':''}
           ${isOut?'<span class="chip-out-tag">Out</span>':''}
           ${isLate?'<span class="chip-late-arrival-tag" title="Arrived late today">⏰ Late</span>':''}
           ${isEarly?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
