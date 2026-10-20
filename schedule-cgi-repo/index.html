@@ -11859,7 +11859,10 @@ function renderStaffStatsModal(m){
   const hasAnyExperienceData = rows.some(r=>r.hasExperience);
   const priorMarkedCount = rows.filter(r=>r.manualPrior).length;
   const nonFixedRows = rows.filter(r=>!r.area.fixed);
-  const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience);
+  // Matches staffReadyForNewPath()'s own gate — someone currently settled
+  // into a fixed, non-rotating position isn't a "new path" candidate just
+  // because they happen to have touched every rotating area in the past.
+  const readyForNewPath = nonFixedRows.length>0 && nonFixedRows.every(r=>r.hasExperience) && staffRotates(s.id);
   const gapAreas = neverWorkedGapAreasFor(s.id);
   // Areas marked as prior experience but never actually rotated through here —
   // summarized as one glance-able card (like "Never worked") instead of a
@@ -12760,6 +12763,12 @@ function renderStaffManagerModal(m){
 
     const { rows, totalCompletedRotations, currentAreaId, bestFit } = staffExperienceBreakdown(editing.id);
     const worked = rows.filter(r=>r.hasExperience);
+    // "Areas covered" below is scored against rotating (non-fixed) areas
+    // only, same as staffReadyForNewPath()/neverWorkedGapAreasFor() org-wide
+    // — counting a fixed area here let the numerator run past the
+    // non-fixed-only denominator (a 110% reading) and could hit exactly
+    // 100% while a real non-fixed area was still missing.
+    const workedRotating = worked.filter(r=>!r.area.fixed);
     // New headline metric (Avg evaluation) — same approved-evaluation
     // average already computed for the stars summary above, just also
     // surfaced as a single number up top.
@@ -12823,13 +12832,13 @@ function renderStaffManagerModal(m){
 
     if(worked.length===0) return evalLatestSection+evalTrendSection+priorExpSection+'<div class="small-muted" style="line-height:1.6;padding:16px 0 8px;">No rotations recorded yet, and no prior experience marked. Stats will appear after the first Rotate Now — or mark prior experience above.</div>'+positionRequestsSection;
     const total  = state.areas.filter(a=>!a.fixed).length;
-    const pct    = total>0 ? Math.round(worked.length/total*100) : 0;
+    const pct    = total>0 ? Math.round(workedRotating.length/total*100) : 0;
     const gapAreas = neverWorkedGapAreasFor(editing.id);
 
     return (
       // ── Headline metrics ──
       '<div class="pm-metric-grid">'+
-      '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+worked.length+' of '+total+' areas</p></div>'+
+      '<div class="pm-metric-card"><p class="pm-metric-label">Areas covered</p><p class="pm-metric-value">'+pct+'%</p><p class="pm-metric-hint">'+workedRotating.length+' of '+total+' areas</p></div>'+
       '<div class="pm-metric-card"><p class="pm-metric-label">Avg evaluation</p><p class="pm-metric-value">'+(avgEvalScore!=null?avgEvalScore.toFixed(1):'—')+'</p><p class="pm-metric-hint">'+approvedForAvg.length+' evaluation'+(approvedForAvg.length===1?'':'s')+'</p></div>'+
       '</div>'+
 
@@ -12865,7 +12874,7 @@ function renderStaffManagerModal(m){
       // is just every area saying "yes" back at you; a single callout to
       // go plan what's next is more useful than scrolling past it. ──
       '<p class="pm-section-label" style="margin-top:24px;">Proficiency by area</p>'+
-      (pct===100 ? (
+      (pct===100 && staffRotates(editing.id) ? (
         '<div class="pm-card pm-ready-path-card">'+
           '<div class="pm-fit-header"><p class="pm-fit-name">🏆 Ready for a new path</p><span class="pm-badge warn">100%</span></div>'+
           '<p class="pm-card-footnote">'+escapeHtml(editing.name.split(' ')[0])+' has experience in all '+total+' rotation areas — worth finding a new path.</p>'+
