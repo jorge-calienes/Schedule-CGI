@@ -1617,6 +1617,11 @@ const REALTIME_TABLES = [
   'lunch_times', 'break_times', 'staff_prior_experience', 'coverage_waivers',
   'attendance_events', 'active_rotation', 'temp_moves', 'reassignment_requests',
   'position_requests', 'proficiency_ratings', 'team_lead_coverage_events',
+  // Weekly Time Review — already in the Postgres realtime publication
+  // (0033/0034) but missing here, so two supervisors reviewing the same
+  // team concurrently never saw each other's decisions land without
+  // closing and reopening the modal.
+  'time_review_punches', 'time_review_decisions', 'time_review_settings',
 ];
 
 // ---------------------------------------------------------------------------
