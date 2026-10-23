@@ -10813,7 +10813,7 @@ async function undoLastRotation(){
 
 function renderSidebar(){
   const unplaced = state.staff.filter(s=>s.active!==false && !state.assignments[s.id]);
-  const placedActive = state.staff.filter(s=>s.active!==false && state.assignments[s.id] && staffRotates(s.id)).length;
+  const placedActive = state.staff.filter(s=>s.active!==false && state.assignments[s.id] && !s.isTeamLead && staffRotates(s.id)).length;
   const readOnly = isTeamLeadRole();
   const isTapTarget = !readOnly && !!selectedStaffId && !!state.assignments[selectedStaffId];
 
@@ -10832,7 +10832,7 @@ function renderSidebar(){
       ${readOnly ? '' : `
       <button class="sidebar-mini-btn" id="btn-add-area" title="Add work area">➕</button>
       <button class="sidebar-mini-btn" id="btn-mark-callout" title="Mark someone out">⚠️</button>
-      <button class="sidebar-mini-btn" id="btn-unassign-all" ${placedActive===0?'disabled':''} title="Unassign everyone — clear the board for a new rotation (staff in fixed areas stay put)">↩</button>
+      <button class="sidebar-mini-btn" id="btn-unassign-all" ${placedActive===0?'disabled':''} title="Unassign everyone — clear the board for a new rotation (team leads and staff in fixed areas stay put)">↩</button>
       `}
     </div>`;
   }
@@ -10852,7 +10852,7 @@ function renderSidebar(){
     <div class="sidebar-actions">
       <button class="btn btn-light btn-sm" id="btn-add-area">+ Add work area</button>
       <button class="btn btn-light btn-sm" id="btn-mark-callout">Mark someone out</button>
-      <button class="btn btn-light btn-sm" id="btn-unassign-all" ${placedActive===0?'disabled title="Everyone is already unassigned"':'title="Clear the board before placing everyone for a new rotation — staff in fixed areas stay put"'}>↩ Unassign everyone</button>
+      <button class="btn btn-light btn-sm" id="btn-unassign-all" ${placedActive===0?'disabled title="Everyone is already unassigned"':'title="Clear the board before placing everyone for a new rotation — team leads and staff in fixed areas stay put"'}>↩ Unassign everyone</button>
     </div>`}
     <h3>Legend</h3>
     <div class="small-muted" style="line-height:1.7;padding:0 4px;">
@@ -13505,12 +13505,12 @@ function renderAreaEditorModal(m){
 // --- Unassign everyone (clear the board before placing fresh for a new rotation) ---
 function renderUnassignAllConfirmModal(m){
   const placed = state.staff.filter(s=>s.active!==false && state.assignments[s.id]);
-  const rotating = placed.filter(s=>staffRotates(s.id));
-  const fixedCount = placed.length - rotating.length;
+  const rotating = placed.filter(s=>!s.isTeamLead && staffRotates(s.id));
+  const stayingCount = placed.length - rotating.length;
   return `
   <div class="modal" style="max-width:440px;">
     <div class="modal-head">
-      <div><h2>Unassign everyone?</h2><p>Moves ${rotating.length} currently placed staff to the Unassigned pool so you can drag each one into their new spot for the next rotation. This doesn't start the rotation itself — use Rotate when you're done placing everyone to set the length and start date.${fixedCount>0?' '+fixedCount+" staff in fixed areas (they don't rotate) stay put.":''}</p></div>
+      <div><h2>Unassign everyone?</h2><p>Moves ${rotating.length} currently placed staff to the Unassigned pool so you can drag each one into their new spot for the next rotation. This doesn't start the rotation itself — use Rotate when you're done placing everyone to set the length and start date.${stayingCount>0?' '+stayingCount+" team leads and/or staff in fixed areas (they don't rotate) stay put.":''}</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-foot">
@@ -21531,7 +21531,7 @@ function attachHandlers(){
   // --- unassign everyone (clear the board before placing fresh) ---
   if(activeModal.type==='unassign-all-confirm'){
     on('confirm-unassign-all-btn', async ()=>{
-      const ids = state.staff.filter(s=>s.active!==false && state.assignments[s.id] && staffRotates(s.id)).map(s=>s.id);
+      const ids = state.staff.filter(s=>s.active!==false && state.assignments[s.id] && !s.isTeamLead && staffRotates(s.id)).map(s=>s.id);
       if(!ids.length){ closeModal(); return; }
       openModal({...activeModal, saving:true});
       ids.forEach(id=>{ state.assignments[id] = null; });
