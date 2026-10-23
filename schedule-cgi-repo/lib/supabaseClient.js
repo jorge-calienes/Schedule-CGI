@@ -1163,6 +1163,18 @@ export async function deleteRotationPeriod({ periodId, actingAccountId }) {
 // Reads rotation_periods + their assignment snapshots back into the shape
 // state.history already uses locally: [{period, assignments, startDate,
 // endDate, weeks}], oldest..newest.
+//
+// A "Restore to here" that rolls the active period back past a rotate it
+// didn't itself delete (restoreBoardState only deletes the ONE period tied
+// to the chosen anchor) leaves that rotate's rotation_periods row orphaned —
+// re-running Rotate Now from the restored point then snapshots the SAME
+// start_date again under a new row. Ordering by created_at and returning
+// every row, as this used to, surfaces both: the same period twice (or
+// more) in a staff's Rotation history timeline with possibly different
+// assignments, and — since the orphan can land after the real last period
+// in created_at order — a wrong "most recent rotation" for the repeat-streak
+// badge. Grouping by start_date and keeping only the latest-created row per
+// date fixes both without touching the stray rows already in the database.
 export async function fetchRotationHistory({ limit = 24 } = {}) {
   const { data: periods, error: periodsErr } = await supabase
     .from('rotation_periods')
@@ -1172,7 +1184,18 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
   if (periodsErr) throw periodsErr;
   if (!periods || !periods.length) return [];
 
-  const periodIds = periods.map((p) => p.id);
+  const latestByStartDate = new Map();
+  periods.forEach((p) => {
+    const key = p.start_date || p.period_label;
+    const existing = latestByStartDate.get(key);
+    if (!existing || new Date(p.created_at) > new Date(existing.created_at)) {
+      latestByStartDate.set(key, p);
+    }
+  });
+  const dedupedPeriods = Array.from(latestByStartDate.values())
+    .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0));
+
+  const periodIds = dedupedPeriods.map((p) => p.id);
   const { data: assignmentRows, error: assignErr } = await supabase
     .from('rotation_period_assignments')
     .select('period_id, staff_id, area_id')
@@ -1185,16 +1208,13 @@ export async function fetchRotationHistory({ limit = 24 } = {}) {
     byPeriod[row.period_id][row.staff_id] = row.area_id;
   });
 
-  return periods
-    .slice()
-    .reverse() // oldest..newest, matching state.history's existing order
-    .map((p) => ({
-      period: p.period_label,
-      assignments: byPeriod[p.id] || {},
-      startDate: p.start_date,
-      endDate: p.end_date,
-      weeks: p.weeks,
-    }));
+  return dedupedPeriods.map((p) => ({
+    period: p.period_label,
+    assignments: byPeriod[p.id] || {},
+    startDate: p.start_date,
+    endDate: p.end_date,
+    weeks: p.weeks,
+  }));
 }
 
 // Reconstructs the board exactly as it was right before ANY given moment —
