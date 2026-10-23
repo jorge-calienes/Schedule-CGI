@@ -24447,8 +24447,8 @@ function pbRender(){
 }
 window.pbSetView = (mode) => { pbViewMode = mode; pbRender(); };
 
-// Name + rotation status only (Out / Schedule off / Late / Left early) —
-// no TDIS, no shift time, no supervisor badge (redundant once already
+// Name + TDIS number + rotation status only (Out / Schedule off / Late /
+// Left early) — no shift time, no supervisor badge (redundant once already
 // grouped by supervisor). Priority mirrors renderChip()'s own isScheduled
 // vs isOut ordering: a scheduled-off flag wins over a plain manual Out.
 function renderPublicStatusChip(s, sets){
@@ -24457,11 +24457,12 @@ function renderPublicStatusChip(s, sets){
   const isLate = !isScheduledOff && !isOut && sets.late.has(s.id);
   const isEarly = !isScheduledOff && !isOut && sets.leftEarly.has(s.id);
   return `
-  <div class="chip ${(isScheduledOff||isOut)?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}">
+  <div class="chip ${(isScheduledOff||isOut)?'out':''} ${s.is_team_lead?'lead':''}" title="${escapeHtml(s.name)}${s.tdis_number?' · TDIS '+escapeHtml(s.tdis_number):''}">
     <div class="chip-row-header">
       <div class="chip-name-wrap">
         ${s.is_team_lead?'<span class="chip-lead-star">★</span>':''}
         <span class="chip-name-btn" style="cursor:default;">${escapeHtml(s.name)}</span>
+        ${s.tdis_number?`<span class="chip-tdis-tag" title="TDIS Number">${escapeHtml(s.tdis_number)}</span>`:''}
       </div>
       <div class="chip-status-badges">
         ${isScheduledOff?'<span class="chip-out-tag chip-out-scheduled" title="Scheduled time off">📅 Schedule off</span>':''}
@@ -24548,7 +24549,7 @@ function renderPublicBoard(snapshot){
     const isLate = !isScheduledOff && !isOut && lateSet.has(s.id);
     const isEarly = !isScheduledOff && !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
-    const times = s.shift_hours_label || '';
+    const times = [s.shift_hours_label, s.break_times_label].filter(Boolean).join(' · ');
     const coverage = coverageByStaff[s.id];
     const tempMove = tempMoveByStaff[s.id];
     return `
