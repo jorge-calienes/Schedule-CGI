@@ -4635,6 +4635,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .chip-left-early-tag{font-size:10px;font-weight:700;background:#e5e7eb;color:#4b5563;padding:2px 6px;border-radius:6px;}
 .chip-tags{font-size:11px;color:#6B7280;letter-spacing:0;}
 .chip-hours{font-size:11.5px;color:#6B7280;font-variant-numeric:tabular-nums;}
+.chip-break-pill{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;letter-spacing:.01em;padding:1px 6px;border-radius:var(--md-sys-shape-corner-full);white-space:nowrap;background:#ECFDF5;color:#047857;border:1px solid #A7F3D0;}
 .chip-certs{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px;}
 .chip-trail{display:flex;gap:3px;margin-top:4px;}
 .repeat-dot,.block-dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
@@ -6469,6 +6470,7 @@ button{font-family:var(--sans);cursor:pointer;}
 :root[data-theme="dark"] .chip-tags,
   :root[data-theme="dark"] .chip-hours,
   :root[data-theme="dark"] .temp-scope-label{color:var(--c-text-2);}
+:root[data-theme="dark"] .chip-break-pill{background:#113B2E;color:#6EE7B7;border-color:#1F6B4F;}
 /* Coverage dashboard candidate rows: same bug, worse — .cd-cand-tap
      hardcodes a solid #fff background (not a tint, the whole row), so
      --c-text's correctly-light dark-mode color rendered as white text on
@@ -10948,7 +10950,7 @@ function renderChip(s){
       const shiftDisplay = s.lateStart
         ? `<span class="chip-late-tag" title="Late start / partial day">⏰ ${escapeHtml(s.lateStart)}</span> ${escapeHtml(s.shiftHours||'')}`
         : escapeHtml(s.shiftHours||'');
-      const brk = s.breakTimes ? ' · ' + escapeHtml(s.breakTimes) : '';
+      const brk = s.breakTimes ? ` <span class="chip-break-pill" title="Break / lunch">🍴 ${escapeHtml(s.breakTimes)}</span>` : '';
       const vet = isVeteran(s) ? ' <span class="chip-vet-badge" title="'+seniorityLabel(s)+' veteran">🏅</span>' : isSenior(s) ? ' <span class="chip-senior-badge" title="'+seniorityLabel(s)+' seniority">⭐</span>' : '';
       return (shiftDisplay||brk||vet) ? `<div class="chip-hours">${shiftDisplay}${brk}${vet}</div>` : '';
     })()}
@@ -24549,7 +24551,8 @@ function renderPublicBoard(snapshot){
     const isLate = !isScheduledOff && !isOut && lateSet.has(s.id);
     const isEarly = !isScheduledOff && !isOut && leftEarlySet.has(s.id);
     const sup = s.supervisor_id ? supById[s.supervisor_id] : null;
-    const times = [s.shift_hours_label, s.break_times_label].filter(Boolean).join(' · ');
+    const shiftDisplay = escapeHtml(s.shift_hours_label||'');
+    const brk = s.break_times_label ? ` <span class="chip-break-pill" title="Break / lunch">🍴 ${escapeHtml(s.break_times_label)}</span>` : '';
     const coverage = coverageByStaff[s.id];
     const tempMove = tempMoveByStaff[s.id];
     return `
@@ -24567,7 +24570,7 @@ function renderPublicBoard(snapshot){
           ${isEarly?'<span class="chip-left-early-tag" title="Left early today">↩ Left early</span>':''}
         </div>
       </div>
-      ${times?`<div class="chip-hours">${escapeHtml(times)}</div>`:''}
+      ${(shiftDisplay||brk)?`<div class="chip-hours">${shiftDisplay}${brk}</div>`:''}
       ${sup?`<div class="chip-certs"><span class="chip-sup-badge" style="--sup-bg:${sup.color}1A;--sup-fg:${sup.color};--sup-border:${sup.color}55;" title="Supervisor: ${escapeHtml(sup.name)}"><span class="chip-sup-dot"></span>${escapeHtml(sup.name)}</span></div>`:''}
       ${coverage?`<div class="chip-covering-row">
         <span class="chip-covering-tag">📅 Today only</span>
