@@ -23571,6 +23571,14 @@ function logCallout(staffId, reason=''){
 // is only today's live board flag and isn't visible to either of those.
 function recordCalloutAttendanceEvent(staffId){
   const today = todayLabel();
+  // Idempotent: a fast double-click/double-tap on the quick-out control (or
+  // the "Mark someone out" modal re-used on someone already out) used to log
+  // a second durable event for the same person on the same day — harmless to
+  // the board itself (state.callouts is already a flag, not a count), but
+  // the Attendance Report sums these events, so each duplicate inflated its
+  // "today" callout count past the real number of people actually out.
+  const already = (state.attendanceEvents||[]).some(e=>e.staffId===staffId && e.eventType==='callout' && e.eventDate===today);
+  if(already) return;
   const localId = uid('ae');
   state.attendanceEvents = [...(state.attendanceEvents||[]), {id:localId, staffId, eventType:'callout', eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
   syncBoardWrite(async ()=>{
@@ -23581,10 +23589,16 @@ function recordCalloutAttendanceEvent(staffId){
 }
 function clearCalloutAttendanceEvent(staffId){
   const today = todayLabel();
-  const existingEvent = (state.attendanceEvents||[]).find(ev=>ev.staffId===staffId && ev.eventType==='callout' && ev.eventDate===today);
-  if(existingEvent){
-    state.attendanceEvents = state.attendanceEvents.filter(ev=>ev!==existingEvent);
-    syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:existingEvent.id}), 'attendance event');
+  // Clear every matching event, not just one — a duplicate from before the
+  // guard above existed (or one created on another device before this one
+  // synced) would otherwise leave a stale extra behind even after the
+  // person is marked back in.
+  const matches = (state.attendanceEvents||[]).filter(ev=>ev.staffId===staffId && ev.eventType==='callout' && ev.eventDate===today);
+  if(matches.length){
+    state.attendanceEvents = state.attendanceEvents.filter(ev=>!matches.includes(ev));
+    matches.forEach(ev=>{
+      syncBoardWrite(()=>window.RC.clearAttendanceEvent({eventId:ev.id}), 'attendance event');
+    });
   }
 }
 
