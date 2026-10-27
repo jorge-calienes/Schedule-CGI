@@ -382,7 +382,27 @@ export async function markAttendanceEvent({ staffId, eventType, eventDate, note,
     note: note || null,
     created_by: actingAccountId,
   }).select().single();
-  if (error) throw error;
+  if (error) {
+    // 23505 = unique_violation on (staff_id, event_type, event_date) — this
+    // exact event was already logged today, most likely a realtime refresh
+    // racing this client's own still-in-flight insert and wiping its local
+    // "already recorded" check before it could see this one land. Nothing
+    // new to create either way: hand back the row that's already there so
+    // the caller still gets a real id to reconcile its optimistic entry
+    // against, instead of surfacing an error for what the user experiences
+    // as a no-op (the callout/late/early was logged, just by the other
+    // write that got there first).
+    if (error.code === '23505') {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('attendance_events')
+        .select()
+        .match({ staff_id: staffId, event_type: eventType, event_date: eventDate })
+        .single();
+      if (fetchErr) throw fetchErr;
+      return existing;
+    }
+    throw error;
+  }
   return data;
 }
 
