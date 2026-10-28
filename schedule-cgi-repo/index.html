@@ -4338,6 +4338,15 @@ button{font-family:var(--sans);cursor:pointer;}
     cursor:pointer;
   }
 .pb-view-tab.active{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border-color:var(--md-sys-color-primary);}
+.pb-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.pb-action-btn{
+    font-size:13px;font-weight:700;border-radius:var(--md-sys-shape-corner-full);
+    padding:var(--md-space-2) var(--md-space-4);cursor:pointer;
+    display:flex;align-items:center;gap:6px;border:1px solid transparent;
+  }
+.pb-action-primary{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);}
+.pb-action-warn{background:var(--md-sys-color-surface-container-low);color:#92400E;border-color:#FDE68A;}
+@media(max-width:600px){.pb-header-actions{width:100%;}.pb-action-btn{flex:1;justify-content:center;}}
 .time-pill{
 
   /* ---------- flow editor: stage list ---------- */
@@ -9701,6 +9710,57 @@ async function refreshPositionReqBadgeCounts(){
   }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
 }
 
+// ── Self-service leave requests (migration 0048) — same shared-queue
+//    shape as position requests above, since these are also decided by
+//    whichever admin/supervisor gets to them first, not routed to one
+//    person. Submitted from the public board though, so "logged by"
+//    doesn't apply — the toast just names who it's for. ──
+let leaveReqBadgeCounts = { pending: 0 };
+let knownPendingLeaveReqIds = null;
+async function refreshLeaveReqBadgeCounts(){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  if(authState.account.role!=='admin' && authState.account.role!=='supervisor') return;
+  try{
+    const items = await window.RC.fetchPendingLeaveRequests();
+    leaveReqBadgeCounts.pending = (items||[]).length;
+    const nowIds = new Set((items||[]).map(i=>i.id));
+    if(knownPendingLeaveReqIds){
+      const newOnes = (items||[]).filter(i=>!knownPendingLeaveReqIds.has(i.id));
+      if(newOnes.length===1){
+        const r = newOnes[0];
+        showToast(`🏖 ${r.staff?.name||'Someone'} requested ${r.leave_type==='sick'?'sick':'PTO'} time off`, 'teal');
+      } else if(newOnes.length>1){
+        showToast(`🏖 ${newOnes.length} new leave requests need review`, 'teal');
+      }
+    }
+    knownPendingLeaveReqIds = nowIds;
+    renderUnlessReportPreviewOpen();
+  }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
+}
+
+let sameDayReqBadgeCounts = { pending: 0 };
+let knownPendingSameDayReqIds = null;
+async function refreshSameDayReqBadgeCounts(){
+  if(!window.RC || authState.status!=='signed-in' || !authState.account) return;
+  if(authState.account.role!=='admin' && authState.account.role!=='supervisor') return;
+  try{
+    const items = await window.RC.fetchPendingSameDayRequests();
+    sameDayReqBadgeCounts.pending = (items||[]).length;
+    const nowIds = new Set((items||[]).map(i=>i.id));
+    if(knownPendingSameDayReqIds){
+      const newOnes = (items||[]).filter(i=>!knownPendingSameDayReqIds.has(i.id));
+      if(newOnes.length===1){
+        const r = newOnes[0];
+        showToast(`${r.request_type==='left_early'?'🚪':'⏰'} ${r.staff?.name||'Someone'} ${r.request_type==='left_early'?'is leaving early':'is running late'} today`, 'teal');
+      } else if(newOnes.length>1){
+        showToast(`⏰ ${newOnes.length} new late/early notices`, 'teal');
+      }
+    }
+    knownPendingSameDayReqIds = nowIds;
+    renderUnlessReportPreviewOpen();
+  }catch(e){ /* badge counts are advisory — a failed refresh just leaves the last known count */ }
+}
+
 // ── Roster: "needs attention" facet + bulk row selection ──
 let rosterSelected = new Set(); // staff ids checked in the roster table for bulk actions
 let rosterBulkField = 'department'; // which field the bulk-edit bar is currently set to change
@@ -10524,6 +10584,9 @@ function renderNavDrawer(){
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-reassigns"><span class="nav-item-icon">🙋</span>Review reassignments${reassignBadgeCounts.pending>0?`<span class="nav-item-badge">${reassignBadgeCounts.pending}</span>`:''}</button>` : ''}
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-position-requests"><span class="nav-item-icon">🏷</span>Review position requests${positionReqBadgeCounts.pending>0?`<span class="nav-item-badge">${positionReqBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-leave-requests"><span class="nav-item-icon">🏖</span>Review leave requests${leaveReqBadgeCounts.pending>0?`<span class="nav-item-badge">${leaveReqBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-same-day-requests"><span class="nav-item-icon">⏰</span>Review late/early notices${sameDayReqBadgeCounts.pending>0?`<span class="nav-item-badge">${sameDayReqBadgeCounts.pending}</span>`:''}</button>` : ''}
+      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-leave-policy"><span class="nav-item-icon">⚙️</span>Leave policy</button>` : ''}
       ${(()=>{
         if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
         const readyCount = staffReadyForNewPath().length;
@@ -11807,6 +11870,9 @@ function renderModal(){
   else if(m.type==='pending-evals') inner = renderPendingEvalsModal(m);
   else if(m.type==='pending-reassigns') inner = renderPendingReassignsModal(m);
   else if(m.type==='pending-position-requests') inner = renderPendingPositionRequestsModal(m);
+  else if(m.type==='pending-leave-requests') inner = renderPendingLeaveRequestsModal(m);
+  else if(m.type==='pending-same-day-requests') inner = renderPendingSameDayRequestsModal(m);
+  else if(m.type==='leave-policy') inner = renderLeavePolicyModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
   else if(m.type==='keyboard-shortcuts') inner = renderKeyboardShortcutsModal(m);
@@ -15959,6 +16025,131 @@ function renderPendingPositionRequestsModal(m){
   </div>`;
 }
 
+// Self-service leave requests (migration 0048) — submitted from the
+// public board with no signed-in identity, verified server-side by TDIS
+// number. Balances and remarks were part of the original submission
+// specifically so a supervisor has the full picture here — never shown
+// on the public board itself, which only ever surfaces the resulting
+// "📅 Schedule off" status once approved.
+function renderPendingLeaveRequestsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>🏖 Pending leave requests</h2><p>Submitted from the public board, awaiting your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending requests…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending requests: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every leave request has been reviewed.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const staffName = (row.staff&&row.staff.name)||'Unknown';
+          const submittedTdis = (row.staff&&row.staff.tdis_number)||'—';
+          const typeLabel = row.leave_type==='sick' ? 'Sick' : 'PTO';
+          const dateLabel = row.start_date===row.end_date ? arShortDate(row.start_date) : `${arShortDate(row.start_date)} – ${arShortDate(row.end_date)}`;
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(staffName)} — ${escapeHtml(typeLabel)} · ${escapeHtml(dateLabel)}</span>
+            </div>
+            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.hours_requested?' · '+row.hours_requested+' hrs':''}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}</div>
+            ${row.remarks?`<div class="eval-history-note">${escapeHtml(row.remarks)}</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn btn-primary btn-sm" data-approve-leave-req="${row.id}" data-approve-leave-staff="${row.staff_id}" data-approve-leave-type="${row.leave_type}" data-approve-leave-start="${row.start_date}" data-approve-leave-end="${row.end_date}" data-approve-leave-name="${escapeHtml(staffName)}">✓ Approve</button>
+              <button class="btn btn-light btn-sm" data-deny-leave-req="${row.id}" data-deny-leave-staff="${row.staff_id}">✕ Deny</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderPendingSameDayRequestsModal(m){
+  const items = m.items||[];
+  return `
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-head">
+      <div><h2>⏰ Pending late / early notices</h2><p>Submitted from the public board, awaiting acknowledgement</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading pending notices…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">Couldn't load pending notices: ${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every notice has been acknowledged.</div>`:''}
+      ${items.length>0?`
+      <div class="eval-history-list">
+        ${items.map(row=>{
+          const staffName = (row.staff&&row.staff.name)||'Unknown';
+          const submittedTdis = (row.staff&&row.staff.tdis_number)||'—';
+          const typeLabel = row.request_type==='left_early' ? '🚪 Leaving early' : '⏰ Running late';
+          return `
+          <div class="eval-history-row">
+            <div class="eval-history-row-head">
+              <span class="eval-history-date">${escapeHtml(staffName)} — ${typeLabel}</span>
+            </div>
+            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}</div>
+            ${row.note?`<div class="eval-history-note">${escapeHtml(row.note)}</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn btn-primary btn-sm" data-ack-same-day-req="${row.id}" data-ack-same-day-staff="${row.staff_id}" data-ack-same-day-type="${row.request_type}">✓ Acknowledge</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// "we can manage the rule as supervisor" — admin or supervisor can tune
+// the company-wide capacity % and the holiday list that feeds the
+// business-day math on both the public board and this list. Holidays add
+// in place (no bulk import); deletes are immediate, no confirm step,
+// since a wrong one is trivial to re-add.
+function renderLeavePolicyModal(m){
+  const holidays = (m.holidays||[]).slice().sort((a,b)=>a.holiday_date.localeCompare(b.holiday_date));
+  return `
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div><h2>⚙️ Leave policy</h2><p>How much of the team can be off on any one day, and which days don't count as business days.</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${m.loading?`<div class="small-muted">Loading…</div>`:''}
+      ${!m.loading && m.error?`<div class="alert-box rust">${escapeHtml(m.error)}</div>`:''}
+      ${!m.loading?`
+      <div class="field">
+        <label>Max % of active staff scheduled off per day</label>
+        <input type="number" id="leave-policy-max-percent" min="1" max="100" value="${m.maxPercent}"/>
+        <div class="field-hint">A new leave request is blocked once this many people already have leave (pending or approved) on any day it covers.</div>
+      </div>
+      <button class="btn btn-primary" id="leave-policy-save-btn" style="margin-bottom:22px;" ${m.saving?'disabled':''}>${m.saving?'Saving…':'Save'}</button>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-2);margin-bottom:8px;">Company holidays</div>
+      <div class="small-muted" style="margin-bottom:10px;">Weekends never count as business hours — these are the extra days that don't either.</div>
+      <div class="option-list" style="max-height:220px;overflow-y:auto;margin-bottom:14px;">
+        ${holidays.length===0?`<div class="small-muted" style="padding:8px 0;">No holidays added yet.</div>`:''}
+        ${holidays.map(h=>`
+          <div class="option-card" style="cursor:default;">
+            <div class="oc-left">
+              <span class="oc-name">${escapeHtml(h.label)}</span>
+              <span class="oc-sub">${arShortDate(h.holiday_date)}</span>
+            </div>
+            <button class="btn btn-light btn-sm" data-delete-holiday="${h.id}" style="flex-shrink:0;color:var(--c-red);">Remove</button>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div class="field" style="margin-bottom:0;flex:1;"><label>Date</label><input type="date" id="leave-policy-new-holiday-date"/></div>
+        <div class="field" style="margin-bottom:0;flex:1;"><label>Label</label><input type="text" id="leave-policy-new-holiday-label" placeholder="e.g. Juneteenth"/></div>
+        <button class="btn btn-light" id="leave-policy-add-holiday-btn">+ Add</button>
+      </div>
+      `:''}
+    </div>
+  </div>`;
+}
+
 function renderPendingReassignsModal(m){
   const items = m.items||[];
   return `
@@ -17337,6 +17528,36 @@ async function openPendingPositionRequests(){
     openModal({type:'pending-position-requests', loading:false, items: items||[]});
   }catch(e){
     openModal({type:'pending-position-requests', loading:false, items:[], error: (e && e.message) || 'Could not load pending position requests.'});
+  }
+}
+
+async function openPendingLeaveRequests(){
+  openModal({type:'pending-leave-requests', loading:true, items:[]});
+  try{
+    const items = await window.RC.fetchPendingLeaveRequests();
+    openModal({type:'pending-leave-requests', loading:false, items: items||[]});
+  }catch(e){
+    openModal({type:'pending-leave-requests', loading:false, items:[], error: (e && e.message) || 'Could not load pending leave requests.'});
+  }
+}
+
+async function openPendingSameDayRequests(){
+  openModal({type:'pending-same-day-requests', loading:true, items:[]});
+  try{
+    const items = await window.RC.fetchPendingSameDayRequests();
+    openModal({type:'pending-same-day-requests', loading:false, items: items||[]});
+  }catch(e){
+    openModal({type:'pending-same-day-requests', loading:false, items:[], error: (e && e.message) || 'Could not load pending late/early notices.'});
+  }
+}
+
+async function openLeavePolicy(){
+  openModal({type:'leave-policy', loading:true});
+  try{
+    const [policy, holidays] = await Promise.all([window.RC.fetchLeavePolicy(), window.RC.fetchCompanyHolidays()]);
+    openModal({type:'leave-policy', loading:false, maxPercent: policy?.max_percent ?? 15, holidays: holidays||[]});
+  }catch(e){
+    openModal({type:'leave-policy', loading:false, maxPercent:15, holidays:[], error: (e && e.message) || 'Could not load the leave policy.'});
   }
 }
 
@@ -19827,7 +20048,7 @@ function attachHandlers(){
   }
 
   // --- nav drawer ---
-  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); refreshReassignBadgeCounts(); refreshPositionReqBadgeCounts(); });
+  on('btn-open-nav',  ()=>{ navDrawerOpen=true;  render(); refreshEvalBadgeCounts(); refreshReassignBadgeCounts(); refreshPositionReqBadgeCounts(); refreshLeaveReqBadgeCounts(); refreshSameDayReqBadgeCounts(); });
   on('btn-toggle-theme', ()=>{
     themeMode = themeMode==='dark' ? 'light' : 'dark';
     try{ localStorage.setItem('rc-theme', themeMode); }catch(e){}
@@ -19874,6 +20095,9 @@ function attachHandlers(){
   on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
   on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
   on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
+  on('nav-pending-leave-requests', ()=>{ closeNav(); openPendingLeaveRequests(); });
+  on('nav-pending-same-day-requests', ()=>{ closeNav(); openPendingSameDayRequests(); });
+  on('nav-leave-policy', ()=>{ closeNav(); openLeavePolicy(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
   on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
   on('nav-time-management',     ()=>{ closeNav(); openModal({type:'time-management'}); });
@@ -23129,6 +23353,100 @@ function attachHandlers(){
     }));
   }
 
+  // --- pending leave requests (self-service, from the public board) ---
+  if(activeModal.type==='pending-leave-requests'){
+    document.querySelectorAll('[data-approve-leave-req]').forEach(el=>el.addEventListener('click', async ()=>{
+      const requestId = el.dataset.approveLeaveReq;
+      const staffId = el.dataset.approveLeaveStaff;
+      const leaveType = el.dataset.approveLeaveType;
+      const startDate = el.dataset.approveLeaveStart;
+      const endDate = el.dataset.approveLeaveEnd;
+      const staffName = el.dataset.approveLeaveName;
+      el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
+      const sync = await syncCrudWrite(()=>window.RC.reviewLeaveRequest({
+        requestId, status:'approved', reviewerId:authState.account.id, staffId, leaveType, startDate, endDate,
+      }));
+      if(sync.ok){
+        if(!state.timeOff[staffId]) state.timeOff[staffId]=[];
+        state.timeOff[staffId].push({startDate, endDate, label: leaveType==='sick'?'Sick':'PTO'});
+        saveState();
+      }
+      showToast(sync.ok ? `${staffName}'s leave approved ✓` : `Could not approve — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshLeaveReqBadgeCounts();
+      if(sync.ok) openPendingLeaveRequests(); else el.disabled = false;
+    }));
+    document.querySelectorAll('[data-deny-leave-req]').forEach(el=>el.addEventListener('click', async ()=>{
+      const requestId = el.dataset.denyLeaveReq;
+      const staffId = el.dataset.denyLeaveStaff;
+      el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
+      const sync = await syncCrudWrite(()=>window.RC.reviewLeaveRequest({
+        requestId, status:'denied', reviewerId:authState.account.id, staffId,
+      }));
+      showToast(sync.ok ? 'Request denied' : `Could not deny — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshLeaveReqBadgeCounts();
+      if(sync.ok) openPendingLeaveRequests(); else el.disabled = false;
+    }));
+  }
+
+  // --- pending late/early notices (self-service, from the public board) ---
+  if(activeModal.type==='pending-same-day-requests'){
+    document.querySelectorAll('[data-ack-same-day-req]').forEach(el=>el.addEventListener('click', async ()=>{
+      const requestId = el.dataset.ackSameDayReq;
+      const staffId = el.dataset.ackSameDayStaff;
+      const requestType = el.dataset.ackSameDayType;
+      el.disabled = true;
+      el.closest('.eval-history-row')?.classList.add('row-busy');
+      const sync = await syncCrudWrite(()=>window.RC.reviewSameDayRequest({
+        requestId, status:'acknowledged', reviewerId:authState.account.id, staffId, requestType,
+      }));
+      if(sync.ok){
+        const today = todayLabel();
+        const existing = (state.attendanceEvents||[]).find(e=>e.staffId===staffId && e.eventType===requestType && e.eventDate===today);
+        if(!existing){
+          state.attendanceEvents = [...(state.attendanceEvents||[]), {id:sync.result?.id||uid('ae'), staffId, eventType:requestType, eventDate:today, note:'', createdBy:authState.account.id, createdAt:new Date().toISOString()}];
+        }
+        saveState();
+      }
+      showToast(sync.ok ? 'Acknowledged ✓' : `Could not acknowledge — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      refreshSameDayReqBadgeCounts();
+      if(sync.ok) openPendingSameDayRequests(); else el.disabled = false;
+    }));
+  }
+
+  // --- leave policy settings ---
+  if(activeModal.type==='leave-policy'){
+    const m = activeModal;
+    on('leave-policy-save-btn', async ()=>{
+      const val = Number(document.getElementById('leave-policy-max-percent')?.value);
+      if(!val || val<=0 || val>100){ showToast('Enter a percent between 1 and 100', 'rust'); return; }
+      openModal({...m, saving:true});
+      const sync = await syncCrudWrite(()=>window.RC.setLeavePolicy({maxPercent:val, actingAccountId:authState.account.id}));
+      showToast(sync.ok ? 'Leave policy updated ✓' : `Could not save — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      openModal({...m, saving:false, maxPercent: sync.ok?val:m.maxPercent});
+    });
+    on('leave-policy-add-holiday-btn', async ()=>{
+      const date = document.getElementById('leave-policy-new-holiday-date')?.value;
+      const label = document.getElementById('leave-policy-new-holiday-label')?.value?.trim();
+      if(!date || !label){ showToast('Enter both a date and a label', 'rust'); return; }
+      const sync = await syncCrudWrite(()=>window.RC.addCompanyHoliday({date, label, actingAccountId:authState.account.id}));
+      if(sync.ok){
+        showToast('Holiday added ✓', 'teal');
+        openLeavePolicy();
+      } else {
+        showToast(`Could not add — ${sync.error?.message||'try again'}`, 'rust');
+      }
+    });
+    document.querySelectorAll('[data-delete-holiday]').forEach(el=>el.addEventListener('click', async ()=>{
+      const holidayId = el.dataset.deleteHoliday;
+      el.disabled = true;
+      const sync = await syncCrudWrite(()=>window.RC.deleteCompanyHoliday({holidayId}));
+      showToast(sync.ok ? 'Holiday removed' : `Could not remove — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
+      if(sync.ok) openLeavePolicy(); else el.disabled = false;
+    }));
+  }
+
   // --- account grant / add form ---
   if(activeModal.type==='account-grant-form'){
     const m = activeModal;
@@ -24349,6 +24667,8 @@ async function bootApp(){
   refreshEvalBadgeCounts(); // advisory nav badge — doesn't block boot
   refreshReassignBadgeCounts();
   refreshPositionReqBadgeCounts();
+  refreshLeaveReqBadgeCounts();
+  refreshSameDayReqBadgeCounts();
 
   // loadState() rendered once already with local/seed data (which did get
   // the view-switch-in fade, viewMode going null -> 'board'), but that's
@@ -24420,6 +24740,8 @@ async function runRealtimeRefresh(){
     render();
     refreshReassignBadgeCounts(); // may bring its own banner toast — see above
     refreshPositionReqBadgeCounts();
+    refreshLeaveReqBadgeCounts();
+    refreshSameDayReqBadgeCounts();
   }catch(e){
     console.warn('Realtime board refresh failed:', e && e.message);
   }
@@ -24654,15 +24976,358 @@ function renderPublicBoard(snapshot){
         <div class="pb-title">Schedule — Board</div>
         <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
       </div>
-      <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
-        <span class="pb-signin-icon">👤</span> Sign in
-      </a>
+      <div class="pb-header-actions">
+        <button class="pb-action-btn pb-action-primary" onclick="pbOpenLeaveForm()">📝 Request time off</button>
+        <button class="pb-action-btn pb-action-warn" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
+        <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
+          <span class="pb-signin-icon">👤</span> Sign in
+        </a>
+      </div>
     </div>
     <div class="pb-view-tabs">
       <button class="pb-view-tab ${pbViewMode==='area'?'active':''}" onclick="pbSetView('area')">By area</button>
       <button class="pb-view-tab ${pbViewMode==='supervisor'?'active':''}" onclick="pbSetView('supervisor')">By supervisor</button>
+      <button class="pb-view-tab ${pbViewMode==='whosoff'?'active':''}" onclick="pbSetView('whosoff')">Who's off</button>
     </div>
-    ${pbViewMode==='supervisor' ? renderPublicSupervisorSection(snapshot, statusSets) : areaViewHtml}
+    ${pbViewMode==='supervisor' ? renderPublicSupervisorSection(snapshot, statusSets)
+      : pbViewMode==='whosoff' ? renderPublicWhosOff(snapshot)
+      : areaViewHtml}
+  </div>
+  ${renderPublicRequestModal(snapshot)}`;
+}
+
+// ============ PUBLIC BOARD: self-service leave / same-day requests ============
+// No signed-in session exists here at all, so "who is this" is established
+// by picking a name from the active-staff list and typing a TDIS number —
+// verified server-side (submit_leave_request/submit_same_day_request,
+// migration 0048) against the real staff record, never trusted from the
+// client alone. All state below is module-level and survives the 8s poll
+// refresh in bootPublicBoard() (which skips re-rendering, not re-fetching,
+// while a form is open — see its own comment) the same way pbViewMode
+// already does.
+let pbModal = null; // null | {type:'leave', startDate, endDate, leaveType} | {type:'sameday', kind}
+let pbSubmitting = false;
+let pbSubmitError = '';
+let pbSubmitSuccess = '';
+let pbCalYear = null, pbCalMonth = null; // Who's off calendar nav — lazily set to the current month on first render
+
+window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
+window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
+window.pbCloseModal = () => { pbModal = null; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
+// Free-typed fields (name/TDIS/balances/remarks/note) sync into pbModal
+// WITHOUT re-rendering — this whole page re-renders by replacing the
+// entire DOM (root.innerHTML=...), which would reset cursor position and
+// feel broken on every keystroke. Only changes that need to visibly
+// affect something else (a date affecting the capacity box, a type
+// toggle's selected style) call pbRender(); the rest just keep pbModal in
+// sync so a later pbRender() (from a date change, or the 8s poll once the
+// form closes) reflects what's already been typed instead of wiping it.
+window.pbSetField = (key, val) => { if(!pbModal) return; pbModal[key] = val; };
+window.pbSetLeaveDate = (which, val) => { if(!pbModal) return; pbModal = {...pbModal, [which==='start'?'startDate':'endDate']: val}; pbRender(); };
+window.pbSetLeaveType = (t) => { if(!pbModal) return; pbModal = {...pbModal, leaveType:t}; pbRender(); };
+window.pbSetSameDayKind = (k) => { if(!pbModal) return; pbModal = {...pbModal, kind:k}; pbRender(); };
+window.pbCalPrev = () => { pbShiftCalMonth(-1); };
+window.pbCalNext = () => { pbShiftCalMonth(1); };
+
+function pbShiftCalMonth(delta){
+  const now = new Date();
+  const base = pbCalYear!=null ? new Date(pbCalYear, pbCalMonth-1, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
+  base.setMonth(base.getMonth()+delta);
+  pbCalYear = base.getFullYear();
+  pbCalMonth = base.getMonth()+1;
+  pbRender();
+}
+
+function pbPillStyle(active){
+  const base = 'flex:1;font-size:13px;font-weight:700;padding:9px 0;border-radius:9px;cursor:pointer;border:1px solid;';
+  return active ? base+'background:#2F5FA8;color:#fff;border-color:#2F5FA8;' : base+'background:var(--c-surface);color:var(--c-text);border-color:var(--c-border);';
+}
+
+function pbStaffOptionsHtml(selectedId){
+  const list = (_pbLastSnapshot?.staff||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return '<option value="">Select your name…</option>' + list.map(s=>`<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeHtml(s.name)}</option>`).join('');
+}
+
+// Mirrors business_days_between() in migration 0048 exactly (Mon–Fri, minus
+// company_holidays) — client-side only for the live "hours being used"
+// readout; the server computes/enforces nothing off this number, it's
+// purely informational and editable (a partial day).
+function pbIsHoliday(snapshot, dateStr){
+  return (snapshot?.company_holidays||[]).some(h=>h.date===dateStr);
+}
+function pbBusinessDaysBetween(snapshot, startDate, endDate){
+  if(!startDate || !endDate || endDate<startDate) return 0;
+  let count = 0;
+  for(let d=new Date(startDate+'T00:00:00'); d<=new Date(endDate+'T00:00:00'); d.setDate(d.getDate()+1)){
+    const dow = d.getDay();
+    const ds = d.toISOString().slice(0,10);
+    if(dow!==0 && dow!==6 && !pbIsHoliday(snapshot, ds)) count++;
+  }
+  return count;
+}
+
+// How many people are already off (approved time_off, or a pending/approved
+// leave_requests row — a pending one still reserves a slot, which is the
+// whole point of showing "fewer slots left" while something awaits
+// review) on one date, against the configured cap.
+function pbCapacityForDate(snapshot, dateStr){
+  const maxPercent = snapshot?.leave_policy?.max_percent ?? 15;
+  const activeCount = snapshot?.active_staff_count || 0;
+  const cap = Math.ceil(maxPercent/100*activeCount);
+  const used = (snapshot?.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date).length;
+  return { cap, used };
+}
+// The single worst (most-used) day across a date range — a multi-day
+// request is only as good as its tightest day, so that's what drives the
+// block/warn state shown to the person filling out the form.
+function pbWorstCapacityInRange(snapshot, startDate, endDate){
+  if(!startDate || !endDate || endDate<startDate) return null;
+  let worst = null;
+  for(let d=new Date(startDate+'T00:00:00'); d<=new Date(endDate+'T00:00:00'); d.setDate(d.getDate()+1)){
+    const ds = d.toISOString().slice(0,10);
+    const info = pbCapacityForDate(snapshot, ds);
+    if(!worst || info.used>worst.used) worst = {date: ds, ...info};
+  }
+  return worst;
+}
+function pbCapacityBoxHtml(worst){
+  if(!worst) return '';
+  const ratio = worst.cap>0 ? worst.used/worst.cap : 0;
+  const left = Math.max(0, worst.cap-worst.used);
+  let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
+  let sub = `${left} slot${left===1?'':'s'} still open — plenty of room.`;
+  if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; sub = `No slots left on ${worst.date} — try different dates or check with your supervisor.`; }
+  else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; sub = `Only ${left} slot${left===1?'':'s'} left — submit soon if you need these dates.`; }
+  return `<div style="border:1px solid ${border};background:${bg};border-radius:10px;padding:12px 14px;margin:14px 0;">
+    <div style="font-size:13px;font-weight:800;color:${fg};">${worst.used} of ${worst.cap} slots used for your dates</div>
+    <div style="font-size:12px;color:${fg};margin-top:2px;">${escapeHtml(sub)}</div>
+  </div>`;
+}
+
+function renderPublicRequestModal(snapshot){
+  if(!pbModal) return '';
+  if(pbModal.type==='leave') return renderPublicLeaveForm(snapshot);
+  if(pbModal.type==='sameday') return renderPublicSameDayForm(snapshot);
+  return '';
+}
+
+function renderPublicLeaveForm(snapshot){
+  const { staffId, tdis, startDate, endDate, leaveType, hoursOverride, ptoBalance, sickBalance, remarks } = pbModal;
+  const hasRange = !!(startDate && endDate && endDate>=startDate);
+  const businessDays = hasRange ? pbBusinessDaysBetween(snapshot, startDate, endDate) : 0;
+  const worst = hasRange ? pbWorstCapacityInRange(snapshot, startDate, endDate) : null;
+  const isFull = !!(worst && worst.cap>0 && worst.used>=worst.cap);
+  return `
+  <div class="modal-backdrop" onclick="pbCloseModal()">
+    <div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div><h2>Request time off</h2><p>Pick your name, confirm it's you, then fill in your leave details.</p></div>
+        <button class="modal-close" onclick="pbCloseModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>Your name</label><select id="pb-leave-name" onchange="pbSetField('staffId', this.value)">${pbStaffOptionsHtml(staffId)}</select></div>
+        <div class="field"><label>TDIS number</label><input type="text" value="${escapeHtml(tdis||'')}" oninput="pbSetField('tdis', this.value)" placeholder="e.g. M12"/></div>
+        <div style="font-size:11.5px;color:var(--c-text-3);background:var(--c-surface-3);border-radius:8px;padding:8px 11px;margin:-6px 0 18px;">We check this against our roster before the request goes through — it's how we confirm it's really you.</div>
+
+        <div class="field">
+          <label>Leave type</label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" onclick="pbSetLeaveType('pto')" style="${pbPillStyle(leaveType!=='sick')}">PTO</button>
+            <button type="button" onclick="pbSetLeaveType('sick')" style="${pbPillStyle(leaveType==='sick')}">Sick</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field"><label>Start date</label><input type="date" value="${escapeHtml(startDate||'')}" onchange="pbSetLeaveDate('start', this.value)"/></div>
+          <div class="field"><label>End date</label><input type="date" value="${escapeHtml(endDate||'')}" onchange="pbSetLeaveDate('end', this.value)"/></div>
+        </div>
+
+        ${hasRange ? `
+        <div class="field">
+          <label>Hours being used</label>
+          <div style="border:1px solid var(--c-border);border-radius:9px;padding:11px 13px;background:var(--c-surface-3);display:flex;align-items:baseline;justify-content:space-between;">
+            <div style="font-size:20px;font-weight:800;">${businessDays*8} <span style="font-size:12px;font-weight:600;color:var(--c-text-2);">hrs</span></div>
+            <div style="font-size:11.5px;color:var(--c-text-2);text-align:right;">= ${businessDays} business day${businessDays===1?'':'s'} × 8 hrs<br/>weekends &amp; holidays don't count</div>
+          </div>
+          <input type="number" value="${escapeHtml(hoursOverride||'')}" oninput="pbSetField('hoursOverride', this.value)" placeholder="Adjust here if you're only taking part of a day" style="margin-top:6px;"/>
+        </div>` : `<div style="font-size:12.5px;color:var(--c-text-2);margin-bottom:16px;">Pick both dates to see hours and slot availability.</div>`}
+
+        ${pbCapacityBoxHtml(worst)}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field"><label>Current PTO balance (hrs)</label><input type="number" value="${escapeHtml(ptoBalance||'')}" oninput="pbSetField('ptoBalance', this.value)" placeholder="e.g. 40"/></div>
+          <div class="field"><label>Current sick balance (hrs)</label><input type="number" value="${escapeHtml(sickBalance||'')}" oninput="pbSetField('sickBalance', this.value)" placeholder="e.g. 24"/></div>
+        </div>
+
+        <div class="field"><label>Remarks &amp; additional information</label><textarea rows="3" oninput="pbSetField('remarks', this.value)" placeholder="Optional">${escapeHtml(remarks||'')}</textarea></div>
+        <div style="font-size:11.5px;color:var(--c-text-3);background:var(--c-surface-3);border-radius:8px;padding:8px 11px;margin-bottom:4px;">🔒 This is for your supervisor only — the public board only ever shows that you're scheduled off, never why.</div>
+
+        ${pbSubmitError?`<div style="border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:9px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:14px;">${escapeHtml(pbSubmitError)}</div>`:''}
+        ${pbSubmitSuccess?`<div style="border:1px solid #A7F3D0;background:#ECFDF5;color:#047857;border-radius:9px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:14px;">${escapeHtml(pbSubmitSuccess)}</div>`:''}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" onclick="pbCloseModal()">Cancel</button>
+        <button class="btn btn-primary" ${(pbSubmitting||isFull)?'disabled':''} onclick="pbSubmitLeaveRequest()">${pbSubmitting?'Submitting…':isFull?'No slots left for these dates':'Submit request'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderPublicSameDayForm(snapshot){
+  const { staffId, tdis, kind, ptoBalance, sickBalance, note } = pbModal;
+  return `
+  <div class="modal-backdrop" onclick="pbCloseModal()">
+    <div class="modal" style="max-width:480px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div><h2>Running late or leaving early?</h2><p>A quick heads-up for today — doesn't count against the time-off capacity.</p></div>
+        <button class="modal-close" onclick="pbCloseModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>Your name</label><select id="pb-sd-name" onchange="pbSetField('staffId', this.value)">${pbStaffOptionsHtml(staffId)}</select></div>
+        <div class="field"><label>TDIS number</label><input type="text" value="${escapeHtml(tdis||'')}" oninput="pbSetField('tdis', this.value)" placeholder="e.g. M12"/></div>
+
+        <div class="field">
+          <label>What's up</label>
+          <div style="display:flex;gap:8px;">
+            <button type="button" onclick="pbSetSameDayKind('late')" style="${pbPillStyle(kind==='late')}">⏰ Running late</button>
+            <button type="button" onclick="pbSetSameDayKind('early')" style="${pbPillStyle(kind==='early')}">🚪 Leaving early</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field"><label>Current PTO balance (hrs)</label><input type="number" value="${escapeHtml(ptoBalance||'')}" oninput="pbSetField('ptoBalance', this.value)" placeholder="e.g. 40"/></div>
+          <div class="field"><label>Current sick balance (hrs)</label><input type="number" value="${escapeHtml(sickBalance||'')}" oninput="pbSetField('sickBalance', this.value)" placeholder="e.g. 24"/></div>
+        </div>
+        <div style="font-size:11.5px;color:var(--c-text-3);margin:-6px 0 16px;">Fill these in if this is for something like a doctor's appointment that should draw against leave — leave blank for a plain heads-up.</div>
+
+        <div class="field"><label>Note (optional)</label><input type="text" value="${escapeHtml(note||'')}" oninput="pbSetField('note', this.value)" placeholder="${kind==='late'?'e.g. traffic, in by 8:15':'e.g. appointment, leaving at 2pm'}"/></div>
+        <div style="font-size:11.5px;color:var(--c-text-3);background:var(--c-surface-3);border-radius:8px;padding:8px 11px;margin-bottom:4px;">🔒 This note is for your supervisor only — the public board only ever shows the status (Running late / Leaving early), never the reason.</div>
+
+        ${pbSubmitError?`<div style="border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:9px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:14px;">${escapeHtml(pbSubmitError)}</div>`:''}
+        ${pbSubmitSuccess?`<div style="border:1px solid #A7F3D0;background:#ECFDF5;color:#047857;border-radius:9px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:14px;">${escapeHtml(pbSubmitSuccess)}</div>`:''}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" onclick="pbCloseModal()">Cancel</button>
+        <button class="btn btn-primary" ${pbSubmitting?'disabled':''} onclick="pbSubmitSameDay()">${pbSubmitting?'Sending…':'Send to my supervisor'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+window.pbSubmitLeaveRequest = async () => {
+  if(!pbModal || pbSubmitting) return;
+  const { staffId, startDate, endDate, leaveType, hoursOverride, ptoBalance, sickBalance, remarks } = pbModal;
+  const tdis = (pbModal.tdis||'').trim();
+  if(!staffId){ pbSubmitError='Pick your name first.'; pbRender(); return; }
+  if(!tdis){ pbSubmitError='Enter your TDIS number.'; pbRender(); return; }
+  if(!startDate || !endDate || endDate<startDate){ pbSubmitError='Pick a valid start and end date.'; pbRender(); return; }
+  const businessDays = pbBusinessDaysBetween(_pbLastSnapshot, startDate, endDate);
+  const hours = hoursOverride ? Number(hoursOverride) : businessDays*8;
+  pbSubmitting = true; pbSubmitError=''; pbRender();
+  try{
+    await window.RC.submitLeaveRequest({
+      staffId, tdis, leaveType: leaveType==='sick'?'sick':'pto', startDate, endDate,
+      hoursRequested: hours, ptoBalance: ptoBalance?Number(ptoBalance):null, sickBalance: sickBalance?Number(sickBalance):null, remarks: (remarks||'').trim(),
+    });
+    pbSubmitting = false; pbSubmitSuccess = 'Request submitted — your supervisor will review it.'; pbRender();
+    setTimeout(()=>{ if(pbSubmitSuccess){ pbModal=null; pbSubmitSuccess=''; pbRender(); } }, 2400);
+  }catch(e){
+    pbSubmitting = false; pbSubmitError = (e&&e.message)||'Could not submit — try again.'; pbRender();
+  }
+};
+
+window.pbSubmitSameDay = async () => {
+  if(!pbModal || pbSubmitting) return;
+  const { staffId, kind, ptoBalance, sickBalance, note } = pbModal;
+  const tdis = (pbModal.tdis||'').trim();
+  const requestType = kind==='early' ? 'left_early' : 'late_arrival';
+  if(!staffId){ pbSubmitError='Pick your name first.'; pbRender(); return; }
+  if(!tdis){ pbSubmitError='Enter your TDIS number.'; pbRender(); return; }
+  pbSubmitting = true; pbSubmitError=''; pbRender();
+  try{
+    await window.RC.submitSameDayRequest({ staffId, tdis, requestType, ptoBalance: ptoBalance?Number(ptoBalance):null, sickBalance: sickBalance?Number(sickBalance):null, note: (note||'').trim() });
+    pbSubmitting = false; pbSubmitSuccess = 'Sent — your supervisor has been notified.'; pbRender();
+    setTimeout(()=>{ if(pbSubmitSuccess){ pbModal=null; pbSubmitSuccess=''; pbRender(); } }, 2200);
+  }catch(e){
+    pbSubmitting = false; pbSubmitError = (e&&e.message)||'Could not send — try again.'; pbRender();
+  }
+};
+
+// "Who's off" tab — a real month calendar (not just a strip), navigable
+// to any month, color-coded against the same capacity cap the request
+// form enforces, plus the list of who's actually on it. Reuses the
+// leave_calendar the public_board_snapshot() already hands back for the
+// request form's own slots-left math, so both always agree.
+function renderPublicWhosOff(snapshot){
+  const now = new Date();
+  const year = pbCalYear!=null ? pbCalYear : now.getFullYear();
+  const month = pbCalMonth!=null ? pbCalMonth : now.getMonth()+1;
+  const monthLabel = new Date(year, month-1, 1).toLocaleString('default', { month:'long', year:'numeric' });
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startDow = first.getDay();
+  const maxPercent = snapshot.leave_policy?.max_percent ?? 15;
+  const activeCount = snapshot.active_staff_count || 0;
+  const cap = Math.ceil(maxPercent/100*activeCount);
+  const pad = n => String(n).padStart(2,'0');
+
+  const dowHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const cells = [];
+  for(let i=0;i<startDow;i++) cells.push('<div></div>');
+  for(let d=1; d<=daysInMonth; d++){
+    const ds = `${year}-${pad(month)}-${pad(d)}`;
+    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
+    const ratio = cap>0 ? used/cap : 0;
+    let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
+    if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
+    else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
+    cells.push(`<div style="border:1px solid ${border};background:${bg};border-radius:9px;padding:6px 4px;text-align:center;aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:11.5px;font-weight:700;">${d}</div>
+      <div style="font-size:12.5px;font-weight:800;color:${fg};">${used}/${cap}</div>
+    </div>`);
+  }
+
+  const todayStr = todayLabel();
+  const upcoming = (snapshot.leave_calendar||[]).filter(r=>r.end_date>=todayStr).slice().sort((a,b)=>a.start_date.localeCompare(b.start_date)).slice(0,20);
+  const typePill = (type, status) => {
+    const isSick = /sick/i.test(type);
+    const bg = isSick ? '#FEE2E2' : '#ECFDF5';
+    const fg = isSick ? '#DC2626' : '#047857';
+    const label = type + (status==='pending' ? ' (pending)' : '');
+    return `<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>`;
+  };
+  const dateLabel = r => r.start_date===r.end_date ? arShortDate(r.start_date) : `${arShortDate(r.start_date)} – ${arShortDate(r.end_date)}`;
+
+  return `
+  <div style="padding:18px 28px 28px;">
+    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:18px 20px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button onclick="pbCalPrev()" aria-label="Previous month" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">‹</button>
+          <div style="font-size:15px;font-weight:800;min-width:150px;text-align:center;">${escapeHtml(monthLabel)}</div>
+          <button onclick="pbCalNext()" aria-label="Next month" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">›</button>
+        </div>
+        <div style="font-size:12px;color:var(--c-text-2);">Capacity rule: max <b>${maxPercent}%</b> of active staff off per day — ${activeCount} active → <b>${cap}</b>/day</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:16px;">
+        ${dowHeaders.map(h=>`<div style="font-size:10.5px;font-weight:700;color:var(--c-text-3);text-align:center;padding-bottom:2px;">${h}</div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:4px;">
+        ${cells.join('')}
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-2);margin-bottom:8px;">Who's scheduled off</div>
+    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;overflow:hidden;">
+      ${upcoming.length===0 ? `<div style="padding:16px;font-size:13px;color:var(--c-text-2);">Nobody has scheduled time off coming up.</div>` : upcoming.map(r=>`
+        <div style="padding:11px 16px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>
+            <div style="font-size:13px;font-weight:700;">${escapeHtml(r.name)}</div>
+            <div style="font-size:11.5px;color:var(--c-text-2);">${escapeHtml(dateLabel(r))}</div>
+          </div>
+          ${typePill(r.type, r.status)}
+        </div>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -24672,6 +25337,12 @@ async function bootPublicBoard(){
   const refresh = async () => {
     try{
       const snapshot = await window.RC.fetchPublicBoardSnapshot();
+      // While a request form is open, update the data (so its slots-left
+      // math stays current) but skip the DOM replace — otherwise a poll
+      // landing mid-keystroke would wipe whatever the person just typed
+      // (TDIS number, remarks) since those fields aren't re-populated
+      // from state on every render, only read at submit time.
+      if(pbModal){ _pbLastSnapshot = snapshot; return; }
       root.innerHTML = renderPublicBoard(snapshot);
     }catch(e){
       root.innerHTML = `<div class="pb-page"><div class="pb-loading">Could not load the board (${escapeHtml((e&&e.message)||'try again')}). Retrying…</div></div>`;

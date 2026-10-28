@@ -1662,6 +1662,10 @@ const REALTIME_TABLES = [
   // team concurrently never saw each other's decisions land without
   // closing and reopening the modal.
   'time_review_punches', 'time_review_decisions', 'time_review_settings',
+  // Self-service leave requests (0048) — so the pending-queue badge counts
+  // and the public board's capacity math pick up a new submission (from
+  // anyone, any device) without needing a manual refresh.
+  'leave_requests', 'same_day_requests', 'leave_policy', 'company_holidays',
 ];
 
 // ---------------------------------------------------------------------------
@@ -1674,6 +1678,151 @@ export async function fetchPublicBoardSnapshot() {
   const { data, error } = await supabase.rpc('public_board_snapshot');
   if (error) throw new Error(`[fetchPublicBoardSnapshot] ${error.message}`);
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Self-service leave requests (migration 0048) — submitted from the public
+// board with no signed-in session, same anon-callable SECURITY DEFINER
+// pattern as public_board_snapshot(). The server (not this file) verifies
+// the TDIS number against the chosen staff record and enforces the
+// capacity rule, so this layer only has to translate the function's
+// Postgres-side error into something the UI can show. "capacity_full:DATE"
+// is the one error the caller needs to parse out specially, to show which
+// date in the range hit the cap.
+// ---------------------------------------------------------------------------
+
+export async function submitLeaveRequest({ staffId, tdis, leaveType, startDate, endDate, hoursRequested, ptoBalance, sickBalance, remarks }) {
+  const { data, error } = await supabase.rpc('submit_leave_request', {
+    p_staff_id: staffId,
+    p_tdis: tdis,
+    p_leave_type: leaveType,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_hours_requested: hoursRequested ?? null,
+    p_pto_balance: ptoBalance ?? null,
+    p_sick_balance: sickBalance ?? null,
+    p_remarks: remarks || null,
+  });
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('tdis_mismatch')) throw new Error('That TDIS number doesn’t match the name you picked — double-check both.');
+    if (msg.includes('staff_not_found')) throw new Error('Couldn’t find that staff member — try picking your name again.');
+    const capMatch = msg.match(/capacity_full:(\d{4}-\d{2}-\d{2})/);
+    if (capMatch) throw new Error(`No slots left for ${capMatch[1]} — try different dates or check with your supervisor.`);
+    throw new Error(`[submitLeaveRequest] ${msg}`);
+  }
+  return data;
+}
+
+export async function submitSameDayRequest({ staffId, tdis, requestType, ptoBalance, sickBalance, note }) {
+  const { data, error } = await supabase.rpc('submit_same_day_request', {
+    p_staff_id: staffId,
+    p_tdis: tdis,
+    p_request_type: requestType,
+    p_pto_balance: ptoBalance ?? null,
+    p_sick_balance: sickBalance ?? null,
+    p_note: note || null,
+  });
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('tdis_mismatch')) throw new Error('That TDIS number doesn’t match the name you picked — double-check both.');
+    if (msg.includes('staff_not_found')) throw new Error('Couldn’t find that staff member — try picking your name again.');
+    throw new Error(`[submitSameDayRequest] ${msg}`);
+  }
+  return data;
+}
+
+// Supervisor/admin review side — same "the review action IS the write"
+// pattern as reviewPositionRequest(): approving a leave request creates the
+// actual time_off row in the same call (so it shows up on the existing
+// Time Off calendar and Attendance Report immediately), and approving a
+// same-day request creates the actual attendance_events row (so it shows
+// up on the board chip and Attendance Report the same way a
+// supervisor-entered one does, benefiting from the same duplicate-proof
+// unique constraint migration 0047 added).
+
+export async function fetchPendingLeaveRequests() {
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select('*, staff:staff_id(name, tdis_number)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function reviewLeaveRequest({ requestId, status, reviewerId, staffId, leaveType, startDate, endDate, decisionNote }) {
+  if (status === 'approved') {
+    const { error: toErr } = await supabase.from('time_off').insert({
+      staff_id: staffId,
+      start_date: startDate,
+      end_date: endDate,
+      label: leaveType === 'sick' ? 'Sick' : 'PTO',
+      created_by: reviewerId,
+    });
+    if (toErr) throw toErr;
+  }
+  const { error } = await supabase.from('leave_requests').update({
+    status, decided_by: reviewerId, decided_at: new Date().toISOString(), decision_note: decisionNote || null,
+  }).eq('id', requestId);
+  if (error) throw error;
+}
+
+export async function fetchPendingSameDayRequests() {
+  const { data, error } = await supabase
+    .from('same_day_requests')
+    .select('*, staff:staff_id(name, tdis_number)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function reviewSameDayRequest({ requestId, status, reviewerId, staffId, requestType, note }) {
+  if (status === 'acknowledged') {
+    // markAttendanceEvent() throws on a real failure and returns the row
+    // otherwise (including the existing row on a 23505 race) — nothing
+    // further to check here.
+    await markAttendanceEvent({
+      staffId, eventType: requestType, eventDate: new Date().toISOString().slice(0, 10), note: note || '', actingAccountId: reviewerId,
+    });
+  }
+  const { error } = await supabase.from('same_day_requests').update({
+    status, decided_by: reviewerId, decided_at: new Date().toISOString(),
+  }).eq('id', requestId);
+  if (error) throw error;
+}
+
+export async function fetchLeavePolicy() {
+  const { data, error } = await supabase.from('leave_policy').select('*').eq('id', true).single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setLeavePolicy({ maxPercent, actingAccountId }) {
+  const { error } = await supabase.from('leave_policy').update({
+    max_percent: maxPercent, updated_by: actingAccountId, updated_at: new Date().toISOString(),
+  }).eq('id', true);
+  if (error) throw error;
+}
+
+export async function fetchCompanyHolidays() {
+  const { data, error } = await supabase.from('company_holidays').select('*').order('holiday_date');
+  if (error) throw error;
+  return data;
+}
+
+export async function addCompanyHoliday({ date, label, actingAccountId }) {
+  const { data, error } = await supabase.from('company_holidays').insert({
+    holiday_date: date, label, created_by: actingAccountId,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCompanyHoliday({ holidayId }) {
+  const { error } = await supabase.from('company_holidays').delete().eq('id', holidayId);
+  if (error) throw error;
 }
 
 let realtimeChannel = null;
@@ -1804,5 +1953,16 @@ window.RC = {
   saveTimeReviewSettings,
   fetchRecentTimeReviewPunches,
   fetchPublicBoardSnapshot,
+  submitLeaveRequest,
+  submitSameDayRequest,
+  fetchPendingLeaveRequests,
+  reviewLeaveRequest,
+  fetchPendingSameDayRequests,
+  reviewSameDayRequest,
+  fetchLeavePolicy,
+  setLeavePolicy,
+  fetchCompanyHolidays,
+  addCompanyHoliday,
+  deleteCompanyHoliday,
 };
 window.dispatchEvent(new CustomEvent('rc:ready'));
