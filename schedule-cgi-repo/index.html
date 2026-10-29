@@ -4338,7 +4338,8 @@ button{font-family:var(--sans);cursor:pointer;}
     cursor:pointer;
   }
 .pb-view-tab.active{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border-color:var(--md-sys-color-primary);}
-.pb-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.pb-header-actions{display:flex;align-items:center;gap:8px;}
+.pb-header-actions-full{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .pb-action-btn{
     font-size:13px;font-weight:700;border-radius:var(--md-sys-shape-corner-full);
     padding:var(--md-space-2) var(--md-space-4);cursor:pointer;
@@ -4346,7 +4347,37 @@ button{font-family:var(--sans);cursor:pointer;}
   }
 .pb-action-primary{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);}
 .pb-action-warn{background:var(--md-sys-color-surface-container-low);color:#92400E;border-color:#FDE68A;}
-@media(max-width:600px){.pb-header-actions{width:100%;}.pb-action-btn{flex:1;justify-content:center;}}
+/* Mobile: three full-width stacked buttons ate a lot of vertical space
+   before the board even started. Collapsed into a single hamburger
+   button + dropdown instead — the full inline row stays for tablet and
+   desktop, where there's room for it. */
+.pb-mobile-menu-wrap{display:none;position:relative;}
+.pb-mobile-menu-btn{
+    width:38px;height:38px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--md-sys-color-outline-variant);
+    background:var(--md-sys-color-surface-container-low);
+    color:var(--md-sys-color-on-surface);
+    font-size:17px;display:flex;align-items:center;justify-content:center;
+  }
+.pb-mobile-menu-backdrop{position:fixed;inset:0;z-index:40;background:transparent;}
+.pb-mobile-menu-dropdown{
+    position:absolute;top:calc(100% + 6px);right:0;z-index:41;
+    background:var(--c-surface);border:1px solid var(--c-border);
+    border-radius:12px;box-shadow:var(--shadow-md);
+    min-width:230px;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+.pb-mobile-menu-item{
+    display:flex;align-items:center;gap:9px;
+    padding:13px 15px;font-size:14px;font-weight:700;
+    text-align:left;background:none;border:none;border-bottom:1px solid var(--c-border);
+    cursor:pointer;color:var(--c-text);text-decoration:none;
+  }
+.pb-mobile-menu-item:last-child{border-bottom:none;}
+@media(max-width:600px){
+  .pb-header-actions-full{display:none;}
+  .pb-mobile-menu-wrap{display:block;}
+}
 
 /* Who's off calendar — sized via classes (not inline styles) so it can
    actually be different per breakpoint: phone gets small, tight cells so
@@ -24846,6 +24877,16 @@ function pbRender(){
 }
 window.pbSetView = (mode) => { pbViewMode = mode; pbRender(); };
 
+// Mobile header menu (☰) — collapses the three header actions (request
+// time off / running late / sign in) that otherwise stack as three
+// full-width buttons on a narrow screen. Plain boolean + re-render, same
+// pattern as pbViewMode above; a transparent fixed backdrop behind the
+// dropdown closes it on an outside tap, same as the request-form modals'
+// own backdrop.
+let pbMobileMenuOpen = false;
+window.pbToggleMobileMenu = () => { pbMobileMenuOpen = !pbMobileMenuOpen; pbRender(); };
+window.pbCloseMobileMenu = () => { pbMobileMenuOpen = false; pbRender(); };
+
 // Name + TDIS number + rotation status only (Out / Schedule off / Late /
 // Left early) — no shift time, no supervisor badge (redundant once already
 // grouped by supervisor). Priority mirrors renderChip()'s own isScheduled
@@ -25038,11 +25079,23 @@ function renderPublicBoard(snapshot){
         <div class="pb-sub">View only${updatedAt?' · updated '+escapeHtml(updatedAt):''}</div>
       </div>
       <div class="pb-header-actions">
-        <button class="pb-action-btn pb-action-primary" onclick="pbOpenLeaveForm()">📝 Request time off</button>
-        <button class="pb-action-btn pb-action-warn" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
-        <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
-          <span class="pb-signin-icon">👤</span> Sign in
-        </a>
+        <div class="pb-header-actions-full">
+          <button class="pb-action-btn pb-action-primary" onclick="pbOpenLeaveForm()">📝 Request time off</button>
+          <button class="pb-action-btn pb-action-warn" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
+          <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
+            <span class="pb-signin-icon">👤</span> Sign in
+          </a>
+        </div>
+        <div class="pb-mobile-menu-wrap">
+          <button class="pb-mobile-menu-btn" onclick="pbToggleMobileMenu()" aria-label="Menu">☰</button>
+          ${pbMobileMenuOpen ? `
+          <div class="pb-mobile-menu-backdrop" onclick="pbCloseMobileMenu()"></div>
+          <div class="pb-mobile-menu-dropdown">
+            <button class="pb-mobile-menu-item" onclick="pbOpenLeaveForm()">📝 Request time off</button>
+            <button class="pb-mobile-menu-item" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
+            <a class="pb-mobile-menu-item" href="${escapeHtml(location.pathname)}">👤 Sign in</a>
+          </div>` : ''}
+        </div>
       </div>
     </div>
     <div class="pb-view-tabs">
@@ -25072,8 +25125,8 @@ let pbSubmitError = '';
 let pbSubmitSuccess = '';
 let pbCalYear = null, pbCalMonth = null; // Who's off calendar nav — lazily set to the current month on first render
 
-window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
-window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
+window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
+window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
 window.pbOpenDayDetail = (dateStr) => { pbModal = {type:'daydetail', date:dateStr}; pbRender(); };
 window.pbCloseModal = () => { pbModal = null; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
 // Free-typed fields (name/TDIS/balances/remarks/note) sync into pbModal
