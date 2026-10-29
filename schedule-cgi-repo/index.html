@@ -25155,7 +25155,7 @@ function pbCapacityBoxHtml(worst){
   let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
   let sub = `${left} slot${left===1?'':'s'} still open — plenty of room.`;
   if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; sub = `No slots left on ${worst.date} — try different dates or check with your supervisor.`; }
-  else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; sub = `Only ${left} slot${left===1?'':'s'} left — submit soon if you need these dates.`; }
+  else if(ratio>=0.5){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; sub = `Only ${left} slot${left===1?'':'s'} left — submit soon if you need these dates.`; }
   return `<div style="border:1px solid ${border};background:${bg};border-radius:10px;padding:12px 14px;margin:14px 0;">
     <div style="font-size:13px;font-weight:800;color:${fg};">${worst.used} of ${worst.cap} slots used for your dates</div>
     <div style="font-size:12px;color:${fg};margin-top:2px;">${escapeHtml(sub)}</div>
@@ -25398,9 +25398,11 @@ function renderPublicWhosOff(snapshot){
     }
     const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
     const ratio = cap>0 ? used/cap : 0;
+    // Green under 50% of slots used, yellow from 50% up, red at 100% (full)
+    // — a clearer read of how booked each day is than the old 70% cutoff.
     let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
     if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
-    else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
+    else if(ratio>=0.5){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
     // Sizing comes from .pb-whosoff-cell + its breakpoints (see CSS) so the
     // grid is actually a different size on phone/tablet/desktop instead of
     // one fixed inline size everywhere; only the ratio-based color stays
