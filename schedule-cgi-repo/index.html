@@ -4364,6 +4364,12 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-whosoff-cell{border-radius:8px;padding:3px 2px;text-align:center;height:38px;display:flex;flex-direction:column;justify-content:center;}
 .pb-whosoff-cell-day{font-size:10.5px;font-weight:700;}
 .pb-whosoff-cell-used{font-size:11px;font-weight:800;}
+/* Weekends/company holidays — nobody works these days, so there's no
+   capacity count to show; a muted "closed" look instead of the usual
+   green/amber/red ratio colors. */
+.pb-whosoff-cell-closed{background:var(--c-surface-3);border:1px dashed var(--c-border);cursor:pointer;opacity:.75;}
+.pb-whosoff-cell-closed .pb-whosoff-cell-day{color:var(--c-text-3);}
+.pb-whosoff-cell-closed .pb-whosoff-cell-used{color:var(--c-text-3);font-weight:700;}
 @media(max-width:600px){
   .pb-whosoff-card{max-width:100%;padding:10px 10px;}
   .pb-whosoff-navbtn{width:24px;height:24px;font-size:12px;}
@@ -25112,23 +25118,32 @@ function pbBusinessDaysBetween(snapshot, startDate, endDate){
 // How many people are already off (approved time_off, or a pending/approved
 // leave_requests row — a pending one still reserves a slot, which is the
 // whole point of showing "fewer slots left" while something awaits
-// review) on one date, against the configured cap.
+// review) on one date, against the configured cap. isBusinessDay mirrors
+// submit_leave_request()'s own weekend/holiday skip (migration 0051) —
+// nobody can be scheduled off a day nobody works in the first place, so
+// there's no real capacity concept on a weekend or a company holiday, and
+// the server never blocks on one either.
 function pbCapacityForDate(snapshot, dateStr){
   const maxPercent = snapshot?.leave_policy?.max_percent ?? 15;
   const activeCount = snapshot?.active_staff_count || 0;
   const cap = Math.ceil(maxPercent/100*activeCount);
   const used = (snapshot?.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date).length;
-  return { cap, used };
+  const dow = new Date(dateStr+'T00:00:00').getDay();
+  const isBusinessDay = dow!==0 && dow!==6 && !pbIsHoliday(snapshot, dateStr);
+  return { cap, used, isBusinessDay };
 }
 // The single worst (most-used) day across a date range — a multi-day
 // request is only as good as its tightest day, so that's what drives the
-// block/warn state shown to the person filling out the form.
+// block/warn state shown to the person filling out the form. Skips
+// weekends/holidays so this never shows a block the server wouldn't
+// actually enforce.
 function pbWorstCapacityInRange(snapshot, startDate, endDate){
   if(!startDate || !endDate || endDate<startDate) return null;
   let worst = null;
   for(let d=new Date(startDate+'T00:00:00'); d<=new Date(endDate+'T00:00:00'); d.setDate(d.getDate()+1)){
     const ds = d.toISOString().slice(0,10);
     const info = pbCapacityForDate(snapshot, ds);
+    if(!info.isBusinessDay) continue;
     if(!worst || info.used>worst.used) worst = {date: ds, ...info};
   }
   return worst;
@@ -25163,7 +25178,9 @@ function renderPublicRequestModal(snapshot){
 function renderPublicDayDetailModal(snapshot){
   const dateStr = pbModal.date;
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
-  const { cap, used } = pbCapacityForDate(snapshot, dateStr);
+  const { cap, used, isBusinessDay } = pbCapacityForDate(snapshot, dateStr);
+  const dow = new Date(dateStr+'T00:00:00').getDay();
+  const closedReason = !isBusinessDay ? (pbIsHoliday(snapshot, dateStr) ? 'Company holiday' : (dow===0||dow===6) ? 'Weekend' : '') : '';
   const off = (snapshot.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date)
     .slice().sort((a,b)=>a.name.localeCompare(b.name));
   const isToday = dateStr===todayLabel();
@@ -25185,7 +25202,7 @@ function renderPublicDayDetailModal(snapshot){
   <div class="modal-backdrop" onclick="pbCloseModal()">
     <div class="modal" style="max-width:420px;" onclick="event.stopPropagation()">
       <div class="modal-head">
-        <div><h2>${escapeHtml(dateLabel)}</h2><p>${cap>0?`${used} of ${cap} slots used`:'Who’s off this day'}</p></div>
+        <div><h2>${escapeHtml(dateLabel)}</h2><p>${closedReason?`${closedReason} — not a scheduled business day`:cap>0?`${used} of ${cap} slots used`:'Who’s off this day'}</p></div>
         <button class="modal-close" onclick="pbCloseModal()">✕</button>
       </div>
       <div class="modal-body" style="padding:0;">
@@ -25363,6 +25380,22 @@ function renderPublicWhosOff(snapshot){
   for(let i=0;i<startDow;i++) cells.push('<div></div>');
   for(let d=1; d<=daysInMonth; d++){
     const ds = `${year}-${pad(month)}-${pad(d)}`;
+    const dow = new Date(ds+'T00:00:00').getDay();
+    const isWeekend = dow===0 || dow===6;
+    const isHoliday = pbIsHoliday(snapshot, ds);
+    // Weekends/holidays aren't scheduled business days -- nobody can be
+    // off a day nobody works, so there's no capacity count to show (the
+    // server doesn't enforce the cap there either, migration 0051). Shown
+    // visibly closed instead of a misleading "0/N" or ratio color, with
+    // its own muted style so it reads as "day off for everyone", not an
+    // open slot.
+    if(isWeekend || isHoliday){
+      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed" onclick="pbOpenDayDetail('${ds}')" title="${isHoliday?'Company holiday':'Weekend'} — not a scheduled business day">
+        <div class="pb-whosoff-cell-day">${d}</div>
+        <div class="pb-whosoff-cell-used">—</div>
+      </div>`);
+      continue;
+    }
     const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
     const ratio = cap>0 ? used/cap : 0;
     let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
