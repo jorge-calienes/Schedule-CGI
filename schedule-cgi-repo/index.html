@@ -25104,6 +25104,31 @@ function pbStaffOptionsHtml(selectedId){
 function pbIsHoliday(snapshot, dateStr){
   return (snapshot?.company_holidays||[]).some(h=>h.date===dateStr);
 }
+function pbHolidayLabel(snapshot, dateStr){
+  return (snapshot?.company_holidays||[]).find(h=>h.date===dateStr)?.label || '';
+}
+// A little personality for the closed-day cells — matched by keyword so a
+// holiday a supervisor adds later (e.g. "Juneteenth", "Cesar Chavez Day")
+// still gets a sensible icon instead of falling through to a bare "🎉"
+// for every one of them.
+function pbHolidayEmoji(label){
+  const l = (label||'').toLowerCase();
+  if(l.includes('christmas')) return '🎄';
+  if(l.includes('thanksgiving')) return '🦃';
+  if(l.includes('new year')) return '🎆';
+  if(l.includes('independence') || l.includes('fourth of july') || l.includes('4th of july')) return '🎇';
+  if(l.includes('memorial')) return '🎖️';
+  if(l.includes('veterans')) return '🎖️';
+  if(l.includes('labor')) return '🛠️';
+  if(l.includes('juneteenth')) return '✊🏾';
+  if(l.includes('halloween')) return '🎃';
+  if(l.includes('valentine')) return '💘';
+  if(l.includes('easter')) return '🐣';
+  if(l.includes('mlk') || l.includes('martin luther king')) return '🕊️';
+  if(l.includes('presidents') || l.includes('president’s') || l.includes('washington')) return '🎩';
+  if(l.includes('cesar chavez')) return '🌾';
+  return '🎉';
+}
 function pbBusinessDaysBetween(snapshot, startDate, endDate){
   if(!startDate || !endDate || endDate<startDate) return 0;
   let count = 0;
@@ -25177,10 +25202,12 @@ function renderPublicRequestModal(snapshot){
 // sends them (see migration 0050).
 function renderPublicDayDetailModal(snapshot){
   const dateStr = pbModal.date;
-  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  const isHolidayDate = pbIsHoliday(snapshot, dateStr);
+  const holidayLabel = isHolidayDate ? pbHolidayLabel(snapshot, dateStr) : '';
+  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' }) + (isHolidayDate ? ` ${pbHolidayEmoji(holidayLabel)}` : '');
   const { cap, used, isBusinessDay } = pbCapacityForDate(snapshot, dateStr);
   const dow = new Date(dateStr+'T00:00:00').getDay();
-  const closedReason = !isBusinessDay ? (pbIsHoliday(snapshot, dateStr) ? 'Company holiday' : (dow===0||dow===6) ? 'Weekend' : '') : '';
+  const closedReason = !isBusinessDay ? (isHolidayDate ? (holidayLabel||'Company holiday') : (dow===0||dow===6) ? 'Weekend' : '') : '';
   const off = (snapshot.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date)
     .slice().sort((a,b)=>a.name.localeCompare(b.name));
   const isToday = dateStr===todayLabel();
@@ -25390,9 +25417,16 @@ function renderPublicWhosOff(snapshot){
     // its own muted style so it reads as "day off for everyone", not an
     // open slot.
     if(isWeekend || isHoliday){
-      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed" onclick="pbOpenDayDetail('${ds}')" title="${isHoliday?'Company holiday':'Weekend'} — not a scheduled business day">
+      // A holiday gets its own little icon (matched off the label) instead
+      // of a bare "—" — weekends stay plain since there isn't a label to
+      // key an icon off, and 100+ gray weekend squares with the same
+      // emoji would just be noise.
+      const holidayLabel = isHoliday ? pbHolidayLabel(snapshot, ds) : '';
+      const mark = isHoliday ? pbHolidayEmoji(holidayLabel) : '—';
+      const titleText = isHoliday ? (holidayLabel||'Company holiday') : 'Weekend';
+      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed" onclick="pbOpenDayDetail('${ds}')" title="${escapeHtml(titleText)} — not a scheduled business day">
         <div class="pb-whosoff-cell-day">${d}</div>
-        <div class="pb-whosoff-cell-used">—</div>
+        <div class="pb-whosoff-cell-used" style="${isHoliday?'font-size:14px;':''}">${mark}</div>
       </div>`);
       continue;
     }
