@@ -4370,6 +4370,13 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-whosoff-cell-closed{background:var(--c-surface-3);border:1px dashed var(--c-border);cursor:pointer;opacity:.75;}
 .pb-whosoff-cell-closed .pb-whosoff-cell-day{color:var(--c-text-3);}
 .pb-whosoff-cell-closed .pb-whosoff-cell-used{color:var(--c-text-3);font-weight:700;}
+/* Two-month layout: both months always render (see pbMonthCardHtml), the
+   second one just stays display:none until there's enough width for it
+   to sit side by side with the first without squeezing either grid. */
+.pb-whosoff-months{display:flex;gap:18px;}
+.pb-whosoff-month-card{flex:1;min-width:0;}
+.pb-whosoff-month-card-2{display:none;}
+.pb-whosoff-month-title{font-size:13px;font-weight:800;text-align:center;margin-bottom:4px;color:var(--c-text-2);}
 @media(max-width:600px){
   .pb-whosoff-card{max-width:100%;padding:10px 10px;}
   .pb-whosoff-navbtn{width:24px;height:24px;font-size:12px;}
@@ -4382,10 +4389,11 @@ button{font-family:var(--sans);cursor:pointer;}
   .pb-whosoff-dow{font-size:9px;}
 }
 @media(min-width:601px) and (max-width:900px){
-  .pb-whosoff-card{max-width:520px;}
+  .pb-whosoff-card{max-width:760px;}
+  .pb-whosoff-month-card-2{display:block;}
 }
 @media(min-width:901px){
-  .pb-whosoff-card{max-width:640px;padding:20px 24px;}
+  .pb-whosoff-card{max-width:960px;padding:20px 24px;}
   .pb-whosoff-navbtn{width:32px;height:32px;font-size:16px;}
   .pb-whosoff-monthlabel{font-size:16px;min-width:160px;}
   .pb-whosoff-caprule{font-size:12.5px;}
@@ -4393,6 +4401,8 @@ button{font-family:var(--sans);cursor:pointer;}
   .pb-whosoff-dow{font-size:11.5px;}
   .pb-whosoff-cell{height:52px;border-radius:10px;}
   .pb-whosoff-cell-day{font-size:12.5px;}
+  .pb-whosoff-month-card-2{display:block;}
+  .pb-whosoff-month-title{font-size:15px;}
   .pb-whosoff-cell-used{font-size:13px;}
 }
 .time-pill{
@@ -25389,17 +25399,16 @@ window.pbSubmitSameDay = async () => {
 // form enforces, plus the list of who's actually on it. Reuses the
 // leave_calendar the public_board_snapshot() already hands back for the
 // request form's own slots-left math, so both always agree.
-function renderPublicWhosOff(snapshot){
-  const now = new Date();
-  const year = pbCalYear!=null ? pbCalYear : now.getFullYear();
-  const month = pbCalMonth!=null ? pbCalMonth : now.getMonth()+1;
+// Builds one month's worth of day cells + its header label, cap pulled in
+// from the caller since it's the same number for every month shown.
+// Factored out of renderPublicWhosOff() so a second (next) month can reuse
+// it verbatim for the desktop/tablet two-month view, instead of forking
+// the cell logic into two near-identical copies.
+function pbMonthCardHtml(snapshot, year, month, cap, showTitle){
   const monthLabel = new Date(year, month-1, 1).toLocaleString('default', { month:'long', year:'numeric' });
   const first = new Date(year, month-1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
   const startDow = first.getDay();
-  const maxPercent = snapshot.leave_policy?.max_percent ?? 15;
-  const activeCount = snapshot.active_staff_count || 0;
-  const cap = Math.ceil(maxPercent/100*activeCount);
   const pad = n => String(n).padStart(2,'0');
 
   const dowHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -25449,6 +25458,35 @@ function renderPublicWhosOff(snapshot){
     </div>`);
   }
 
+  return `
+    ${showTitle ? `<div class="pb-whosoff-month-title">${escapeHtml(monthLabel)}</div>` : ''}
+    <div class="pb-whosoff-grid" style="margin-top:8px;">
+      ${dowHeaders.map(h=>`<div class="pb-whosoff-dow">${h}</div>`).join('')}
+    </div>
+    <div class="pb-whosoff-grid" style="margin-top:3px;">
+      ${cells.join('')}
+    </div>`;
+}
+
+function renderPublicWhosOff(snapshot){
+  const now = new Date();
+  const year = pbCalYear!=null ? pbCalYear : now.getFullYear();
+  const month = pbCalMonth!=null ? pbCalMonth : now.getMonth()+1;
+  const maxPercent = snapshot.leave_policy?.max_percent ?? 15;
+  const activeCount = snapshot.active_staff_count || 0;
+  const cap = Math.ceil(maxPercent/100*activeCount);
+  const nextDate = new Date(year, month, 1); // month is 1-based, so this is already "next month" at day 1
+  const nextYear = nextDate.getFullYear();
+  const nextMonth = nextDate.getMonth()+1;
+  // The second card always renders -- it's just hidden by CSS on phone
+  // (see .pb-whosoff-month-card-2) rather than built conditionally, so a
+  // resize or a different device never needs fresh data, only a style
+  // recalc. pbCalPrev/pbCalNext still shift by a single month, so the
+  // pair always reads as "this month, next month" rather than jumping
+  // two at a time.
+  const monthCard1 = pbMonthCardHtml(snapshot, year, month, cap, false);
+  const monthCard2 = pbMonthCardHtml(snapshot, nextYear, nextMonth, cap, true);
+
   const todayStr = todayLabel();
   const staffById = {};
   (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
@@ -25492,16 +25530,14 @@ function renderPublicWhosOff(snapshot){
       <div class="pb-whosoff-head">
         <div class="pb-whosoff-navgroup">
           <button class="pb-whosoff-navbtn" onclick="pbCalPrev()" aria-label="Previous month">‹</button>
-          <div class="pb-whosoff-monthlabel">${escapeHtml(monthLabel)}</div>
+          <div class="pb-whosoff-monthlabel">${escapeHtml(new Date(year, month-1, 1).toLocaleString('default', { month:'long', year:'numeric' }))}</div>
           <button class="pb-whosoff-navbtn" onclick="pbCalNext()" aria-label="Next month">›</button>
         </div>
         <div class="pb-whosoff-caprule">Max <b>${maxPercent}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day</div>
       </div>
-      <div class="pb-whosoff-grid" style="margin-top:10px;">
-        ${dowHeaders.map(h=>`<div class="pb-whosoff-dow">${h}</div>`).join('')}
-      </div>
-      <div class="pb-whosoff-grid" style="margin-top:3px;">
-        ${cells.join('')}
+      <div class="pb-whosoff-months">
+        <div class="pb-whosoff-month-card">${monthCard1}</div>
+        <div class="pb-whosoff-month-card pb-whosoff-month-card-2">${monthCard2}</div>
       </div>
     </div>
 
