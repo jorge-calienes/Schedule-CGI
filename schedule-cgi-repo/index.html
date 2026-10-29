@@ -25281,38 +25281,59 @@ function renderPublicWhosOff(snapshot){
     let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
     if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
     else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
-    cells.push(`<div style="border:1px solid ${border};background:${bg};border-radius:9px;padding:6px 4px;text-align:center;aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:center;">
-      <div style="font-size:11.5px;font-weight:700;">${d}</div>
-      <div style="font-size:12.5px;font-weight:800;color:${fg};">${used}/${cap}</div>
+    // Fixed height (not aspect-ratio) so a wide card on desktop doesn't
+    // stretch every cell into a square and push 5-6 rows past 100vh —
+    // the whole month needs to be visible without scrolling the grid.
+    cells.push(`<div style="border:1px solid ${border};background:${bg};border-radius:8px;padding:3px 2px;text-align:center;height:38px;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:10.5px;font-weight:700;">${d}</div>
+      <div style="font-size:11px;font-weight:800;color:${fg};">${used}/${cap}</div>
     </div>`);
   }
 
   const todayStr = todayLabel();
-  const upcoming = (snapshot.leave_calendar||[]).filter(r=>r.end_date>=todayStr).slice().sort((a,b)=>a.start_date.localeCompare(b.start_date)).slice(0,20);
+  const staffById = {};
+  (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
+  // Same-day late-arrival/left-early notices never carry a date range or a
+  // note into the public snapshot (public_board_snapshot() only ever hands
+  // back the staff id for today) — so there's nothing private to leak here,
+  // only the fact that they're in today, same as the chip badge on the main
+  // board already shows. Listed ahead of scheduled time off since "today"
+  // is the most relevant thing to surface, each with its own color so the
+  // two read as distinct from each other and from PTO/Sick.
+  const lateToday = (snapshot.late_staff_ids||[]).map(id=>staffById[id]).filter(Boolean)
+    .map(s=>({ staff_id:s.id, name:s.name, start_date:todayStr, end_date:todayStr, type:'Late arrival', status:'today' }));
+  const earlyToday = (snapshot.left_early_staff_ids||[]).map(id=>staffById[id]).filter(Boolean)
+    .map(s=>({ staff_id:s.id, name:s.name, start_date:todayStr, end_date:todayStr, type:'Left early', status:'today' }));
+  const scheduledOff = (snapshot.leave_calendar||[]).filter(r=>r.end_date>=todayStr).slice().sort((a,b)=>a.start_date.localeCompare(b.start_date));
+  const upcoming = lateToday.concat(earlyToday).concat(scheduledOff).slice(0,20);
   const typePill = (type, status) => {
     const isSick = /sick/i.test(type);
-    const bg = isSick ? '#FEE2E2' : '#ECFDF5';
-    const fg = isSick ? '#DC2626' : '#047857';
+    const isLate = type==='Late arrival';
+    const isEarly = type==='Left early';
+    let bg='#ECFDF5', fg='#047857'; // PTO default
+    if(isSick){ bg='#FEE2E2'; fg='#DC2626'; }
+    else if(isLate){ bg='#FEF3C7'; fg='#B45309'; }
+    else if(isEarly){ bg='#E5E7EB'; fg='#4B5563'; }
     const label = type + (status==='pending' ? ' (pending)' : '');
     return `<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>`;
   };
-  const dateLabel = r => r.start_date===r.end_date ? arShortDate(r.start_date) : `${arShortDate(r.start_date)} – ${arShortDate(r.end_date)}`;
+  const dateLabel = r => r.status==='today' ? 'Today' : (r.start_date===r.end_date ? arShortDate(r.start_date) : `${arShortDate(r.start_date)} – ${arShortDate(r.end_date)}`);
 
   return `
   <div style="padding:18px 28px 28px;">
-    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:18px 20px;margin-bottom:16px;">
+    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:14px 16px;margin:0 auto 16px;max-width:460px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <button onclick="pbCalPrev()" aria-label="Previous month" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">‹</button>
-          <div style="font-size:15px;font-weight:800;min-width:150px;text-align:center;">${escapeHtml(monthLabel)}</div>
-          <button onclick="pbCalNext()" aria-label="Next month" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">›</button>
+          <button onclick="pbCalPrev()" aria-label="Previous month" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">‹</button>
+          <div style="font-size:14px;font-weight:800;min-width:130px;text-align:center;">${escapeHtml(monthLabel)}</div>
+          <button onclick="pbCalNext()" aria-label="Next month" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">›</button>
         </div>
-        <div style="font-size:12px;color:var(--c-text-2);">Capacity rule: max <b>${maxPercent}%</b> of active staff off per day — ${activeCount} active → <b>${cap}</b>/day</div>
+        <div style="font-size:11px;color:var(--c-text-2);">Max <b>${maxPercent}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:16px;">
-        ${dowHeaders.map(h=>`<div style="font-size:10.5px;font-weight:700;color:var(--c-text-3);text-align:center;padding-bottom:2px;">${h}</div>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:10px;">
+        ${dowHeaders.map(h=>`<div style="font-size:10px;font-weight:700;color:var(--c-text-3);text-align:center;padding-bottom:2px;">${h}</div>`).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:4px;">
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:3px;">
         ${cells.join('')}
       </div>
     </div>
