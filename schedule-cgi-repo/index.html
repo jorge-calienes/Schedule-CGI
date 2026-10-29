@@ -25055,6 +25055,7 @@ let pbCalYear = null, pbCalMonth = null; // Who's off calendar nav — lazily se
 
 window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
 window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
+window.pbOpenDayDetail = (dateStr) => { pbModal = {type:'daydetail', date:dateStr}; pbRender(); };
 window.pbCloseModal = () => { pbModal = null; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
 // Free-typed fields (name/TDIS/balances/remarks/note) sync into pbModal
 // WITHOUT re-rendering — this whole page re-renders by replacing the
@@ -25150,7 +25151,51 @@ function renderPublicRequestModal(snapshot){
   if(!pbModal) return '';
   if(pbModal.type==='leave') return renderPublicLeaveForm(snapshot);
   if(pbModal.type==='sameday') return renderPublicSameDayForm(snapshot);
+  if(pbModal.type==='daydetail') return renderPublicDayDetailModal(snapshot);
   return '';
+}
+
+// Clicking a day in the Who's off calendar — just the names scheduled off
+// that day (plus today's late/early, since those are day-specific too),
+// same status-only info the calendar cell and the main board chips
+// already show. No remarks/notes/type — public_board_snapshot() never
+// sends them (see migration 0050).
+function renderPublicDayDetailModal(snapshot){
+  const dateStr = pbModal.date;
+  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  const { cap, used } = pbCapacityForDate(snapshot, dateStr);
+  const off = (snapshot.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date)
+    .slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const isToday = dateStr===todayLabel();
+  const staffById = {};
+  (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
+  const lateToday = isToday ? (snapshot.late_staff_ids||[]).map(id=>staffById[id]).filter(Boolean) : [];
+  const earlyToday = isToday ? (snapshot.left_early_staff_ids||[]).map(id=>staffById[id]).filter(Boolean) : [];
+  const row = (name, label, bg, fg) => `
+    <div style="padding:10px 16px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div style="font-size:13.5px;font-weight:700;">${escapeHtml(name)}</div>
+      <span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>
+    </div>`;
+  const rows = [
+    ...lateToday.map(s=>row(s.name, 'Late arrival', '#FEF3C7', '#B45309')),
+    ...earlyToday.map(s=>row(s.name, 'Left early', '#E5E7EB', '#4B5563')),
+    ...off.map(r=>row(r.name, r.status==='pending'?'Scheduled off (pending)':'Scheduled off', '#FEE2E2', '#DC2626')),
+  ];
+  return `
+  <div class="modal-backdrop" onclick="pbCloseModal()">
+    <div class="modal" style="max-width:420px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div><h2>${escapeHtml(dateLabel)}</h2><p>${cap>0?`${used} of ${cap} slots used`:'Who’s off this day'}</p></div>
+        <button class="modal-close" onclick="pbCloseModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0;">
+        ${rows.length===0 ? `<div style="padding:20px 16px;font-size:13px;color:var(--c-text-2);">Nobody scheduled off this day.</div>` : rows.join('')}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" onclick="pbCloseModal()">Close</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderPublicLeaveForm(snapshot){
@@ -25326,8 +25371,10 @@ function renderPublicWhosOff(snapshot){
     // Sizing comes from .pb-whosoff-cell + its breakpoints (see CSS) so the
     // grid is actually a different size on phone/tablet/desktop instead of
     // one fixed inline size everywhere; only the ratio-based color stays
-    // inline since it's computed per cell.
-    cells.push(`<div class="pb-whosoff-cell" style="border:1px solid ${border};background:${bg};">
+    // inline since it's computed per cell. Every day is clickable (not just
+    // ones with someone off) so tapping an empty day still confirms
+    // "nobody scheduled off" rather than doing nothing.
+    cells.push(`<div class="pb-whosoff-cell" style="border:1px solid ${border};background:${bg};cursor:pointer;" onclick="pbOpenDayDetail('${ds}')" title="See who's off ${ds}">
       <div class="pb-whosoff-cell-day">${d}</div>
       <div class="pb-whosoff-cell-used" style="color:${fg};">${used}/${cap}</div>
     </div>`);
