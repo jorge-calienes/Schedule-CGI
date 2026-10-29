@@ -4347,6 +4347,48 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-action-primary{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);}
 .pb-action-warn{background:var(--md-sys-color-surface-container-low);color:#92400E;border-color:#FDE68A;}
 @media(max-width:600px){.pb-header-actions{width:100%;}.pb-action-btn{flex:1;justify-content:center;}}
+
+/* Who's off calendar — sized via classes (not inline styles) so it can
+   actually be different per breakpoint: phone gets small, tight cells so
+   nothing wraps or scrolls sideways; tablet is the comfortable middle;
+   desktop gets a wider card and bigger cells instead of a cramped little
+   square stuck in the middle of a large screen. */
+.pb-whosoff-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:14px 16px;margin:0 auto 16px;max-width:460px;}
+.pb-whosoff-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+.pb-whosoff-navgroup{display:flex;align-items:center;gap:10px;}
+.pb-whosoff-navbtn{width:28px;height:28px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;}
+.pb-whosoff-monthlabel{font-size:14px;font-weight:800;min-width:130px;text-align:center;}
+.pb-whosoff-caprule{font-size:11px;color:var(--c-text-2);}
+.pb-whosoff-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;}
+.pb-whosoff-dow{font-size:10px;font-weight:700;color:var(--c-text-3);text-align:center;padding-bottom:2px;}
+.pb-whosoff-cell{border-radius:8px;padding:3px 2px;text-align:center;height:38px;display:flex;flex-direction:column;justify-content:center;}
+.pb-whosoff-cell-day{font-size:10.5px;font-weight:700;}
+.pb-whosoff-cell-used{font-size:11px;font-weight:800;}
+@media(max-width:600px){
+  .pb-whosoff-card{max-width:100%;padding:10px 10px;}
+  .pb-whosoff-navbtn{width:24px;height:24px;font-size:12px;}
+  .pb-whosoff-monthlabel{font-size:12.5px;min-width:100px;}
+  .pb-whosoff-caprule{font-size:10px;width:100%;}
+  .pb-whosoff-grid{gap:2px;}
+  .pb-whosoff-cell{height:30px;border-radius:6px;padding:2px 1px;}
+  .pb-whosoff-cell-day{font-size:9px;}
+  .pb-whosoff-cell-used{font-size:9px;}
+  .pb-whosoff-dow{font-size:9px;}
+}
+@media(min-width:601px) and (max-width:900px){
+  .pb-whosoff-card{max-width:520px;}
+}
+@media(min-width:901px){
+  .pb-whosoff-card{max-width:640px;padding:20px 24px;}
+  .pb-whosoff-navbtn{width:32px;height:32px;font-size:16px;}
+  .pb-whosoff-monthlabel{font-size:16px;min-width:160px;}
+  .pb-whosoff-caprule{font-size:12.5px;}
+  .pb-whosoff-grid{gap:6px;}
+  .pb-whosoff-dow{font-size:11.5px;}
+  .pb-whosoff-cell{height:52px;border-radius:10px;}
+  .pb-whosoff-cell-day{font-size:12.5px;}
+  .pb-whosoff-cell-used{font-size:13px;}
+}
 .time-pill{
 
   /* ---------- flow editor: stage list ---------- */
@@ -25281,12 +25323,13 @@ function renderPublicWhosOff(snapshot){
     let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
     if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
     else if(ratio>=0.7){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
-    // Fixed height (not aspect-ratio) so a wide card on desktop doesn't
-    // stretch every cell into a square and push 5-6 rows past 100vh —
-    // the whole month needs to be visible without scrolling the grid.
-    cells.push(`<div style="border:1px solid ${border};background:${bg};border-radius:8px;padding:3px 2px;text-align:center;height:38px;display:flex;flex-direction:column;justify-content:center;">
-      <div style="font-size:10.5px;font-weight:700;">${d}</div>
-      <div style="font-size:11px;font-weight:800;color:${fg};">${used}/${cap}</div>
+    // Sizing comes from .pb-whosoff-cell + its breakpoints (see CSS) so the
+    // grid is actually a different size on phone/tablet/desktop instead of
+    // one fixed inline size everywhere; only the ratio-based color stays
+    // inline since it's computed per cell.
+    cells.push(`<div class="pb-whosoff-cell" style="border:1px solid ${border};background:${bg};">
+      <div class="pb-whosoff-cell-day">${d}</div>
+      <div class="pb-whosoff-cell-used" style="color:${fg};">${used}/${cap}</div>
     </div>`);
   }
 
@@ -25306,13 +25349,16 @@ function renderPublicWhosOff(snapshot){
     .map(s=>({ staff_id:s.id, name:s.name, start_date:todayStr, end_date:todayStr, type:'Left early', status:'today' }));
   const scheduledOff = (snapshot.leave_calendar||[]).filter(r=>r.end_date>=todayStr).slice().sort((a,b)=>a.start_date.localeCompare(b.start_date));
   const upcoming = lateToday.concat(earlyToday).concat(scheduledOff).slice(0,20);
+  // Server now only ever sends a generic 'Scheduled off' type for PTO/Sick
+  // (public_board_snapshot() no longer exposes leave_type or time_off.label
+  // — see migration 0050) so there's nothing to brand-distinguish there;
+  // Late arrival / Left early keep their own colors, matching the chip
+  // badges already shown on the main board.
   const typePill = (type, status) => {
-    const isSick = /sick/i.test(type);
     const isLate = type==='Late arrival';
     const isEarly = type==='Left early';
-    let bg='#ECFDF5', fg='#047857'; // PTO default
-    if(isSick){ bg='#FEE2E2'; fg='#DC2626'; }
-    else if(isLate){ bg='#FEF3C7'; fg='#B45309'; }
+    let bg='#FEE2E2', fg='#DC2626'; // Scheduled off default — matches the main board's 📅 badge
+    if(isLate){ bg='#FEF3C7'; fg='#B45309'; }
     else if(isEarly){ bg='#E5E7EB'; fg='#4B5563'; }
     const label = type + (status==='pending' ? ' (pending)' : '');
     return `<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>`;
@@ -25321,19 +25367,19 @@ function renderPublicWhosOff(snapshot){
 
   return `
   <div style="padding:18px 28px 28px;">
-    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:14px 16px;margin:0 auto 16px;max-width:460px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <button onclick="pbCalPrev()" aria-label="Previous month" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">‹</button>
-          <div style="font-size:14px;font-weight:800;min-width:130px;text-align:center;">${escapeHtml(monthLabel)}</div>
-          <button onclick="pbCalNext()" aria-label="Next month" style="width:28px;height:28px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-surface);font-size:14px;font-weight:700;cursor:pointer;">›</button>
+    <div class="pb-whosoff-card">
+      <div class="pb-whosoff-head">
+        <div class="pb-whosoff-navgroup">
+          <button class="pb-whosoff-navbtn" onclick="pbCalPrev()" aria-label="Previous month">‹</button>
+          <div class="pb-whosoff-monthlabel">${escapeHtml(monthLabel)}</div>
+          <button class="pb-whosoff-navbtn" onclick="pbCalNext()" aria-label="Next month">›</button>
         </div>
-        <div style="font-size:11px;color:var(--c-text-2);">Max <b>${maxPercent}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day</div>
+        <div class="pb-whosoff-caprule">Max <b>${maxPercent}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:10px;">
-        ${dowHeaders.map(h=>`<div style="font-size:10px;font-weight:700;color:var(--c-text-3);text-align:center;padding-bottom:2px;">${h}</div>`).join('')}
+      <div class="pb-whosoff-grid" style="margin-top:10px;">
+        ${dowHeaders.map(h=>`<div class="pb-whosoff-dow">${h}</div>`).join('')}
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:3px;">
+      <div class="pb-whosoff-grid" style="margin-top:3px;">
         ${cells.join('')}
       </div>
     </div>
