@@ -25429,8 +25429,14 @@ function renderPublicWhosOff(snapshot){
     .map(s=>({ staff_id:s.id, name:s.name, start_date:todayStr, end_date:todayStr, type:'Late arrival', status:'today' }));
   const earlyToday = (snapshot.left_early_staff_ids||[]).map(id=>staffById[id]).filter(Boolean)
     .map(s=>({ staff_id:s.id, name:s.name, start_date:todayStr, end_date:todayStr, type:'Left early', status:'today' }));
-  const scheduledOff = (snapshot.leave_calendar||[]).filter(r=>r.end_date>=todayStr).slice().sort((a,b)=>a.start_date.localeCompare(b.start_date));
-  const upcoming = lateToday.concat(earlyToday).concat(scheduledOff).slice(0,20);
+  // Today only, not the next 180 days — a full "who's off" list across the
+  // whole visible window got long fast (easily 20+ names) and buried the
+  // calendar itself. Today's count is naturally small, so it stays as a
+  // quick-glance list; any other day is a tap away via the day-detail
+  // modal (pbOpenDayDetail, see the cell onclick above).
+  const todayOff = (snapshot.leave_calendar||[]).filter(r=>todayStr>=r.start_date && todayStr<=r.end_date)
+    .slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const todayItems = lateToday.concat(earlyToday).concat(todayOff);
   // Server now only ever sends a generic 'Scheduled off' type for PTO/Sick
   // (public_board_snapshot() no longer exposes leave_type or time_off.label
   // — see migration 0050) so there's nothing to brand-distinguish there;
@@ -25445,7 +25451,6 @@ function renderPublicWhosOff(snapshot){
     const label = type + (status==='pending' ? ' (pending)' : '');
     return `<span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>`;
   };
-  const dateLabel = r => r.status==='today' ? 'Today' : (r.start_date===r.end_date ? arShortDate(r.start_date) : `${arShortDate(r.start_date)} – ${arShortDate(r.end_date)}`);
 
   return `
   <div style="padding:18px 28px 28px;">
@@ -25466,17 +25471,15 @@ function renderPublicWhosOff(snapshot){
       </div>
     </div>
 
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-2);margin-bottom:8px;">Who's scheduled off</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-2);margin-bottom:8px;">Today</div>
     <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;overflow:hidden;">
-      ${upcoming.length===0 ? `<div style="padding:16px;font-size:13px;color:var(--c-text-2);">Nobody has scheduled time off coming up.</div>` : upcoming.map(r=>`
+      ${todayItems.length===0 ? `<div style="padding:16px;font-size:13px;color:var(--c-text-2);">Nobody's off, late, or left early today.</div>` : todayItems.map(r=>`
         <div style="padding:11px 16px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>
-            <div style="font-size:13px;font-weight:700;">${escapeHtml(r.name)}</div>
-            <div style="font-size:11.5px;color:var(--c-text-2);">${escapeHtml(dateLabel(r))}</div>
-          </div>
+          <div style="font-size:13px;font-weight:700;">${escapeHtml(r.name)}</div>
           ${typePill(r.type, r.status)}
         </div>`).join('')}
     </div>
+    <div style="font-size:12px;color:var(--c-text-2);text-align:center;padding:10px 4px 2px;">Tap any day on the calendar above to see who's scheduled off that day.</div>
   </div>`;
 }
 
