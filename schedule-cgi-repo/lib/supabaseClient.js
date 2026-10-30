@@ -1832,9 +1832,10 @@ export async function fetchLeavePolicy() {
   return data;
 }
 
-export async function setLeavePolicy({ maxPercent, actingAccountId }) {
+export async function setLeavePolicy({ ruleType, maxPercent, maxCount, actingAccountId }) {
   const { error } = await supabase.from('leave_policy').update({
-    max_percent: maxPercent, updated_by: actingAccountId, updated_at: new Date().toISOString(),
+    rule_type: ruleType, max_percent: maxPercent, max_count: maxCount,
+    updated_by: actingAccountId, updated_at: new Date().toISOString(),
   }).eq('id', true);
   if (error) throw error;
 }

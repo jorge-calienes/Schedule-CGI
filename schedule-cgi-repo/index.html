@@ -16230,10 +16230,23 @@ function renderLeavePolicyModal(m){
       ${!m.loading && m.error?`<div class="alert-box rust">${escapeHtml(m.error)}</div>`:''}
       ${!m.loading?`
       <div class="field">
+        <label>How the cap is set</label>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm ${m.ruleType!=='count'?'btn-primary':'btn-light'}" id="leave-policy-rule-percent-btn" type="button">% of active staff</button>
+          <button class="btn btn-sm ${m.ruleType==='count'?'btn-primary':'btn-light'}" id="leave-policy-rule-count-btn" type="button">Fixed number</button>
+        </div>
+      </div>
+      ${m.ruleType==='count' ? `
+      <div class="field">
+        <label>Max people scheduled off per day</label>
+        <input type="number" id="leave-policy-max-count" min="1" step="1" value="${m.maxCount}"/>
+        <div class="field-hint">A new leave request is blocked once this many people already have leave (pending or approved) on any day it covers — a flat headcount, not a share of the roster.</div>
+      </div>` : `
+      <div class="field">
         <label>Max % of active staff scheduled off per day</label>
         <input type="number" id="leave-policy-max-percent" min="1" max="100" value="${m.maxPercent}"/>
         <div class="field-hint">A new leave request is blocked once this many people already have leave (pending or approved) on any day it covers.</div>
-      </div>
+      </div>`}
       <button class="btn btn-primary" id="leave-policy-save-btn" style="margin-bottom:22px;" ${m.saving?'disabled':''}>${m.saving?'Saving…':'Save'}</button>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-2);margin-bottom:8px;">Company holidays</div>
@@ -17664,9 +17677,9 @@ async function openLeavePolicy(){
   openModal({type:'leave-policy', loading:true});
   try{
     const [policy, holidays] = await Promise.all([window.RC.fetchLeavePolicy(), window.RC.fetchCompanyHolidays()]);
-    openModal({type:'leave-policy', loading:false, maxPercent: policy?.max_percent ?? 15, holidays: holidays||[]});
+    openModal({type:'leave-policy', loading:false, ruleType: policy?.rule_type || 'percent', maxPercent: policy?.max_percent ?? 15, maxCount: policy?.max_count ?? 5, holidays: holidays||[]});
   }catch(e){
-    openModal({type:'leave-policy', loading:false, maxPercent:15, holidays:[], error: (e && e.message) || 'Could not load the leave policy.'});
+    openModal({type:'leave-policy', loading:false, ruleType:'percent', maxPercent:15, maxCount:5, holidays:[], error: (e && e.message) || 'Could not load the leave policy.'});
   }
 }
 
@@ -23529,13 +23542,31 @@ function attachHandlers(){
   // --- leave policy settings ---
   if(activeModal.type==='leave-policy'){
     const m = activeModal;
+    // Switching modes grabs whatever's currently typed in the field that's
+    // about to be hidden, so a value entered right before flipping the
+    // toggle isn't silently dropped if the person flips back.
+    const captureCurrentField = () => {
+      if(m.ruleType==='count'){ const v = Number(document.getElementById('leave-policy-max-count')?.value); return v>0 ? {maxCount:v} : {}; }
+      const v = Number(document.getElementById('leave-policy-max-percent')?.value); return v>0 ? {maxPercent:v} : {};
+    };
+    on('leave-policy-rule-percent-btn', ()=>{ openModal({...m, ...captureCurrentField(), ruleType:'percent'}); });
+    on('leave-policy-rule-count-btn', ()=>{ openModal({...m, ...captureCurrentField(), ruleType:'count'}); });
     on('leave-policy-save-btn', async ()=>{
-      const val = Number(document.getElementById('leave-policy-max-percent')?.value);
-      if(!val || val<=0 || val>100){ showToast('Enter a percent between 1 and 100', 'rust'); return; }
+      const ruleType = m.ruleType==='count' ? 'count' : 'percent';
+      let maxPercent = m.maxPercent, maxCount = m.maxCount;
+      if(ruleType==='count'){
+        const val = Number(document.getElementById('leave-policy-max-count')?.value);
+        if(!val || val<=0){ showToast('Enter a number of people greater than 0', 'rust'); return; }
+        maxCount = val;
+      } else {
+        const val = Number(document.getElementById('leave-policy-max-percent')?.value);
+        if(!val || val<=0 || val>100){ showToast('Enter a percent between 1 and 100', 'rust'); return; }
+        maxPercent = val;
+      }
       openModal({...m, saving:true});
-      const sync = await syncCrudWrite(()=>window.RC.setLeavePolicy({maxPercent:val, actingAccountId:authState.account.id}));
+      const sync = await syncCrudWrite(()=>window.RC.setLeavePolicy({ruleType, maxPercent, maxCount, actingAccountId:authState.account.id}));
       showToast(sync.ok ? 'Leave policy updated ✓' : `Could not save — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
-      openModal({...m, saving:false, maxPercent: sync.ok?val:m.maxPercent});
+      openModal({...m, saving:false, ruleType: sync.ok?ruleType:m.ruleType, maxPercent: sync.ok?maxPercent:m.maxPercent, maxCount: sync.ok?maxCount:m.maxCount});
     });
     on('leave-policy-add-holiday-btn', async ()=>{
       const date = document.getElementById('leave-policy-new-holiday-date')?.value;
@@ -25256,6 +25287,16 @@ function pbBusinessDaysBetween(snapshot, startDate, endDate){
   return count;
 }
 
+// Mirrors submit_leave_request()'s own rule_type branch (migration 0054)
+// exactly — 'count' is a flat headcount, 'percent' is ceil(percent% of
+// active staff), so the live "slots left" readout here never disagrees
+// with what the server will actually enforce.
+function pbCapForPolicy(snapshot){
+  const policy = snapshot?.leave_policy || {};
+  const activeCount = snapshot?.active_staff_count || 0;
+  if(policy.rule_type==='count') return Math.max(policy.max_count||1, 1);
+  return Math.ceil((policy.max_percent ?? 15)/100*activeCount);
+}
 // How many people are already off (approved time_off, or a pending/approved
 // leave_requests row — a pending one still reserves a slot, which is the
 // whole point of showing "fewer slots left" while something awaits
@@ -25265,9 +25306,7 @@ function pbBusinessDaysBetween(snapshot, startDate, endDate){
 // there's no real capacity concept on a weekend or a company holiday, and
 // the server never blocks on one either.
 function pbCapacityForDate(snapshot, dateStr){
-  const maxPercent = snapshot?.leave_policy?.max_percent ?? 15;
-  const activeCount = snapshot?.active_staff_count || 0;
-  const cap = Math.ceil(maxPercent/100*activeCount);
+  const cap = pbCapForPolicy(snapshot);
   const used = (snapshot?.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date).length;
   const dow = new Date(dateStr+'T00:00:00').getDay();
   const isBusinessDay = dow!==0 && dow!==6 && !pbIsHoliday(snapshot, dateStr);
@@ -25578,9 +25617,9 @@ function renderPublicWhosOff(snapshot){
   const now = new Date();
   const year = pbCalYear!=null ? pbCalYear : now.getFullYear();
   const month = pbCalMonth!=null ? pbCalMonth : now.getMonth()+1;
-  const maxPercent = snapshot.leave_policy?.max_percent ?? 15;
+  const policy = snapshot.leave_policy || {};
   const activeCount = snapshot.active_staff_count || 0;
-  const cap = Math.ceil(maxPercent/100*activeCount);
+  const cap = pbCapForPolicy(snapshot);
   const nextDate = new Date(year, month, 1); // month is 1-based, so this is already "next month" at day 1
   const nextYear = nextDate.getFullYear();
   const nextMonth = nextDate.getMonth()+1;
@@ -25639,7 +25678,7 @@ function renderPublicWhosOff(snapshot){
           <div class="pb-whosoff-monthlabel">${escapeHtml(new Date(year, month-1, 1).toLocaleString('default', { month:'long', year:'numeric' }))}</div>
           <button class="pb-whosoff-navbtn" onclick="pbCalNext()" aria-label="Next month">›</button>
         </div>
-        <div class="pb-whosoff-caprule">Max <b>${maxPercent}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day</div>
+        <div class="pb-whosoff-caprule">${policy.rule_type==='count' ? `Max <b>${cap}</b> ${cap===1?'person':'people'} off/day` : `Max <b>${policy.max_percent ?? 15}%</b> off/day — ${activeCount} active → <b>${cap}</b>/day`}</div>
       </div>
       <div class="pb-whosoff-months">
         <div class="pb-whosoff-month-card">${monthCard1}</div>
