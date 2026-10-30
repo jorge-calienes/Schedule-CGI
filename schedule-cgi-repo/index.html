@@ -2954,6 +2954,13 @@ body{
 .callout-banner.rotate-undo .callout-banner-names{color:#2F5FA8;}
 .callout-banner.rotate-undo .callout-banner-btn{background:#2F5FA8;}
 .callout-banner.rotate-undo .callout-banner-btn:hover{background:#254A82;}
+/* Same blue as rotate-undo -- informational/action-available, not an
+   emergency like an uncovered callout, so it doesn't borrow the red/amber
+   coverage colors. */
+.callout-banner.requests-pending{background:#EEF3FC;border-bottom-color:#2F5FA8;}
+.callout-banner.requests-pending .callout-banner-title{color:#1D4A8F;}
+.callout-banner.requests-pending .callout-banner-btn{background:#2F5FA8;}
+.callout-banner.requests-pending .callout-banner-btn:hover{background:#254A82;}
 @media(max-width:420px){
     .callout-banner{padding:8px 12px;gap:8px;}
     .callout-banner-icon{font-size:16px;}
@@ -9938,6 +9945,8 @@ function render(){
     ${renderTopbar()}
     ${isTeamLeadRole() ? '' : renderTabBar()}
     ${renderCalloutBanner()}
+    ${renderLeaveRequestsBanner()}
+    ${renderSameDayRequestsBanner()}
     ${renderUndoRotateBanner()}
     ${swapMode ? `<div class="swap-banner">
       <div class="swap-banner-top">
@@ -10886,6 +10895,43 @@ function renderCalloutBanner(){
     ${isTeamLeadRole()
       ? (leadHasScopedGap ? '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">🙋 Request coverage</button>' : '')
       : '<button class="callout-banner-btn partial-btn" id="btn-open-callout-dash">Continue →</button>'}
+  </div>`;
+}
+
+// Same persistent-banner treatment as renderCalloutBanner() above, for the
+// other thing admin/supervisors need to notice without digging into the
+// hamburger menu: self-service requests submitted from the public board.
+// The badge counts (and the toast on a brand-new submission) already
+// existed -- this is what was missing: something visible on the board
+// itself, that stays up until the queue is actually reviewed, not just a
+// toast that's gone in a few seconds if nobody happened to be looking.
+function renderLeaveRequestsBanner(){
+  if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
+  const n = leaveReqBadgeCounts.pending;
+  if(n===0) return '';
+  return `<div class="callout-banner requests-pending">
+    <div class="callout-banner-left">
+      <span class="callout-banner-icon">🏖</span>
+      <div class="callout-banner-text">
+        <span class="callout-banner-title">${n} leave request${n>1?'s':''} waiting for review</span>
+      </div>
+    </div>
+    <button class="callout-banner-btn" id="btn-banner-open-leave-requests">Review</button>
+  </div>`;
+}
+
+function renderSameDayRequestsBanner(){
+  if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
+  const n = sameDayReqBadgeCounts.pending;
+  if(n===0) return '';
+  return `<div class="callout-banner requests-pending">
+    <div class="callout-banner-left">
+      <span class="callout-banner-icon">⏰</span>
+      <div class="callout-banner-text">
+        <span class="callout-banner-title">${n} late/early notice${n>1?'s':''} waiting for review</span>
+      </div>
+    </div>
+    <button class="callout-banner-btn" id="btn-banner-open-same-day-requests">Review</button>
   </div>`;
 }
 
@@ -20243,6 +20289,8 @@ function attachHandlers(){
   on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
   on('nav-pending-leave-requests', ()=>{ closeNav(); openPendingLeaveRequests(); });
   on('nav-pending-same-day-requests', ()=>{ closeNav(); openPendingSameDayRequests(); });
+  on('btn-banner-open-leave-requests', ()=>openPendingLeaveRequests());
+  on('btn-banner-open-same-day-requests', ()=>openPendingSameDayRequests());
   on('nav-leave-policy', ()=>{ closeNav(); openLeavePolicy(); });
   on('nav-ready-for-path',      ()=>{ closeNav(); openModal({type:'ready-for-path'}); });
   on('nav-experience-gaps',     ()=>{ closeNav(); openModal({type:'experience-gaps'}); });
