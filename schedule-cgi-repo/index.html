@@ -25263,17 +25263,21 @@ function pbHolidayEmoji(label){
   if(l.includes('christmas')) return '🎄';
   if(l.includes('thanksgiving')) return '🦃';
   if(l.includes('new year')) return '🎆';
+  // Checked ahead of the plain "independence" match below -- the federal
+  // holiday's full name is "Juneteenth National Independence Day", which
+  // would otherwise match "independence" first and show the wrong icon.
+  if(l.includes('juneteenth')) return '✊🏾';
   if(l.includes('independence') || l.includes('fourth of july') || l.includes('4th of july')) return '🎇';
   if(l.includes('memorial')) return '🎖️';
   if(l.includes('veterans')) return '🎖️';
   if(l.includes('labor')) return '🛠️';
-  if(l.includes('juneteenth')) return '✊🏾';
   if(l.includes('halloween')) return '🎃';
   if(l.includes('valentine')) return '💘';
   if(l.includes('easter')) return '🐣';
   if(l.includes('mlk') || l.includes('martin luther king')) return '🕊️';
   if(l.includes('presidents') || l.includes('president’s') || l.includes('washington')) return '🎩';
   if(l.includes('cesar chavez')) return '🌾';
+  if(l.includes('columbus') || l.includes('indigenous peoples')) return '🧭';
   return '🎉';
 }
 function pbBusinessDaysBetween(snapshot, startDate, endDate){
