@@ -1751,7 +1751,7 @@ export async function fetchPendingLeaveRequests() {
   return data;
 }
 
-export async function reviewLeaveRequest({ requestId, status, reviewerId, staffId, leaveType, startDate, endDate, decisionNote }) {
+export async function reviewLeaveRequest({ requestId, status, reviewerId, staffId, leaveType, startDate, endDate, decisionNote, staffName }) {
   if (status === 'approved') {
     const { error: toErr } = await supabase.from('time_off').insert({
       staff_id: staffId,
@@ -1766,6 +1766,23 @@ export async function reviewLeaveRequest({ requestId, status, reviewerId, staffI
     status, decided_by: reviewerId, decided_at: new Date().toISOString(), decision_note: decisionNote || null,
   }).eq('id', requestId);
   if (error) throw error;
+
+  // Every other request/approval workflow in this app (position_requests,
+  // reassignment_requests, evaluations) logs its decision to audit_log —
+  // this one didn't, which left approvals/denials from the public board
+  // invisible to the Audit Log even though they're real supervisor
+  // decisions. Reuses the 'time_off' action (already defined in
+  // AUDIT_ACTION_ICONS/LABELS, previously unused by anything).
+  const dateLabel = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
+  await supabase.from('audit_log').insert({
+    actor_id: reviewerId,
+    action: 'time_off',
+    description: status === 'approved'
+      ? `approved ${staffName || 'a staff member'}'s ${leaveType === 'sick' ? 'sick' : 'PTO'} request (${dateLabel})`
+      : `denied ${staffName || 'a staff member'}'s leave request`,
+    staff_id: staffId,
+    metadata: { requestId, status, leaveType, startDate, endDate },
+  });
 }
 
 export async function fetchPendingSameDayRequests() {
@@ -1778,11 +1795,16 @@ export async function fetchPendingSameDayRequests() {
   return data;
 }
 
-export async function reviewSameDayRequest({ requestId, status, reviewerId, staffId, requestType, note }) {
+export async function reviewSameDayRequest({ requestId, status, reviewerId, staffId, requestType, note, staffName }) {
   if (status === 'acknowledged') {
     // markAttendanceEvent() throws on a real failure and returns the row
     // otherwise (including the existing row on a 23505 race) — nothing
-    // further to check here.
+    // further to check here. Note: marking late/left-early straight from
+    // the board chip (toggleAttendanceEvent in index.html) doesn't
+    // audit-log either, so this isn't losing parity with anything — but
+    // acknowledging a self-service request is a distinct reviewer
+    // decision (like approving a leave request), so it gets its own
+    // audit_log entry below the same way reviewLeaveRequest() does.
     await markAttendanceEvent({
       staffId, eventType: requestType, eventDate: new Date().toISOString().slice(0, 10), note: note || '', actingAccountId: reviewerId,
     });
@@ -1791,6 +1813,17 @@ export async function reviewSameDayRequest({ requestId, status, reviewerId, staf
     status, decided_by: reviewerId, decided_at: new Date().toISOString(),
   }).eq('id', requestId);
   if (error) throw error;
+
+  if (status === 'acknowledged') {
+    const typeLabel = requestType === 'left_early' ? 'left-early' : 'late-arrival';
+    await supabase.from('audit_log').insert({
+      actor_id: reviewerId,
+      action: 'same_day_request',
+      description: `acknowledged ${staffName || 'a staff member'}'s ${typeLabel} notice`,
+      staff_id: staffId,
+      metadata: { requestId, requestType },
+    });
+  }
 }
 
 export async function fetchLeavePolicy() {

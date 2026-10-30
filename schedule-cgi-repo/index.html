@@ -4327,6 +4327,23 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-signin-link:hover{color:var(--md-sys-color-on-surface);background:var(--md-sys-color-surface-container-highest);}
 .pb-signin-icon{font-size:14px;}
 .pb-loading{padding:var(--md-space-6) var(--md-space-2);color:var(--md-sys-color-on-surface-variant);text-align:center;}
+/* Scheduled-off banner — sits between the header and the view tabs, so
+   it's visible no matter which tab (area/supervisor/who's off) the
+   viewer has open, not buried inside one specific view. */
+.pb-off-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin:0 var(--md-space-2) var(--md-space-3);
+    padding:10px 14px;border-radius:10px;
+    background:#FEE2E2;border:1px solid #FCA5A5;
+  }
+.pb-off-banner-text{font-size:13px;font-weight:700;color:#DC2626;}
+.pb-off-banner-dismiss{
+    flex-shrink:0;width:24px;height:24px;border-radius:999px;border:none;cursor:pointer;
+    background:transparent;color:#DC2626;font-size:13px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+  }
+.pb-off-banner-dismiss:hover{background:rgba(220,38,38,.12);}
+@media(max-width:600px){.pb-off-banner-text{font-size:12px;}}
 .pb-view-tabs{display:flex;gap:var(--md-space-2);padding:0 var(--md-space-2) var(--md-space-3);}
 .pb-view-tab{
     font-size:var(--md-sys-typescale-label-large-size);font-weight:700;
@@ -15035,14 +15052,14 @@ const AUDIT_ACTION_ICONS = {
   move:'🔀', swap:'⇄', callout:'⚠️', clear_callout:'✅', edit_staff:'👤', add_staff:'➕',
   archive_staff:'🗑', edit_area:'🏷', add_area:'➕', rotate_period:'🔁', evaluation:'📝',
   account_request:'🔑', account_grant:'🔓', account_revoke:'🔒', time_off:'📅',
-  undo_rotate_period:'↩', restore_rotation:'↩',
+  undo_rotate_period:'↩', restore_rotation:'↩', same_day_request:'⏰',
 };
 const AUDIT_ACTION_LABELS = {
   move:'Move', swap:'Swap', callout:'Callout', clear_callout:'Clear callout', edit_staff:'Edit staff',
   add_staff:'Add staff', archive_staff:'Remove staff', edit_area:'Edit area', add_area:'Add area',
   rotate_period:'Rotate', evaluation:'Evaluation', account_request:'Account request',
   account_grant:'Account grant', account_revoke:'Account revoke', time_off:'Time off',
-  undo_rotate_period:'Undo rotate', restore_rotation:'Restore',
+  undo_rotate_period:'Undo rotate', restore_rotation:'Restore', same_day_request:'Late/early notice',
 };
 function renderAuditLogModal(m){
   const q = (m.search||'').trim().toLowerCase();
@@ -16151,7 +16168,7 @@ function renderPendingLeaveRequestsModal(m){
             ${row.remarks?`<div class="eval-history-note">${escapeHtml(row.remarks)}</div>`:''}
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="btn btn-primary btn-sm" data-approve-leave-req="${row.id}" data-approve-leave-staff="${row.staff_id}" data-approve-leave-type="${row.leave_type}" data-approve-leave-start="${row.start_date}" data-approve-leave-end="${row.end_date}" data-approve-leave-name="${escapeHtml(staffName)}">✓ Approve</button>
-              <button class="btn btn-light btn-sm" data-deny-leave-req="${row.id}" data-deny-leave-staff="${row.staff_id}">✕ Deny</button>
+              <button class="btn btn-light btn-sm" data-deny-leave-req="${row.id}" data-deny-leave-staff="${row.staff_id}" data-deny-leave-name="${escapeHtml(staffName)}">✕ Deny</button>
             </div>
           </div>`;
         }).join('')}
@@ -16186,7 +16203,7 @@ function renderPendingSameDayRequestsModal(m){
             <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}</div>
             ${row.note?`<div class="eval-history-note">${escapeHtml(row.note)}</div>`:''}
             <div style="display:flex;gap:8px;margin-top:10px;">
-              <button class="btn btn-primary btn-sm" data-ack-same-day-req="${row.id}" data-ack-same-day-staff="${row.staff_id}" data-ack-same-day-type="${row.request_type}">✓ Acknowledge</button>
+              <button class="btn btn-primary btn-sm" data-ack-same-day-req="${row.id}" data-ack-same-day-staff="${row.staff_id}" data-ack-same-day-type="${row.request_type}" data-ack-same-day-name="${escapeHtml(staffName)}">✓ Acknowledge</button>
             </div>
           </div>`;
         }).join('')}
@@ -23457,7 +23474,7 @@ function attachHandlers(){
       el.disabled = true;
       el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewLeaveRequest({
-        requestId, status:'approved', reviewerId:authState.account.id, staffId, leaveType, startDate, endDate,
+        requestId, status:'approved', reviewerId:authState.account.id, staffId, leaveType, startDate, endDate, staffName,
       }));
       if(sync.ok){
         if(!state.timeOff[staffId]) state.timeOff[staffId]=[];
@@ -23471,10 +23488,11 @@ function attachHandlers(){
     document.querySelectorAll('[data-deny-leave-req]').forEach(el=>el.addEventListener('click', async ()=>{
       const requestId = el.dataset.denyLeaveReq;
       const staffId = el.dataset.denyLeaveStaff;
+      const staffName = el.dataset.denyLeaveName;
       el.disabled = true;
       el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewLeaveRequest({
-        requestId, status:'denied', reviewerId:authState.account.id, staffId,
+        requestId, status:'denied', reviewerId:authState.account.id, staffId, staffName,
       }));
       showToast(sync.ok ? 'Request denied' : `Could not deny — ${sync.error?.message||'try again'}`, sync.ok?'teal':'rust');
       refreshLeaveReqBadgeCounts();
@@ -23488,10 +23506,11 @@ function attachHandlers(){
       const requestId = el.dataset.ackSameDayReq;
       const staffId = el.dataset.ackSameDayStaff;
       const requestType = el.dataset.ackSameDayType;
+      const staffName = el.dataset.ackSameDayName;
       el.disabled = true;
       el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewSameDayRequest({
-        requestId, status:'acknowledged', reviewerId:authState.account.id, staffId, requestType,
+        requestId, status:'acknowledged', reviewerId:authState.account.id, staffId, requestType, staffName,
       }));
       if(sync.ok){
         const today = todayLabel();
@@ -24887,6 +24906,36 @@ let pbMobileMenuOpen = false;
 window.pbToggleMobileMenu = () => { pbMobileMenuOpen = !pbMobileMenuOpen; pbRender(); };
 window.pbCloseMobileMenu = () => { pbMobileMenuOpen = false; pbRender(); };
 
+// Scheduled-off banner — visible on every tab (not just Who's off), so a
+// viewer notices without having to go looking for it. staff ids the
+// viewer has dismissed stay dismissed for the rest of this visit; a new
+// name landing in scheduled_off_staff_ids on a later 8s poll (someone
+// else's request just got approved) still surfaces, since only the ids
+// already seen are suppressed.
+let pbDismissedOffTodayIds = new Set();
+// No-arg on purpose — reads the ids straight off _pbLastSnapshot instead of
+// round-tripping them through the onclick attribute, which would mean
+// JSON.stringify-ing into a string delimited by the same double quotes the
+// attribute itself uses.
+window.pbDismissOffTodayBanner = () => {
+  (_pbLastSnapshot?.scheduled_off_staff_ids||[]).forEach(id=>pbDismissedOffTodayIds.add(id));
+  pbRender();
+};
+function pbOffTodayBannerHtml(snapshot, staffById){
+  const ids = (snapshot.scheduled_off_staff_ids||[]).filter(id=>!pbDismissedOffTodayIds.has(id));
+  if(ids.length===0) return '';
+  const names = ids.map(id=>staffById[id]?.name).filter(Boolean);
+  if(names.length===0) return '';
+  const label = names.length===1
+    ? `📅 ${names[0]} is scheduled off today.`
+    : `📅 ${names.length} people are scheduled off today: ${names.join(', ')}.`;
+  return `
+  <div class="pb-off-banner">
+    <div class="pb-off-banner-text">${escapeHtml(label)}</div>
+    <button class="pb-off-banner-dismiss" onclick="pbDismissOffTodayBanner()" aria-label="Dismiss">✕</button>
+  </div>`;
+}
+
 // Name + TDIS number + rotation status only (Out / Schedule off / Late /
 // Left early) — no shift time, no supervisor badge (redundant once already
 // grouped by supervisor). Priority mirrors renderChip()'s own isScheduled
@@ -25098,6 +25147,7 @@ function renderPublicBoard(snapshot){
         </div>
       </div>
     </div>
+    ${pbOffTodayBannerHtml(snapshot, staffById)}
     <div class="pb-view-tabs">
       <button class="pb-view-tab ${pbViewMode==='area'?'active':''}" onclick="pbSetView('area')">By area</button>
       <button class="pb-view-tab ${pbViewMode==='supervisor'?'active':''}" onclick="pbSetView('supervisor')">By supervisor</button>
