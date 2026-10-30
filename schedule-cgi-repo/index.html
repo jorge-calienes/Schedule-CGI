@@ -25007,7 +25007,10 @@ function renderPublicSupervisorSection(snapshot, sets){
     const key = s.supervisor_id || '_unassigned';
     (byStaffSupervisor[key] = byStaffSupervisor[key]||[]).push(s);
   });
-  const supervisors = (snapshot.supervisors||[]).slice();
+  // Biggest team first so whoever has the most people to track shows up
+  // without scrolling; ties keep whatever order the snapshot sent.
+  const supervisors = (snapshot.supervisors||[]).slice()
+    .sort((a,b)=> (byStaffSupervisor[b.id]||[]).length - (byStaffSupervisor[a.id]||[]).length);
   const unassigned = byStaffSupervisor['_unassigned']||[];
   return `
   <div class="board-wrap">
