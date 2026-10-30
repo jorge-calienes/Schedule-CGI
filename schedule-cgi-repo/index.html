@@ -16161,24 +16161,41 @@ function renderPendingLeaveRequestsModal(m){
       ${!m.loading && !m.error && items.length===0?`<div class="small-muted" style="line-height:1.6;">Nothing waiting on you — every leave request has been reviewed.</div>`:''}
       ${items.length>0?`
       <div class="eval-history-list">
-        ${items.map(row=>{
-          const staffName = (row.staff&&row.staff.name)||'Unknown';
-          const submittedTdis = (row.staff&&row.staff.tdis_number)||'—';
-          const typeLabel = row.leave_type==='sick' ? 'Sick' : 'PTO';
-          const dateLabel = row.start_date===row.end_date ? arShortDate(row.start_date) : `${arShortDate(row.start_date)} – ${arShortDate(row.end_date)}`;
-          return `
+        ${(()=>{
+          // Grouped by the day being requested (items already arrive sorted
+          // start_date asc, then created_at asc from fetchPendingLeaveRequests)
+          // so a supervisor reviewing a near-capacity day sees every
+          // competing request for it together, in the order they came in --
+          // the fair read when two people want a day that can't fit both.
+          const ordinal = n => { const j=n%10, k=n%100; if(j===1&&k!==11) return n+'st'; if(j===2&&k!==12) return n+'nd'; if(j===3&&k!==13) return n+'rd'; return n+'th'; };
+          const sizeByDate = {};
+          items.forEach(r=>{ sizeByDate[r.start_date] = (sizeByDate[r.start_date]||0) + 1; });
+          const seenInDate = {};
+          return items.map((row, idx)=>{
+            const staffName = (row.staff&&row.staff.name)||'Unknown';
+            const submittedTdis = (row.staff&&row.staff.tdis_number)||'—';
+            const typeLabel = row.leave_type==='sick' ? 'Sick' : 'PTO';
+            const dateLabel = row.start_date===row.end_date ? arShortDate(row.start_date) : `${arShortDate(row.start_date)} – ${arShortDate(row.end_date)}`;
+            const dateChanged = idx===0 || row.start_date !== items[idx-1].start_date;
+            seenInDate[row.start_date] = (seenInDate[row.start_date]||0) + 1;
+            const rankInDate = seenInDate[row.start_date];
+            const contested = sizeByDate[row.start_date] > 1;
+            const submittedLabel = row.created_at ? new Date(row.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+            const header = dateChanged ? `<div class="small-muted" style="font-weight:700;margin:${idx===0?'0':'14px'} 0 4px;">${escapeHtml(arLeaveRangeLabel({start:row.start_date,end:row.end_date}))}${contested?` — ${sizeByDate[row.start_date]} requests for this day`:''}</div>` : '';
+            return `${header}
           <div class="eval-history-row">
             <div class="eval-history-row-head">
               <span class="eval-history-date">${escapeHtml(staffName)} — ${escapeHtml(typeLabel)} · ${escapeHtml(dateLabel)}</span>
             </div>
-            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.hours_requested?' · '+row.hours_requested+' hrs':''}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}</div>
+            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.hours_requested?' · '+row.hours_requested+' hrs':''}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}${submittedLabel?` · asked ${escapeHtml(submittedLabel)}${contested?` (${ordinal(rankInDate)} to ask)`:''}`:''}</div>
             ${row.remarks?`<div class="eval-history-note">${escapeHtml(row.remarks)}</div>`:''}
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="btn btn-primary btn-sm" data-approve-leave-req="${row.id}" data-approve-leave-staff="${row.staff_id}" data-approve-leave-type="${row.leave_type}" data-approve-leave-start="${row.start_date}" data-approve-leave-end="${row.end_date}" data-approve-leave-name="${escapeHtml(staffName)}">✓ Approve</button>
               <button class="btn btn-light btn-sm" data-deny-leave-req="${row.id}" data-deny-leave-staff="${row.staff_id}" data-deny-leave-name="${escapeHtml(staffName)}">✕ Deny</button>
             </div>
           </div>`;
-        }).join('')}
+          }).join('');
+        })()}
       </div>` : ''}
     </div>
   </div>`;

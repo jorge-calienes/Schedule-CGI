@@ -1742,10 +1742,17 @@ export async function submitSameDayRequest({ staffId, tdis, requestType, ptoBala
 // unique constraint migration 0047 added).
 
 export async function fetchPendingLeaveRequests() {
+  // Sorted by the day being requested first, not just submission time --
+  // with capacity now capped per day, a supervisor needs to see every
+  // request for the same date grouped together to judge fairly. Within a
+  // date, created_at (ascending) breaks the tie: whoever asked first is
+  // listed first, since that's the fair call when two people want a day
+  // that can't fit both.
   const { data, error } = await supabase
     .from('leave_requests')
     .select('*, staff:staff_id(name, tdis_number)')
     .eq('status', 'pending')
+    .order('start_date', { ascending: true })
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data;
