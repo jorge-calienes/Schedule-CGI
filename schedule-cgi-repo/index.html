@@ -4418,6 +4418,11 @@ button{font-family:var(--sans);cursor:pointer;}
 .pb-whosoff-cell-closed{background:var(--c-surface-3);border:1px dashed var(--c-border);cursor:pointer;opacity:.75;}
 .pb-whosoff-cell-closed .pb-whosoff-cell-day{color:var(--c-text-3);}
 .pb-whosoff-cell-closed .pb-whosoff-cell-used{color:var(--c-text-3);font-weight:700;}
+/* Holidays get the theme "surface" color (white in light mode) instead of
+   the muted gray weekends use, and full opacity, so the holiday emoji
+   reads clearly instead of looking washed out. */
+.pb-whosoff-cell-holiday{background:var(--c-surface);opacity:1;}
+.pb-whosoff-cell-emoji{font-size:18px;}
 /* Two-month layout: both months always render (see pbMonthCardHtml), the
    second one just stays display:none until there's enough width for it
    to sit side by side with the first without squeezing either grid. */
@@ -4434,6 +4439,7 @@ button{font-family:var(--sans);cursor:pointer;}
   .pb-whosoff-cell{height:30px;border-radius:6px;padding:2px 1px;}
   .pb-whosoff-cell-day{font-size:9px;}
   .pb-whosoff-cell-used{font-size:9px;}
+  .pb-whosoff-cell-emoji{font-size:15px;}
   .pb-whosoff-dow{font-size:9px;}
 }
 @media(min-width:601px) and (max-width:900px){
@@ -4455,6 +4461,7 @@ button{font-family:var(--sans);cursor:pointer;}
   .pb-whosoff-month-card-2{display:block;border-left:1px solid var(--c-border);margin-left:24px;padding-left:24px;}
   .pb-whosoff-month-title{font-size:15px;}
   .pb-whosoff-cell-used{font-size:13px;}
+  .pb-whosoff-cell-emoji{font-size:22px;}
 }
 .time-pill{
 
@@ -25582,9 +25589,9 @@ function pbMonthCardHtml(snapshot, year, month, cap, showTitle){
       const holidayLabel = isHoliday ? pbHolidayLabel(snapshot, ds) : '';
       const mark = isHoliday ? pbHolidayEmoji(holidayLabel) : '—';
       const titleText = isHoliday ? (holidayLabel||'Company holiday') : 'Weekend';
-      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed" onclick="pbOpenDayDetail('${ds}')" title="${escapeHtml(titleText)} — not a scheduled business day">
+      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed ${isHoliday?'pb-whosoff-cell-holiday':''}" onclick="pbOpenDayDetail('${ds}')" title="${escapeHtml(titleText)} — not a scheduled business day">
         <div class="pb-whosoff-cell-day">${d}</div>
-        <div class="pb-whosoff-cell-used" style="${isHoliday?'font-size:14px;':''}">${mark}</div>
+        <div class="pb-whosoff-cell-used ${isHoliday?'pb-whosoff-cell-emoji':''}">${mark}</div>
       </div>`);
       continue;
     }
