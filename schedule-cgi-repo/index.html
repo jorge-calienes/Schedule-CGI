@@ -25366,9 +25366,15 @@ function pbFormatMinutesAsClock(mins){
   return `${h}:${String(m).padStart(2,'0')} ${mer}`;
 }
 
-// Rounded to the nearest quarter hour -- the increment most timesheets
-// already round to, so the number a supervisor sees here is the one that'll
-// actually land on the sheet, not something they still have to re-round.
+// Rounded to the nearest tenth of an hour, matching the standard
+// minutes-to-decimal-hours timesheet rounding table (:00-:02 -> 0.0,
+// :03-:08 -> 0.1, :09-:14 -> 0.2, ... :57-:59 -> 1.0 -- every 6-minute
+// bucket, ties rounding up) rather than quarter-hour rounding, so the
+// number shown here is the one that actually lands on the timesheet, not
+// something that still needs re-rounding by hand.
+function pbMinutesToTenthHour(minutes){
+  return Math.round(minutes/6)/10;
+}
 function pbSameDayHoursEstimate(snapshot, modal){
   const staff = (snapshot?.staff||[]).find(s=>s.id===modal.staffId);
   if(!staff || !modal.actualTime) return null;
@@ -25379,7 +25385,7 @@ function pbSameDayHoursEstimate(snapshot, modal){
   const actualMinutes = hh*60 + mm;
   const diffMinutes = modal.kind==='early' ? (range.end - actualMinutes) : (actualMinutes - range.start);
   if(diffMinutes <= 0) return { hours: 0, scheduledLabel: `${pbFormatMinutesAsClock(range.start)}–${pbFormatMinutesAsClock(range.end)}` };
-  const hours = Math.round(diffMinutes/15)/4; // nearest quarter hour
+  const hours = pbMinutesToTenthHour(diffMinutes);
   return { hours, scheduledLabel: `${pbFormatMinutesAsClock(range.start)}–${pbFormatMinutesAsClock(range.end)}` };
 }
 
