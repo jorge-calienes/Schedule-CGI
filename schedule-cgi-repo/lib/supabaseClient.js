@@ -374,13 +374,15 @@ export async function unwaiveCoverage({ staffId }) {
 // the attendance report. eventDate is passed in (rather than defaulted
 // here) so it always matches the browser's notion of "today" — the same
 // value index.html's todayLabel() computes.
-export async function markAttendanceEvent({ staffId, eventType, eventDate, note, actingAccountId }) {
+export async function markAttendanceEvent({ staffId, eventType, eventDate, note, actingAccountId, actualTime, hoursImpact }) {
   const { data, error } = await supabase.from('attendance_events').insert({
     staff_id: staffId,
     event_type: eventType,
     event_date: eventDate,
     note: note || null,
     created_by: actingAccountId,
+    actual_time: actualTime || null,
+    hours_impact: hoursImpact ?? null,
   }).select().single();
   if (error) {
     // 23505 = unique_violation on (staff_id, event_type, event_date) — this
@@ -1714,7 +1716,7 @@ export async function submitLeaveRequest({ staffId, tdis, leaveType, startDate, 
   return data;
 }
 
-export async function submitSameDayRequest({ staffId, tdis, requestType, ptoBalance, sickBalance, note }) {
+export async function submitSameDayRequest({ staffId, tdis, requestType, actualTime, hoursImpact, ptoBalance, sickBalance, note }) {
   const { data, error } = await supabase.rpc('submit_same_day_request', {
     p_staff_id: staffId,
     p_tdis: tdis,
@@ -1722,6 +1724,8 @@ export async function submitSameDayRequest({ staffId, tdis, requestType, ptoBala
     p_pto_balance: ptoBalance ?? null,
     p_sick_balance: sickBalance ?? null,
     p_note: note || null,
+    p_actual_time: actualTime || null,
+    p_hours_impact: hoursImpact ?? null,
   });
   if (error) {
     const msg = error.message || '';
@@ -1802,7 +1806,7 @@ export async function fetchPendingSameDayRequests() {
   return data;
 }
 
-export async function reviewSameDayRequest({ requestId, status, reviewerId, staffId, requestType, note, staffName }) {
+export async function reviewSameDayRequest({ requestId, status, reviewerId, staffId, requestType, note, staffName, actualTime, hoursImpact }) {
   if (status === 'acknowledged') {
     // markAttendanceEvent() throws on a real failure and returns the row
     // otherwise (including the existing row on a 23505 race) — nothing
@@ -1812,8 +1816,12 @@ export async function reviewSameDayRequest({ requestId, status, reviewerId, staf
     // acknowledging a self-service request is a distinct reviewer
     // decision (like approving a leave request), so it gets its own
     // audit_log entry below the same way reviewLeaveRequest() does.
+    // actualTime/hoursImpact (the requester's own time entry and the
+    // estimate the public form showed them) carry over onto the
+    // attendance_events row so the number a supervisor sees reconciling
+    // timesheets later is the same one the requester saw submitting it.
     await markAttendanceEvent({
-      staffId, eventType: requestType, eventDate: new Date().toISOString().slice(0, 10), note: note || '', actingAccountId: reviewerId,
+      staffId, eventType: requestType, eventDate: new Date().toISOString().slice(0, 10), note: note || '', actingAccountId: reviewerId, actualTime, hoursImpact,
     });
   }
   const { error } = await supabase.from('same_day_requests').update({

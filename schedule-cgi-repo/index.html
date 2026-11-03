@@ -16265,15 +16265,22 @@ function renderPendingSameDayRequestsModal(m){
           const staffName = (row.staff&&row.staff.name)||'Unknown';
           const submittedTdis = (row.staff&&row.staff.tdis_number)||'—';
           const typeLabel = row.request_type==='left_early' ? '🚪 Leaving early' : '⏰ Running late';
+          // actual_time/hours_impact (new) come from the requester's own
+          // time entry on the public form — an estimate they saw too, not a
+          // server-verified figure, so it's labeled "est." the same way
+          // here as there. Older rows submitted before this existed just
+          // won't have it.
+          const timeLabel = row.actual_time ? pbFormatMinutesAsClock(Number(row.actual_time.split(':')[0])*60 + Number(row.actual_time.split(':')[1])) : '';
+          const mathLabel = timeLabel ? `${row.request_type==='left_early'?'Leaving':'In'} at ${timeLabel}${row.hours_impact!=null?` · est. ${row.hours_impact} hrs`:''}` : '';
           return `
           <div class="eval-history-row">
             <div class="eval-history-row-head">
               <span class="eval-history-date">${escapeHtml(staffName)} — ${typeLabel}</span>
             </div>
-            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}</div>
+            <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}${mathLabel?' · '+escapeHtml(mathLabel):''}</div>
             ${row.note?`<div class="eval-history-note">${escapeHtml(row.note)}</div>`:''}
             <div style="display:flex;gap:8px;margin-top:10px;">
-              <button class="btn btn-primary btn-sm" data-ack-same-day-req="${row.id}" data-ack-same-day-staff="${row.staff_id}" data-ack-same-day-type="${row.request_type}" data-ack-same-day-name="${escapeHtml(staffName)}">✓ Acknowledge</button>
+              <button class="btn btn-primary btn-sm" data-ack-same-day-req="${row.id}" data-ack-same-day-staff="${row.staff_id}" data-ack-same-day-type="${row.request_type}" data-ack-same-day-name="${escapeHtml(staffName)}" data-ack-same-day-time="${escapeHtml(row.actual_time||'')}" data-ack-same-day-hours="${row.hours_impact!=null?row.hours_impact:''}">✓ Acknowledge</button>
             </div>
           </div>`;
         }).join('')}
@@ -23592,10 +23599,12 @@ function attachHandlers(){
       const staffId = el.dataset.ackSameDayStaff;
       const requestType = el.dataset.ackSameDayType;
       const staffName = el.dataset.ackSameDayName;
+      const actualTime = el.dataset.ackSameDayTime || null;
+      const hoursImpact = el.dataset.ackSameDayHours ? Number(el.dataset.ackSameDayHours) : null;
       el.disabled = true;
       el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewSameDayRequest({
-        requestId, status:'acknowledged', reviewerId:authState.account.id, staffId, requestType, staffName,
+        requestId, status:'acknowledged', reviewerId:authState.account.id, staffId, requestType, staffName, actualTime, hoursImpact,
       }));
       if(sync.ok){
         const today = todayLabel();
@@ -25282,7 +25291,7 @@ let pbSubmitSuccess = '';
 let pbCalYear = null, pbCalMonth = null; // Who's off calendar nav — lazily set to the current month on first render
 
 window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
-window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
+window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', actualTime:'', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
 window.pbOpenDayDetail = (dateStr) => { pbModal = {type:'daydetail', date:dateStr}; pbRender(); };
 window.pbCloseModal = () => { pbModal = null; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
 // Free-typed fields (name/TDIS/balances/remarks/note) sync into pbModal
@@ -25297,6 +25306,10 @@ window.pbSetField = (key, val) => { if(!pbModal) return; pbModal[key] = val; };
 window.pbSetLeaveDate = (which, val) => { if(!pbModal) return; pbModal = {...pbModal, [which==='start'?'startDate':'endDate']: val}; pbRender(); };
 window.pbSetLeaveType = (t) => { if(!pbModal) return; pbModal = {...pbModal, leaveType:t}; pbRender(); };
 window.pbSetSameDayKind = (k) => { if(!pbModal) return; pbModal = {...pbModal, kind:k}; pbRender(); };
+// Unlike the free-typed fields pbSetField() syncs silently, picking a name
+// or a time here needs to re-render — both feed the live hours estimate
+// box right below them.
+window.pbSetSameDayField = (key, val) => { if(!pbModal) return; pbModal = {...pbModal, [key]:val}; pbRender(); };
 window.pbCalPrev = () => { pbShiftCalMonth(-1); };
 window.pbCalNext = () => { pbShiftCalMonth(1); };
 
@@ -25317,6 +25330,57 @@ function pbPillStyle(active){
 function pbStaffOptionsHtml(selectedId){
   const list = (_pbLastSnapshot?.staff||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
   return '<option value="">Select your name…</option>' + list.map(s=>`<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeHtml(s.name)}</option>`).join('');
+}
+
+// shift_hours_label is free-typed by a supervisor (see shift-start/end-input
+// elsewhere), so this is a best-effort reader, not a strict parser: pull the
+// first two "H:MM" tokens out of it as start/end. Most labels never write an
+// AM/PM suffix at all (e.g. "8:00-4:30") -- when neither token has one and
+// reading the end as PM would put it after the start, treat it as PM (the
+// normal day-shift case this label format is used for). An overnight shift,
+// or a label that isn't two times at all, returns null rather than guess.
+function pbParseShiftRange(label){
+  if(!label) return null;
+  const matches = [...String(label).matchAll(/(\d{1,2}):(\d{2})\s*(am|pm)?/gi)];
+  if(matches.length < 2) return null;
+  const toMinutes = (h, m, mer) => {
+    h = Number(h); m = Number(m);
+    if(mer){
+      const lower = mer.toLowerCase();
+      if(lower==='pm' && h!==12) h += 12;
+      if(lower==='am' && h===12) h = 0;
+    }
+    return h*60 + m;
+  };
+  const start = toMinutes(matches[0][1], matches[0][2], matches[0][3]);
+  let end = toMinutes(matches[1][1], matches[1][2], matches[1][3]);
+  if(!matches[0][3] && !matches[1][3] && end <= start) end += 12*60;
+  if(end <= start) return null;
+  return { start, end };
+}
+
+function pbFormatMinutesAsClock(mins){
+  let h = Math.floor(mins/60), m = mins%60;
+  const mer = h>=12 ? 'PM' : 'AM';
+  h = h%12; if(h===0) h = 12;
+  return `${h}:${String(m).padStart(2,'0')} ${mer}`;
+}
+
+// Rounded to the nearest quarter hour -- the increment most timesheets
+// already round to, so the number a supervisor sees here is the one that'll
+// actually land on the sheet, not something they still have to re-round.
+function pbSameDayHoursEstimate(snapshot, modal){
+  const staff = (snapshot?.staff||[]).find(s=>s.id===modal.staffId);
+  if(!staff || !modal.actualTime) return null;
+  const range = pbParseShiftRange(staff.shift_hours_label);
+  if(!range) return null;
+  const [hh, mm] = modal.actualTime.split(':').map(Number);
+  if(Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const actualMinutes = hh*60 + mm;
+  const diffMinutes = modal.kind==='early' ? (range.end - actualMinutes) : (actualMinutes - range.start);
+  if(diffMinutes <= 0) return { hours: 0, scheduledLabel: `${pbFormatMinutesAsClock(range.start)}–${pbFormatMinutesAsClock(range.end)}` };
+  const hours = Math.round(diffMinutes/15)/4; // nearest quarter hour
+  return { hours, scheduledLabel: `${pbFormatMinutesAsClock(range.start)}–${pbFormatMinutesAsClock(range.end)}` };
 }
 
 // Mirrors business_days_between() in migration 0048 exactly (Mon–Fri, minus
@@ -25539,7 +25603,8 @@ function renderPublicLeaveForm(snapshot){
 }
 
 function renderPublicSameDayForm(snapshot){
-  const { staffId, tdis, kind, ptoBalance, sickBalance, note } = pbModal;
+  const { staffId, tdis, kind, actualTime, ptoBalance, sickBalance, note } = pbModal;
+  const estimate = pbSameDayHoursEstimate(snapshot, pbModal);
   return `
   <div class="modal-backdrop" onclick="pbCloseModal()">
     <div class="modal" style="max-width:480px;" onclick="event.stopPropagation()">
@@ -25548,7 +25613,7 @@ function renderPublicSameDayForm(snapshot){
         <button class="modal-close" onclick="pbCloseModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div class="field"><label>Your name</label><select id="pb-sd-name" onchange="pbSetField('staffId', this.value)">${pbStaffOptionsHtml(staffId)}</select></div>
+        <div class="field"><label>Your name</label><select id="pb-sd-name" onchange="pbSetSameDayField('staffId', this.value)">${pbStaffOptionsHtml(staffId)}</select></div>
         <div class="field"><label>TDIS number</label><input type="text" value="${escapeHtml(tdis||'')}" oninput="pbSetField('tdis', this.value)" placeholder="e.g. M12"/></div>
 
         <div class="field">
@@ -25558,6 +25623,16 @@ function renderPublicSameDayForm(snapshot){
             <button type="button" onclick="pbSetSameDayKind('early')" style="${pbPillStyle(kind==='early')}">🚪 Leaving early</button>
           </div>
         </div>
+
+        <div class="field">
+          <label>${kind==='early' ? "What time are you leaving?" : "What time will you arrive?"}</label>
+          <input type="time" value="${escapeHtml(actualTime||'')}" onchange="pbSetSameDayField('actualTime', this.value)"/>
+        </div>
+        ${estimate ? `
+        <div style="border:1px solid var(--c-border);border-radius:9px;padding:11px 13px;background:var(--c-surface-3);display:flex;align-items:baseline;justify-content:space-between;margin:-6px 0 16px;">
+          <div style="font-size:20px;font-weight:800;">${estimate.hours} <span style="font-size:12px;font-weight:600;color:var(--c-text-2);">hrs</span></div>
+          <div style="font-size:11.5px;color:var(--c-text-2);text-align:right;">${estimate.hours===0?'Within your scheduled shift':'estimated PTO/Sick time'}<br/>scheduled ${estimate.scheduledLabel}</div>
+        </div>` : `<div style="font-size:11.5px;color:var(--c-text-3);margin:-6px 0 16px;">Pick your name and a time to see roughly how many hours this comes out to.</div>`}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="field"><label>Current PTO balance (hrs)</label><input type="number" value="${escapeHtml(ptoBalance||'')}" oninput="pbSetField('ptoBalance', this.value)" placeholder="e.g. 40"/></div>
@@ -25603,14 +25678,18 @@ window.pbSubmitLeaveRequest = async () => {
 
 window.pbSubmitSameDay = async () => {
   if(!pbModal || pbSubmitting) return;
-  const { staffId, kind, ptoBalance, sickBalance, note } = pbModal;
+  const { staffId, kind, actualTime, ptoBalance, sickBalance, note } = pbModal;
   const tdis = (pbModal.tdis||'').trim();
   const requestType = kind==='early' ? 'left_early' : 'late_arrival';
   if(!staffId){ pbSubmitError='Pick your name first.'; pbRender(); return; }
   if(!tdis){ pbSubmitError='Enter your TDIS number.'; pbRender(); return; }
+  const estimate = pbSameDayHoursEstimate(_pbLastSnapshot, pbModal);
   pbSubmitting = true; pbSubmitError=''; pbRender();
   try{
-    await window.RC.submitSameDayRequest({ staffId, tdis, requestType, ptoBalance: ptoBalance?Number(ptoBalance):null, sickBalance: sickBalance?Number(sickBalance):null, note: (note||'').trim() });
+    await window.RC.submitSameDayRequest({
+      staffId, tdis, requestType, actualTime: actualTime||null, hoursImpact: estimate?estimate.hours:null,
+      ptoBalance: ptoBalance?Number(ptoBalance):null, sickBalance: sickBalance?Number(sickBalance):null, note: (note||'').trim(),
+    });
     pbSubmitting = false; pbSubmitSuccess = 'Sent — your supervisor has been notified.'; pbRender();
     setTimeout(()=>{ if(pbSubmitSuccess){ pbModal=null; pbSubmitSuccess=''; pbRender(); } }, 2200);
   }catch(e){
