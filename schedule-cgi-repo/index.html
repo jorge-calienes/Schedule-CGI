@@ -16224,6 +16224,7 @@ function renderPendingPositionRequestsModal(m){
 // "📅 Schedule off" status once approved.
 function renderPendingLeaveRequestsModal(m){
   const items = m.items||[];
+  const capacityByDate = m.capacityByDate||{};
   return `
   <div class="modal" style="max-width:600px;">
     <div class="modal-head">
@@ -16245,6 +16246,17 @@ function renderPendingLeaveRequestsModal(m){
           const ordinal = n => { const j=n%10, k=n%100; if(j===1&&k!==11) return n+'st'; if(j===2&&k!==12) return n+'nd'; if(j===3&&k!==13) return n+'rd'; return n+'th'; };
           const sizeByDate = {};
           items.forEach(r=>{ sizeByDate[r.start_date] = (sizeByDate[r.start_date]||0) + 1; });
+          // Remaining open slots for each date, from checkDateCapacity() --
+          // the first `remaining` requests (in submission order, already
+          // how the list is sorted) are "within capacity"; anyone past
+          // that is on the bench: still in line, but approving them would
+          // need the same overflow override reviewLeaveRequest() now warns
+          // about (PR #186), not something that just quietly fits.
+          const remainingByDate = {};
+          Object.keys(capacityByDate).forEach(d=>{
+            const c = capacityByDate[d];
+            remainingByDate[d] = c.isClosedDay ? Infinity : Math.max(c.cap - c.used, 0);
+          });
           const seenInDate = {};
           return items.map((row, idx)=>{
             const staffName = (row.staff&&row.staff.name)||'Unknown';
@@ -16256,13 +16268,19 @@ function renderPendingLeaveRequestsModal(m){
             const rankInDate = seenInDate[row.start_date];
             const contested = sizeByDate[row.start_date] > 1;
             const submittedLabel = row.created_at ? new Date(row.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
-            const header = dateChanged ? `<div class="small-muted" style="font-weight:700;margin:${idx===0?'0':'14px'} 0 4px;">${escapeHtml(arLeaveRangeLabel({start:row.start_date,end:row.end_date}))}${contested?` — ${sizeByDate[row.start_date]} requests for this day`:''}</div>` : '';
+            const cap = capacityByDate[row.start_date];
+            const remaining = remainingByDate[row.start_date];
+            const onBench = cap && !cap.isClosedDay && remaining!==undefined && rankInDate > remaining;
+            const capLabel = cap && !cap.isClosedDay ? `${cap.used}/${cap.cap} already scheduled off` : '';
+            const header = dateChanged ? `<div class="small-muted" style="font-weight:700;margin:${idx===0?'0':'14px'} 0 4px;">${escapeHtml(arLeaveRangeLabel({start:row.start_date,end:row.end_date}))}${contested?` — ${sizeByDate[row.start_date]} requests for this day`:''}${capLabel?` · ${escapeHtml(capLabel)}`:''}</div>` : '';
             return `${header}
-          <div class="eval-history-row">
+          <div class="eval-history-row"${onBench?' style="border-left:3px solid #D97706;"':''}>
             <div class="eval-history-row-head">
               <span class="eval-history-date">${escapeHtml(staffName)} — ${escapeHtml(typeLabel)} · ${escapeHtml(dateLabel)}</span>
+              ${onBench?'<span class="pm-badge" style="background:#FEF3C7;color:#92400E;">🪑 On the bench</span>':''}
             </div>
             <div class="eval-history-evaluator">TDIS ${escapeHtml(submittedTdis)}${row.hours_requested?' · '+row.hours_requested+' hrs':''}${row.pto_balance!=null?' · PTO bal '+row.pto_balance:''}${row.sick_balance!=null?' · Sick bal '+row.sick_balance:''}${submittedLabel?` · asked ${escapeHtml(submittedLabel)}${contested?` (${ordinal(rankInDate)} to ask)`:''}`:''}</div>
+            ${onBench?`<div class="eval-history-note">No open slot right now — approving ${escapeHtml(staffName.split(' ')[0])} needs an overflow override.</div>`:''}
             ${row.remarks?`<div class="eval-history-note">${escapeHtml(row.remarks)}</div>`:''}
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="btn btn-primary btn-sm" data-approve-leave-req="${row.id}" data-approve-leave-staff="${row.staff_id}" data-approve-leave-type="${row.leave_type}" data-approve-leave-start="${row.start_date}" data-approve-leave-end="${row.end_date}" data-approve-leave-name="${escapeHtml(staffName)}">✓ Approve</button>
@@ -17763,7 +17781,21 @@ async function openPendingLeaveRequests(){
   openModal({type:'pending-leave-requests', loading:true, items:[]});
   try{
     const items = await window.RC.fetchPendingLeaveRequests();
-    openModal({type:'pending-leave-requests', loading:false, items: items||[]});
+    // One checkDateCapacity() per distinct date among the pending items --
+    // the same function PR #186 added to warn before an approval overflows
+    // a day -- so the queue can show, ahead of any click, how many of a
+    // contested day's requests actually fit and how many are sitting on
+    // the bench behind them. Best-effort: if it fails, the list still
+    // renders, just without the bench split.
+    const uniqueDates = [...new Set((items||[]).map(r=>r.start_date))];
+    const capacityByDate = {};
+    if(window.RC && typeof window.RC.checkDateCapacity==='function' && uniqueDates.length){
+      try{
+        const checks = await Promise.all(uniqueDates.map(d=>window.RC.checkDateCapacity({date:d}).catch(()=>null)));
+        uniqueDates.forEach((d,i)=>{ if(checks[i]) capacityByDate[d]=checks[i]; });
+      }catch(e){ /* advisory only */ }
+    }
+    openModal({type:'pending-leave-requests', loading:false, items: items||[], capacityByDate});
   }catch(e){
     openModal({type:'pending-leave-requests', loading:false, items:[], error: (e && e.message) || 'Could not load pending leave requests.'});
   }
