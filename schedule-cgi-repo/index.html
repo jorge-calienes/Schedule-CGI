@@ -9691,7 +9691,7 @@ let _lastSearchScrollQuery = null; // last query auto-scrolled to a match, so un
 let timeOffFilter = 'today'; // 'today'|'week'|'upcoming'
 let swapMode      = null; // {staffId} first person selected for quick-swap
 let chipMenuOpen  = null; // staffId whose chip menu is open
-let timeOffViewMode = 'calendar'; // 'calendar' | 'list'
+let timeOffViewMode = 'calendar'; // 'calendar' (named pills, who exactly + coverage) | 'capacity' (color-coded cap/day, same look as the public board's "Who's off")
 let timeOffMonth    = null; // null = current month, or 'YYYY-MM'
 let timeOffCalExpanded = false; // false = collapsed to the 2 weeks around today; true = full month
 let timeOffExpandedGroups = {}; // {groupKey: true} — which merged multi-day Time Off list cards are expanded to show their individual days
@@ -10408,6 +10408,113 @@ function renderCoverageSuggestions(r){
   </details>`:''}`;
 }
 
+// Same shape pbCapForPolicy()/pbCapacityForDate()/pbIsHoliday()/
+// pbHolidayLabel() already expect (snapshot.leave_policy, .active_staff_count,
+// .leave_calendar, .company_holidays) -- those are pure functions of their
+// snapshot argument, so building one out of the authenticated app's own
+// state lets the capacity calendar below reuse them exactly, rather than
+// re-deriving the same cap/holiday math a second time.
+function arCapacitySnapshot(){
+  const leaveCalendar = [];
+  Object.keys(state.timeOff||{}).forEach(staffId=>{
+    (state.timeOff[staffId]||[]).forEach(r=>{
+      leaveCalendar.push({ staff_id: staffId, start_date: r.startDate, end_date: r.endDate });
+    });
+  });
+  return {
+    leave_policy: state.leavePolicy ? {
+      rule_type: state.leavePolicy.ruleType, max_percent: state.leavePolicy.maxPercent, max_count: state.leavePolicy.maxCount,
+    } : {},
+    active_staff_count: state.staff.filter(s=>s.active!==false).length,
+    leave_calendar: leaveCalendar,
+    company_holidays: state.companyHolidays||[],
+  };
+}
+
+// Same cells/colors/holiday-icon logic as the public board's pbMonthCardHtml
+// (green <50% used, amber 50-99%, red 100%+, holidays white + emoji,
+// weekends closed) -- reuses pbCapForPolicy/pbIsHoliday/pbHolidayLabel/
+// pbHolidayEmoji directly (pure functions of the snapshot built above) and
+// the same .pb-whosoff-* CSS, just with data-cap-day instead of an inline
+// onclick, since this lives in the authenticated app's own event-delegated
+// click handling (attachHandlers()), not the public board's separate
+// pbRender() loop that onclick="pbOpenDayDetail(...)" would otherwise call.
+function arWhosOffMonthCardHtml(snapshot, year, month, cap){
+  const first = new Date(year, month-1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startDow = first.getDay();
+  const pad = n => String(n).padStart(2,'0');
+  const dowHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const cells = [];
+  for(let i=0;i<startDow;i++) cells.push('<div></div>');
+  for(let d=1; d<=daysInMonth; d++){
+    const ds = `${year}-${pad(month)}-${pad(d)}`;
+    const dow = new Date(ds+'T00:00:00').getDay();
+    const isWeekend = dow===0 || dow===6;
+    const isHoliday = pbIsHoliday(snapshot, ds);
+    if(isWeekend || isHoliday){
+      const holidayLabel = isHoliday ? pbHolidayLabel(snapshot, ds) : '';
+      const mark = isHoliday ? pbHolidayEmoji(holidayLabel) : '—';
+      const titleText = isHoliday ? (holidayLabel||'Company holiday') : 'Weekend';
+      cells.push(`<div class="pb-whosoff-cell pb-whosoff-cell-closed ${isHoliday?'pb-whosoff-cell-holiday':''}" data-cap-day="${ds}" title="${escapeHtml(titleText)} — not a scheduled business day">
+        <div class="pb-whosoff-cell-day">${d}</div>
+        <div class="pb-whosoff-cell-used ${isHoliday?'pb-whosoff-cell-emoji':''}">${mark}</div>
+      </div>`);
+      continue;
+    }
+    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
+    const ratio = cap>0 ? used/cap : 0;
+    let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
+    if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
+    else if(ratio>=0.5){ bg='#FEF3C7'; border='#FDE68A'; fg='#92400E'; }
+    cells.push(`<div class="pb-whosoff-cell" style="border:1px solid ${border};background:${bg};cursor:pointer;" data-cap-day="${ds}" title="See who's off ${ds}">
+      <div class="pb-whosoff-cell-day">${d}</div>
+      <div class="pb-whosoff-cell-used" style="color:${fg};">${used}/${cap}</div>
+    </div>`);
+  }
+  return `
+    <div class="pb-whosoff-grid" style="margin-top:8px;">
+      ${dowHeaders.map(h=>`<div class="pb-whosoff-dow">${h}</div>`).join('')}
+    </div>
+    <div class="pb-whosoff-grid" style="margin-top:3px;">
+      ${cells.join('')}
+    </div>`;
+}
+
+// Clicking a day in the capacity calendar — who's actually off that day,
+// since the color-coded cell only shows a count. Authenticated, so (unlike
+// the public board's day-detail) it can show area and the reason label too.
+function renderCapacityDayDetailModal(m){
+  const dateStr = m.date;
+  const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  const rows = [];
+  state.staff.forEach(s=>{
+    if(s.active===false) return;
+    (state.timeOff[s.id]||[]).forEach(r=>{
+      if(dateStr>=r.startDate && dateStr<=r.endDate) rows.push({ staff:s, label:r.label, area:getAreaById(state.assignments[s.id]) });
+    });
+  });
+  rows.sort((a,b)=>a.staff.name.localeCompare(b.staff.name));
+  const cap = pbCapForPolicy(arCapacitySnapshot());
+  return `
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div><h2>${escapeHtml(dateLabel)}</h2><p>${rows.length} of ${cap} slots used</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      ${rows.length===0 ? `<div class="small-muted">Nobody scheduled off this day.</div>` : rows.map(r=>`
+        <div class="eval-history-row">
+          <div style="font-weight:700;">${escapeHtml(r.staff.name)}</div>
+          <div class="small-muted" style="font-size:12px;">${r.area?escapeHtml(r.area.name):'Unassigned'}${r.label?' · '+escapeHtml(r.label):''}</div>
+        </div>`).join('')}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-cap-day" style="width:100%;">Close</button>
+    </div>
+  </div>`;
+}
+
 function renderTimeOffView(){
   const today     = todayLabel();
   const monthStr  = timeOffMonth || today.slice(0,7);
@@ -10505,6 +10612,32 @@ function renderTimeOffView(){
         ${(timeOffCalExpanded ? cellsArr : collapsedCells).join('')}
       </div>
       <button class="cal-collapse-toggle" id="btn-toggle-cal-expand">${timeOffCalExpanded ? '▴ Show 2 weeks' : '▾ Show full month'}</button>
+    </div>`;
+  };
+
+  // ── CAPACITY (color-coded per-day cap, same look as the public board's
+  //    "Who's off") — a different read than the named-pills calendar
+  //    above: at-a-glance how booked each day is against the leave policy
+  //    cap, not who specifically is out. ──
+  const renderCapacityView = () => {
+    const snap = arCapacitySnapshot();
+    const cap = pbCapForPolicy(snap);
+    const policy = snap.leave_policy||{};
+    const capLabel = policy.rule_type==='count'
+      ? `Max ${cap} people off/day`
+      : `Max ${policy.max_percent ?? 15}% off/day — ${snap.active_staff_count} active → ${cap}/day`;
+    return `
+    <div class="cal-grid-wrap">
+      <div class="cal-header">
+        <button class="cal-nav-btn" id="btn-cal-prev">‹</button>
+        <span class="cal-month-label">${monthLabel}</span>
+        <button class="cal-nav-btn" id="btn-cal-next">›</button>
+        <button class="cal-today-btn" id="btn-cal-today">Today</button>
+        <input type="hidden" id="cal-prev-month" value="${prevM}"/>
+        <input type="hidden" id="cal-next-month" value="${nextM}"/>
+      </div>
+      <div class="small-muted" style="text-align:center;margin-bottom:4px;">${escapeHtml(capLabel)}</div>
+      ${arWhosOffMonthCardHtml(snap, yr, mo, cap)}
     </div>`;
   };
 
@@ -10634,6 +10767,7 @@ function renderTimeOffView(){
     <div class="timeoff-split-toolbar">
       <div class="to-toolbar-row1">
         <span class="to-toolbar-title">Time Off${total>0?` <span class="to-summary-pill ${needsCov>0?'warn':''}">${needsCov>0?'⚠ '+needsCov:'✓'}</span>`:''}</span>
+        <button class="btn btn-light btn-sm" id="btn-toggle-timeoff-calview" title="Switch calendar style">${timeOffViewMode==='capacity'?'👥 Who view':'📊 Capacity view'}</button>
         <button class="btn btn-primary to-add-btn" id="btn-to-add">+ Add</button>
       </div>
       <div class="to-toolbar-row2">
@@ -10644,7 +10778,7 @@ function renderTimeOffView(){
     </div>
     <div class="timeoff-split-body">
       <div class="timeoff-split-cal">
-        ${renderCalendar()}
+        ${timeOffViewMode==='capacity' ? renderCapacityView() : renderCalendar()}
       </div>
       <div class="timeoff-split-list">
         <div class="split-list-header">Coverage needed</div>
@@ -12064,6 +12198,7 @@ function renderModal(){
   else if(m.type==='pending-position-requests') inner = renderPendingPositionRequestsModal(m);
   else if(m.type==='pending-leave-requests') inner = renderPendingLeaveRequestsModal(m);
   else if(m.type==='pending-same-day-requests') inner = renderPendingSameDayRequestsModal(m);
+  else if(m.type==='capacity-day-detail') inner = renderCapacityDayDetailModal(m);
   else if(m.type==='leave-policy') inner = renderLeavePolicyModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
@@ -20268,6 +20403,10 @@ function attachHandlers(){
     on('btn-cal-next', ()=>{ timeOffMonth=document.getElementById('cal-next-month')?.value||null; render(); });
     on('btn-cal-today',()=>{ timeOffMonth=null; render(); });
     on('btn-toggle-cal-expand', ()=>{ timeOffCalExpanded=!timeOffCalExpanded; render(); });
+    on('btn-toggle-timeoff-calview', ()=>{ timeOffViewMode = timeOffViewMode==='capacity' ? 'calendar' : 'capacity'; render(); });
+    document.querySelectorAll('[data-cap-day]').forEach(el=>el.addEventListener('click', ()=>{
+      openModal({type:'capacity-day-detail', date: el.dataset.capDay});
+    }));
 
     // expand/collapse a merged multi-day card to show its individual days
     document.querySelectorAll('[data-to-group-toggle]').forEach(el=>el.addEventListener('click',()=>{
@@ -20560,6 +20699,10 @@ function attachHandlers(){
       attemptPlace(activeModal.staffId, el.dataset.pickArea, true); // already vetted as suggestion; place directly
       closeModal();
     }));
+  }
+
+  if(activeModal.type==='capacity-day-detail'){
+    on('modal-close-cap-day', closeModal);
   }
 
   // --- staff manager modal ---
@@ -24834,7 +24977,18 @@ function mapSupabaseBoard(board){
     };
   });
 
-  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta, proficiency, teamLeadCoverage };
+  // Leave policy + company holidays — same cap/holiday data the public
+  // board's capacity math uses, now kept in general app state (previously
+  // only fetched on demand when the Leave Policy settings modal opened)
+  // so the authenticated Time Off view's capacity calendar can use it too.
+  const leavePolicy = board.leavePolicy ? {
+    ruleType: board.leavePolicy.rule_type || 'percent',
+    maxPercent: board.leavePolicy.max_percent,
+    maxCount: board.leavePolicy.max_count,
+  } : null;
+  const companyHolidays = (board.companyHolidays||[]).map(h=>({ date: h.holiday_date, label: h.label }));
+
+  return { areas, staff, assignments, staffOrder, callouts, supervisors, shifts, languages, positions, lunchTimes, breakTimes, priorExperience, coverageWaived, attendanceEvents, rotationFlows, timeOff, blocks, coverage, activeRotation, tempMoves, departmentMeta, proficiency, teamLeadCoverage, leavePolicy, companyHolidays };
 }
 
 // Coverage auto-returns the next day (assignCoverage()'s "returns
@@ -24910,6 +25064,8 @@ function applyMappedBoard(mapped){
   state.tempMoves = mapped.tempMoves;
   state.proficiency = mapped.proficiency;
   state.teamLeadCoverage = mapped.teamLeadCoverage;
+  if(mapped.leavePolicy) state.leavePolicy = mapped.leavePolicy;
+  state.companyHolidays = mapped.companyHolidays || [];
   // Only overwrite the in-progress rotation's window from the server once
   // someone has actually saved one — an empty active_rotation table (fresh
   // project, or before anyone has hit "Rotate Now" yet) should leave the
