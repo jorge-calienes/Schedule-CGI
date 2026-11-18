@@ -838,6 +838,51 @@ export async function resetAreasAndDepartments({ actingAccountId }) {
 // Time off entries and blocked pairs.
 // ---------------------------------------------------------------------------
 
+// The leave-capacity cap (leave_policy) is only ever enforced inside
+// submit_leave_request() -- the self-service RPC the public board calls.
+// A supervisor scheduling someone off directly from the Time Off manager,
+// or approving a pending self-service request, never went through that
+// check at all, so the same day could silently end up over its cap with
+// nothing in the UI saying so (found live: a day at a 10-person cap had 11
+// people scheduled off, all added directly, weeks apart, by different
+// supervisors who each had no way to see the others' additions).
+//
+// Mirrors the same rule_type/max_percent/max_count formula
+// public_board_snapshot()/submit_leave_request() already use, and the same
+// weekend/holiday exclusion as migration 0051 -- just read-only and callable
+// for an arbitrary single date, so the UI can check before committing a
+// write instead of only finding out after the fact.
+export async function checkDateCapacity({ date }) {
+  const dow = new Date(date + 'T00:00:00').getDay();
+  if (dow === 0 || dow === 6) return { used: 0, cap: 0, isClosedDay: true };
+
+  const [holidayRes, activeCountRes, policyRes] = await Promise.all([
+    supabase.from('company_holidays').select('holiday_date').eq('holiday_date', date).maybeSingle(),
+    supabase.from('staff').select('id', { count: 'exact', head: true }).eq('active', true),
+    supabase.from('leave_policy').select('*').eq('id', true).single(),
+  ]);
+  if (holidayRes.error) throw holidayRes.error;
+  if (activeCountRes.error) throw activeCountRes.error;
+  if (policyRes.error) throw policyRes.error;
+  if (holidayRes.data) return { used: 0, cap: 0, isClosedDay: true };
+
+  const [toRes, lrRes] = await Promise.all([
+    supabase.from('time_off').select('staff_id').lte('start_date', date).gte('end_date', date),
+    supabase.from('leave_requests').select('staff_id').eq('status', 'approved').lte('start_date', date).gte('end_date', date),
+  ]);
+  if (toRes.error) throw toRes.error;
+  if (lrRes.error) throw lrRes.error;
+
+  const usedIds = new Set([...(toRes.data || []).map((r) => r.staff_id), ...(lrRes.data || []).map((r) => r.staff_id)]);
+  const policy = policyRes.data;
+  const activeCount = activeCountRes.count || 0;
+  const cap = policy.rule_type === 'count'
+    ? Math.max(policy.max_count || 1, 1)
+    : Math.ceil(((policy.max_percent ?? 15) / 100) * activeCount);
+
+  return { used: usedIds.size, cap, isClosedDay: false };
+}
+
 export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId }) {
   const { data, error } = await supabase.from('time_off').insert({
     staff_id: staffId, start_date: startDate, end_date: endDate, label: label || null, created_by: actingAccountId,
@@ -1979,6 +2024,7 @@ window.RC = {
   deleteRotationFlow,
   resetRotationFlows,
   resetAreasAndDepartments,
+  checkDateCapacity,
   createTimeOff,
   updateTimeOff,
   deleteTimeOff,

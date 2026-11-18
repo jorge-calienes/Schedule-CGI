@@ -7954,6 +7954,35 @@ function friendlyDate(isoStr){
   } catch(e){ return isoStr; }
 }
 
+// Shared by the Time Off manager's "Add" flow and the pending-leave-request
+// Approve button -- the two places that put someone new onto the leave
+// calendar. Checks every date in [start,end] against the leave capacity
+// cap (checkDateCapacity mirrors the same rule the self-service RPC
+// already enforces) and, if any date would go over, surfaces exactly
+// which day(s) and by how much, and asks the supervisor to explicitly
+// confirm before proceeding -- the "evaluate it" step nothing previously
+// forced for a direct add or an approval, only for a brand-new
+// self-service submission.
+async function confirmIfOverCapacity(startDate, endDate){
+  if(!window.RC || typeof window.RC.checkDateCapacity!=='function') return true;
+  const dates = [];
+  for(let d=new Date(startDate+'T00:00:00'); d<=new Date(endDate+'T00:00:00'); d.setDate(d.getDate()+1)){
+    dates.push(d.toISOString().slice(0,10));
+  }
+  let checks;
+  try{
+    checks = await Promise.all(dates.map(d=>window.RC.checkDateCapacity({date:d})));
+  }catch(e){
+    return true; // advisory only -- a failed check never blocks the save
+  }
+  const overflow = dates
+    .map((d,i)=>({date:d, c:checks[i]}))
+    .filter(x=>x.c && !x.c.isClosedDay && (x.c.used+1) > x.c.cap);
+  if(overflow.length===0) return true;
+  const lines = overflow.map(o=>`${friendlyDate(o.date)} — already ${o.c.used} of ${o.c.cap} scheduled off`).join('\n');
+  return confirm(`This goes over the time-off capacity on:\n\n${lines}\n\nAdd anyway?`);
+}
+
 async function loadState(){
   try{
     const res = await window.storage.get('app-state', true);
@@ -21719,6 +21748,11 @@ function attachHandlers(){
           sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label}));
           if(r){ r.startDate=start; r.endDate=end; r.label=label; }
         } else {
+          // Adding someone new to a day doesn't go through submit_leave_request()'s
+          // capacity check (that RPC is the self-service board's only), so this is
+          // the one place a direct supervisor add can still silently push a day
+          // over its cap -- confirmIfOverCapacity() surfaces that before it does.
+          if(!(await confirmIfOverCapacity(start, end))) return;
           sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id}));
           state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label});
         }
@@ -23563,6 +23597,11 @@ function attachHandlers(){
       const startDate = el.dataset.approveLeaveStart;
       const endDate = el.dataset.approveLeaveEnd;
       const staffName = el.dataset.approveLeaveName;
+      // Submission-time capacity (submit_leave_request()) only compares
+      // against what's already approved/pending at the moment someone asks --
+      // it doesn't stop two contested requests for the same day from both
+      // later being approved. Same confirm step as a direct Time Off add.
+      if(!(await confirmIfOverCapacity(startDate, endDate))) return;
       el.disabled = true;
       el.closest('.eval-history-row')?.classList.add('row-busy');
       const sync = await syncCrudWrite(()=>window.RC.reviewLeaveRequest({
