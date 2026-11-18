@@ -4371,6 +4371,7 @@ button{font-family:var(--sans);cursor:pointer;}
   }
 .pb-action-primary{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);}
 .pb-action-warn{background:var(--md-sys-color-surface-container-low);color:#92400E;border-color:#FDE68A;}
+.pb-action-neutral{background:var(--md-sys-color-surface-container-low);color:var(--md-sys-color-on-surface);border-color:var(--md-sys-color-outline-variant);}
 /* Mobile: three full-width stacked buttons ate a lot of vertical space
    before the board even started. Collapsed into a single hamburger
    button + dropdown instead — the full inline row stays for tablet and
@@ -25317,6 +25318,7 @@ function renderPublicBoard(snapshot){
         <div class="pb-header-actions-full">
           <button class="pb-action-btn pb-action-primary" onclick="pbOpenLeaveForm()">📝 Request time off</button>
           <button class="pb-action-btn pb-action-warn" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
+          <button class="pb-action-btn pb-action-neutral" onclick="pbOpenStatusCheck()">🔎 Check my status</button>
           <a class="pb-signin-link" href="${escapeHtml(location.pathname)}" title="Admin, supervisor, or team lead sign-in">
             <span class="pb-signin-icon">👤</span> Sign in
           </a>
@@ -25328,6 +25330,7 @@ function renderPublicBoard(snapshot){
           <div class="pb-mobile-menu-dropdown">
             <button class="pb-mobile-menu-item" onclick="pbOpenLeaveForm()">📝 Request time off</button>
             <button class="pb-mobile-menu-item" onclick="pbOpenSameDayForm()">⏰ Running late / leaving early</button>
+            <button class="pb-mobile-menu-item" onclick="pbOpenStatusCheck()">🔎 Check my status</button>
             <a class="pb-mobile-menu-item" href="${escapeHtml(location.pathname)}">👤 Sign in</a>
           </div>` : ''}
         </div>
@@ -25363,6 +25366,7 @@ let pbCalYear = null, pbCalMonth = null; // Who's off calendar nav — lazily se
 
 window.pbOpenLeaveForm = () => { pbModal = {type:'leave', staffId:'', tdis:'', leaveType:'pto', startDate:'', endDate:'', hoursOverride:'', ptoBalance:'', sickBalance:'', remarks:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
 window.pbOpenSameDayForm = () => { pbModal = {type:'sameday', staffId:'', tdis:'', kind:'late', actualTime:'', ptoBalance:'', sickBalance:'', note:''}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
+window.pbOpenStatusCheck = () => { pbModal = {type:'statuscheck', staffId:'', tdis:'', results:null}; pbSubmitError=''; pbSubmitSuccess=''; pbMobileMenuOpen=false; pbRender(); };
 window.pbOpenDayDetail = (dateStr) => { pbModal = {type:'daydetail', date:dateStr}; pbRender(); };
 window.pbCloseModal = () => { pbModal = null; pbSubmitError=''; pbSubmitSuccess=''; pbRender(); };
 // Free-typed fields (name/TDIS/balances/remarks/note) sync into pbModal
@@ -25567,7 +25571,83 @@ function renderPublicRequestModal(snapshot){
   if(pbModal.type==='leave') return renderPublicLeaveForm(snapshot);
   if(pbModal.type==='sameday') return renderPublicSameDayForm(snapshot);
   if(pbModal.type==='daydetail') return renderPublicDayDetailModal(snapshot);
+  if(pbModal.type==='statuscheck') return renderPublicStatusCheckModal(snapshot);
   return '';
+}
+
+function pbStatusBadgeHtml(status){
+  const map = {
+    pending: ['#FEF3C7','#92400E','Pending'],
+    approved: ['#ECFDF5','#047857','Approved'],
+    denied: ['#FEE2E2','#DC2626','Denied'],
+    acknowledged: ['#ECFDF5','#047857','Acknowledged'],
+  };
+  const [bg,fg,label] = map[status] || ['#F3F4F6','#374151', status];
+  return `<span style="background:${bg};color:${fg};font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;">${escapeHtml(label)}</span>`;
+}
+
+// What a request looked like in the supervisor's own pending queue
+// (renderPendingLeaveRequestsModal) -- "on the bench" means it's past the
+// day's open slots and would need an overflow override to approve, same
+// language, same math (check_my_requests() computes it server-side).
+function renderPublicStatusResults(results){
+  const leaveRows = results.leave_requests||[];
+  const sameDayRows = results.same_day_requests||[];
+  if(leaveRows.length===0 && sameDayRows.length===0){
+    return `<div class="small-muted" style="margin-top:16px;">No requests found for that name yet.</div>`;
+  }
+  const leaveHtml = leaveRows.map(r=>{
+    const dateLabel = r.start_date===r.end_date ? arShortDate(r.start_date) : `${arShortDate(r.start_date)} – ${arShortDate(r.end_date)}`;
+    const benchNote = r.status!=='pending' ? '' : r.on_bench
+      ? `<div style="font-size:11.5px;color:#92400E;margin-top:4px;">🪑 On the bench — ${r.capacity_used}/${r.capacity_cap} already scheduled off that day. A supervisor can still approve it as an overflow.</div>`
+      : `<div style="font-size:11.5px;color:var(--c-text-3);margin-top:4px;">Currently within the day's open slots (${r.capacity_used}/${r.capacity_cap}).</div>`;
+    return `<div style="border:1px solid var(--c-border);border-radius:9px;padding:10px 12px;margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-size:13px;font-weight:700;">${r.leave_type==='sick'?'Sick':'PTO'} · ${escapeHtml(dateLabel)}</span>
+        ${pbStatusBadgeHtml(r.status)}
+      </div>
+      ${benchNote}
+      ${r.status==='denied' && r.decision_note ? `<div style="font-size:11.5px;color:var(--c-text-3);margin-top:4px;">Note: ${escapeHtml(r.decision_note)}</div>`:''}
+    </div>`;
+  }).join('');
+  const sameDayHtml = sameDayRows.map(r=>{
+    const typeLabel = r.request_type==='left_early' ? 'Leaving early' : 'Running late';
+    return `<div style="border:1px solid var(--c-border);border-radius:9px;padding:10px 12px;margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-size:13px;font-weight:700;">${escapeHtml(typeLabel)} · ${escapeHtml(arShortDate(r.request_date))}</span>
+        ${pbStatusBadgeHtml(r.status)}
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    ${leaveRows.length ? `<p class="pm-section-label" style="margin-top:16px;">Leave requests</p>${leaveHtml}` : ''}
+    ${sameDayRows.length ? `<p class="pm-section-label" style="margin-top:16px;">Late / early notices</p>${sameDayHtml}` : ''}
+  `;
+}
+
+function renderPublicStatusCheckModal(snapshot){
+  const { staffId, tdis, results } = pbModal;
+  return `
+  <div class="modal-backdrop" onclick="pbCloseModal()">
+    <div class="modal" style="max-width:480px;" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div><h2>Check your request status</h2><p>See whether your time-off or late/early notices have been reviewed.</p></div>
+        <button class="modal-close" onclick="pbCloseModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>Your name</label><select id="pb-status-name" onchange="pbSetField('staffId', this.value)">${pbStaffOptionsHtml(staffId)}</select></div>
+        <div class="field"><label>TDIS number</label><input type="text" value="${escapeHtml(tdis||'')}" oninput="pbSetField('tdis', this.value)" placeholder="e.g. M12"/></div>
+
+        ${pbSubmitError?`<div style="border:1px solid #FCA5A5;background:#FEE2E2;color:#DC2626;border-radius:9px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-top:10px;">${escapeHtml(pbSubmitError)}</div>`:''}
+
+        ${results ? renderPublicStatusResults(results) : ''}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-light" onclick="pbCloseModal()">Close</button>
+        <button class="btn btn-primary" ${pbSubmitting?'disabled':''} onclick="pbCheckMyStatus()">${pbSubmitting?'Checking…':'Check status'}</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 // Clicking a day in the Who's off calendar — just the names scheduled off
@@ -25771,6 +25851,22 @@ window.pbSubmitSameDay = async () => {
     setTimeout(()=>{ if(pbSubmitSuccess){ pbModal=null; pbSubmitSuccess=''; pbRender(); } }, 2200);
   }catch(e){
     pbSubmitting = false; pbSubmitError = (e&&e.message)||'Could not send — try again.'; pbRender();
+  }
+};
+
+window.pbCheckMyStatus = async () => {
+  if(!pbModal || pbSubmitting) return;
+  const { staffId } = pbModal;
+  const tdis = (pbModal.tdis||'').trim();
+  if(!staffId){ pbSubmitError='Pick your name first.'; pbRender(); return; }
+  if(!tdis){ pbSubmitError='Enter your TDIS number.'; pbRender(); return; }
+  pbSubmitting = true; pbSubmitError=''; pbRender();
+  try{
+    const results = await window.RC.checkMyRequests({staffId, tdis});
+    pbModal = {...pbModal, results};
+    pbSubmitting = false; pbRender();
+  }catch(e){
+    pbSubmitting = false; pbSubmitError = (e&&e.message)||'Could not check status — try again.'; pbRender();
   }
 };
 
