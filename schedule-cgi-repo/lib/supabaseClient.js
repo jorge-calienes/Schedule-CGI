@@ -1761,6 +1761,24 @@ export async function submitLeaveRequest({ staffId, tdis, leaveType, startDate, 
   return data;
 }
 
+// Lets the public board check the status of someone's own past requests --
+// same TDIS-verification pattern as submit_leave_request()/
+// submit_same_day_request() (a SECURITY DEFINER RPC grantable to anon),
+// so nobody can look up another person's requests by guessing a staff_id.
+export async function checkMyRequests({ staffId, tdis }) {
+  const { data, error } = await supabase.rpc('check_my_requests', {
+    p_staff_id: staffId,
+    p_tdis: tdis,
+  });
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('tdis_mismatch')) throw new Error('That TDIS number doesn’t match the name you picked — double-check both.');
+    if (msg.includes('staff_not_found')) throw new Error('Couldn’t find that staff member — try picking your name again.');
+    throw new Error(`[checkMyRequests] ${msg}`);
+  }
+  return data;
+}
+
 export async function submitSameDayRequest({ staffId, tdis, requestType, actualTime, hoursImpact, ptoBalance, sickBalance, note }) {
   const { data, error } = await supabase.rpc('submit_same_day_request', {
     p_staff_id: staffId,
@@ -2050,6 +2068,7 @@ window.RC = {
   fetchPublicBoardSnapshot,
   submitLeaveRequest,
   submitSameDayRequest,
+  checkMyRequests,
   fetchPendingLeaveRequests,
   reviewLeaveRequest,
   fetchPendingSameDayRequests,
