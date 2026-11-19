@@ -864,14 +864,16 @@ export async function checkDateCapacity({ date }) {
   const dow = new Date(date + 'T00:00:00').getDay();
   if (dow === 0 || dow === 6) return { used: 0, cap: 0, isClosedDay: true };
 
-  const [holidayRes, activeCountRes, policyRes] = await Promise.all([
+  const [holidayRes, activeCountRes, policyRes, supervisorLinkRes] = await Promise.all([
     supabase.from('company_holidays').select('holiday_date').eq('holiday_date', date).maybeSingle(),
     supabase.from('staff').select('id', { count: 'exact', head: true }).eq('active', true),
     supabase.from('leave_policy').select('*').eq('id', true).single(),
+    supabase.from('supervisors').select('staff_id').not('staff_id', 'is', null),
   ]);
   if (holidayRes.error) throw holidayRes.error;
   if (activeCountRes.error) throw activeCountRes.error;
   if (policyRes.error) throw policyRes.error;
+  if (supervisorLinkRes.error) throw supervisorLinkRes.error;
   if (holidayRes.data) return { used: 0, cap: 0, isClosedDay: true };
 
   const [toRes, lrRes] = await Promise.all([
@@ -881,26 +883,33 @@ export async function checkDateCapacity({ date }) {
   if (toRes.error) throw toRes.error;
   if (lrRes.error) throw lrRes.error;
 
+  // A supervisor also carries their own staff row (so they get scheduled
+  // on the board too) -- their own time off shouldn't eat into the cap
+  // meant to protect line-staff coverage, so exclude any staff_id a
+  // supervisors row links to (see 0060_supervisor_staff_link_and_request_date.sql).
+  const supervisorStaffIds = new Set((supervisorLinkRes.data || []).map((r) => r.staff_id));
   const usedIds = new Set([...(toRes.data || []).map((r) => r.staff_id), ...(lrRes.data || []).map((r) => r.staff_id)]);
+  const countedUsedIds = [...usedIds].filter((id) => !supervisorStaffIds.has(id));
   const policy = policyRes.data;
   const activeCount = activeCountRes.count || 0;
   const cap = policy.rule_type === 'count'
     ? Math.max(policy.max_count || 1, 1)
     : Math.ceil(((policy.max_percent ?? 15) / 100) * activeCount);
 
-  return { used: usedIds.size, cap, isClosedDay: false };
+  return { used: countedUsedIds.length, cap, isClosedDay: false };
 }
 
-export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId }) {
+export async function createTimeOff({ staffId, startDate, endDate, label, actingAccountId, requestedAt }) {
   const { data, error } = await supabase.from('time_off').insert({
     staff_id: staffId, start_date: startDate, end_date: endDate, label: label || null, created_by: actingAccountId,
+    requested_at: requestedAt || null,
   }).select().single();
   if (error) throw error;
   return data;
 }
-export async function updateTimeOff({ timeOffId, startDate, endDate, label }) {
+export async function updateTimeOff({ timeOffId, startDate, endDate, label, requestedAt }) {
   const { error } = await supabase.from('time_off')
-    .update({ start_date: startDate, end_date: endDate, label: label || null })
+    .update({ start_date: startDate, end_date: endDate, label: label || null, requested_at: requestedAt || null })
     .eq('id', timeOffId);
   if (error) throw error;
 }
