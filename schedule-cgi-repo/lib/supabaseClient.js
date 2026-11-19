@@ -205,6 +205,7 @@ export async function loadBoard() {
     { data: coverageAssignments }, { data: lunchTimes }, { data: breakTimes }, { data: priorExperience },
     { data: coverageWaivers }, { data: attendanceEvents }, { data: activeRotation }, { data: tempMoves },
     { data: positionRequests }, { data: proficiencyRatings }, { data: teamLeadCoverageEvents },
+    { data: leavePolicy }, { data: companyHolidays },
   ] = await Promise.all([
     supabase.from('areas').select('*').order('sort_order'),
     supabase.from('staff').select('*').eq('active', true),
@@ -231,12 +232,19 @@ export async function loadBoard() {
     supabase.from('position_requests').select('*').order('created_at'),
     supabase.from('proficiency_ratings').select('*').order('created_at'),
     supabase.from('team_lead_coverage_events').select('*'),
+    // Needed so the authenticated Time Off view can show the same
+    // capacity-colored calendar the public board already has (which cap
+    // applies, and which days are holidays/skip the count) -- previously
+    // only fetched on demand when the Leave Policy settings modal opened.
+    supabase.from('leave_policy').select('*').eq('id', true).single(),
+    supabase.from('company_holidays').select('*').order('holiday_date'),
   ]);
   return {
     areas, staff, assignments, departments, callouts,
     supervisors, shifts, languages, positions, staffLanguageCerts, rotationFlows, rotationFlowStages,
     timeOff, blockedPairs, coverageAssignments, lunchTimes, breakTimes, priorExperience, coverageWaivers,
     attendanceEvents, activeRotation, tempMoves, positionRequests, proficiencyRatings, teamLeadCoverageEvents,
+    leavePolicy, companyHolidays,
   };
 }
 
