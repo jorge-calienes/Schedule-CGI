@@ -10428,6 +10428,11 @@ function arCapacitySnapshot(){
     active_staff_count: state.staff.filter(s=>s.active!==false).length,
     leave_calendar: leaveCalendar,
     company_holidays: state.companyHolidays||[],
+    // A supervisor also carries their own staff row (to get an area
+    // assignment, a TDIS, etc.) -- excluded here the same way
+    // public_board_snapshot() excludes it server-side, so a supervisor's
+    // own time off never counts against the cap meant for line staff.
+    supervisor_staff_ids: (state.supervisors||[]).map(sv=>sv.staffId).filter(Boolean),
   };
 }
 
@@ -10462,7 +10467,8 @@ function arWhosOffMonthCardHtml(snapshot, year, month, cap){
       </div>`);
       continue;
     }
-    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
+    const supervisorIds = new Set(snapshot.supervisor_staff_ids||[]);
+    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date && !supervisorIds.has(r.staff_id)).length;
     const ratio = cap>0 ? used/cap : 0;
     let bg='#ECFDF5', border='#A7F3D0', fg='#047857';
     if(ratio>=1){ bg='#FEE2E2'; border='#FCA5A5'; fg='#DC2626'; }
@@ -10487,26 +10493,31 @@ function arWhosOffMonthCardHtml(snapshot, year, month, cap){
 function renderCapacityDayDetailModal(m){
   const dateStr = m.date;
   const dateLabel = new Date(dateStr+'T00:00:00').toLocaleDateString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  const supervisorIds = new Set((state.supervisors||[]).map(sv=>sv.staffId).filter(Boolean));
   const rows = [];
   state.staff.forEach(s=>{
     if(s.active===false) return;
     (state.timeOff[s.id]||[]).forEach(r=>{
-      if(dateStr>=r.startDate && dateStr<=r.endDate) rows.push({ staff:s, label:r.label, area:getAreaById(state.assignments[s.id]) });
+      if(dateStr>=r.startDate && dateStr<=r.endDate) rows.push({ staff:s, label:r.label, area:getAreaById(state.assignments[s.id]), isSupervisor: supervisorIds.has(s.id) });
     });
   });
   rows.sort((a,b)=>a.staff.name.localeCompare(b.staff.name));
   const cap = pbCapForPolicy(arCapacitySnapshot());
+  // rows can include a supervisor's own staff record -- shown here for
+  // visibility (still useful to know they're out) but not counted toward
+  // the cap, so the header number can be lower than the roster length.
+  const usedCount = rows.filter(r=>!r.isSupervisor).length;
   return `
   <div class="modal" style="max-width:420px;">
     <div class="modal-head">
-      <div><h2>${escapeHtml(dateLabel)}</h2><p>${rows.length} of ${cap} slots used</p></div>
+      <div><h2>${escapeHtml(dateLabel)}</h2><p>${usedCount} of ${cap} slots used</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body">
       ${rows.length===0 ? `<div class="small-muted">Nobody scheduled off this day.</div>` : rows.map(r=>`
         <div class="eval-history-row">
           <div style="font-weight:700;">${escapeHtml(r.staff.name)}</div>
-          <div class="small-muted" style="font-size:12px;">${r.area?escapeHtml(r.area.name):'Unassigned'}${r.label?' · '+escapeHtml(r.label):''}</div>
+          <div class="small-muted" style="font-size:12px;">${r.area?escapeHtml(r.area.name):'Unassigned'}${r.label?' · '+escapeHtml(r.label):''}${r.isSupervisor?' · <span title="Supervisors are not counted toward the leave-policy cap">Supervisor — not counted</span>':''}</div>
         </div>`).join('')}
     </div>
     <div class="modal-foot">
@@ -17101,6 +17112,7 @@ function renderTimeOffManagerModal(m){
                           ? escapeHtml(r.startDate)
                           : escapeHtml(r.startDate)+' → '+escapeHtml(r.endDate)}
                         ${r.label?'<span class="to-entry-reason">· '+escapeHtml(r.label)+'</span>':''}
+                        ${r.requestedAt?'<span class="to-entry-reason">· requested '+escapeHtml(r.requestedAt)+'</span>':''}
                         ${isActive?'<span class="to-entry-active">● Active now</span>':''}
                       </div>
                     </div>
@@ -17182,6 +17194,10 @@ function renderTimeOffManagerModal(m){
           <label>End date</label>
           <input type="date" id="to-end" value="${editEntry?.endDate||''}"/>
         </div>
+      </div>
+      <div class="field">
+        <label>Date requested <span class="small-muted">(when they actually asked — helps sort out who asked first if a day fills up)</span></label>
+        <input type="date" id="to-requested-at" value="${editEntry?.requestedAt||todayLabel()}"/>
       </div>
       `}
       <div class="field">
@@ -21916,21 +21932,22 @@ function attachHandlers(){
       } else {
         const start = document.getElementById('to-start')?.value;
         const end   = document.getElementById('to-end')?.value;
+        const requestedAt = document.getElementById('to-requested-at')?.value || null;
         if(!start||!end){ showToast('Pick a start and end date','rust'); return; }
         if(end < start){ showToast('End date must be after start','rust'); return; }
         if(!state.timeOff[m.staffId]) state.timeOff[m.staffId]=[];
         if(m.editId){
           const r=state.timeOff[m.staffId].find(x=>x.id===m.editId);
-          sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label}));
-          if(r){ r.startDate=start; r.endDate=end; r.label=label; }
+          sync = await syncCrudWrite(()=>window.RC.updateTimeOff({timeOffId:m.editId, startDate:start, endDate:end, label, requestedAt}));
+          if(r){ r.startDate=start; r.endDate=end; r.label=label; r.requestedAt=requestedAt||undefined; }
         } else {
           // Adding someone new to a day doesn't go through submit_leave_request()'s
           // capacity check (that RPC is the self-service board's only), so this is
           // the one place a direct supervisor add can still silently push a day
           // over its cap -- confirmIfOverCapacity() surfaces that before it does.
           if(!(await confirmIfOverCapacity(start, end))) return;
-          sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id}));
-          state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label});
+          sync = await syncCrudWrite(()=>window.RC.createTimeOff({staffId:m.staffId, startDate:start, endDate:end, label, actingAccountId:authState.account.id, requestedAt}));
+          state.timeOff[m.staffId].push({id: sync.ok ? sync.result.id : uid('to'), startDate:start, endDate:end, label, requestedAt:requestedAt||undefined});
         }
       }
       saveState();
@@ -24885,7 +24902,7 @@ function mapSupabaseBoard(board){
     callouts[row.staff_id] = true;
   });
 
-  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color, tier: sv.tier||'sl', reportsToId: sv.reports_to_id||null }));
+  const supervisors = (board.supervisors||[]).map(sv=>({ id: sv.id, name: sv.name, color: sv.color, tier: sv.tier||'sl', reportsToId: sv.reports_to_id||null, staffId: sv.staff_id||null }));
   const shifts = (board.shifts||[]).map(sh=>({ id: sh.id, label: sh.label, start: sh.start_time, end: sh.end_time }));
   const languages = (board.languages||[]).map(l=>({ id: l.id, name: l.name }));
   const positions = (board.positions||[]).map(p=>({ id: p.id, name: p.name, sortOrder: p.sort_order||0, rotates: p.rotates!==false })).sort((a,b)=>a.sortOrder-b.sortOrder);
@@ -24919,6 +24936,7 @@ function mapSupabaseBoard(board){
     timeOff[row.staff_id].push({
       id: row.id, startDate: row.start_date, endDate: row.end_date, label: row.label || '',
       coverageStaffId: row.covering_staff_id || undefined,
+      requestedAt: row.requested_at || undefined,
     });
   });
 
@@ -25687,7 +25705,8 @@ function pbCapForPolicy(snapshot){
 // the server never blocks on one either.
 function pbCapacityForDate(snapshot, dateStr){
   const cap = pbCapForPolicy(snapshot);
-  const used = (snapshot?.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date).length;
+  const supervisorIds = new Set(snapshot?.supervisor_staff_ids||[]);
+  const used = (snapshot?.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date && !supervisorIds.has(r.staff_id)).length;
   const dow = new Date(dateStr+'T00:00:00').getDay();
   const isBusinessDay = dow!==0 && dow!==6 && !pbIsHoliday(snapshot, dateStr);
   return { cap, used, isBusinessDay };
@@ -25821,20 +25840,21 @@ function renderPublicDayDetailModal(snapshot){
   const closedReason = !isBusinessDay ? (isHolidayDate ? (holidayLabel||'Company holiday') : (dow===0||dow===6) ? 'Weekend' : '') : '';
   const off = (snapshot.leave_calendar||[]).filter(r=>dateStr>=r.start_date && dateStr<=r.end_date)
     .slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const supervisorIds = new Set(snapshot.supervisor_staff_ids||[]);
   const isToday = dateStr===todayLabel();
   const staffById = {};
   (snapshot.staff||[]).forEach(s=>{ staffById[s.id]=s; });
   const lateToday = isToday ? (snapshot.late_staff_ids||[]).map(id=>staffById[id]).filter(Boolean) : [];
   const earlyToday = isToday ? (snapshot.left_early_staff_ids||[]).map(id=>staffById[id]).filter(Boolean) : [];
-  const row = (name, label, bg, fg) => `
+  const row = (name, label, bg, fg, note) => `
     <div style="padding:10px 16px;border-bottom:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center;gap:10px;">
-      <div style="font-size:13.5px;font-weight:700;">${escapeHtml(name)}</div>
+      <div><div style="font-size:13.5px;font-weight:700;">${escapeHtml(name)}</div>${note?`<div style="font-size:11px;color:var(--c-text-2);">${escapeHtml(note)}</div>`:''}</div>
       <span style="font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(label)}</span>
     </div>`;
   const rows = [
     ...lateToday.map(s=>row(s.name, 'Late arrival', '#FEF3C7', '#B45309')),
     ...earlyToday.map(s=>row(s.name, 'Left early', '#E5E7EB', '#4B5563')),
-    ...off.map(r=>row(r.name, r.status==='pending'?'Scheduled off (pending)':'Scheduled off', '#FEE2E2', '#DC2626')),
+    ...off.map(r=>row(r.name, r.status==='pending'?'Scheduled off (pending)':'Scheduled off', '#FEE2E2', '#DC2626', supervisorIds.has(r.staff_id)?'Supervisor — not counted toward the cap':'')),
   ];
   return `
   <div class="modal-backdrop" onclick="pbCloseModal()">
@@ -26071,7 +26091,8 @@ function pbMonthCardHtml(snapshot, year, month, cap, showTitle){
       </div>`);
       continue;
     }
-    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date).length;
+    const supervisorIds = new Set(snapshot.supervisor_staff_ids||[]);
+    const used = (snapshot.leave_calendar||[]).filter(r=>ds>=r.start_date && ds<=r.end_date && !supervisorIds.has(r.staff_id)).length;
     const ratio = cap>0 ? used/cap : 0;
     // Green under 50% of slots used, yellow from 50% up, red at 100% (full)
     // — a clearer read of how booked each day is than the old 70% cutoff.
