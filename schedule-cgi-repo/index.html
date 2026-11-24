@@ -8789,6 +8789,27 @@ const DISCIPLINARY_CATEGORY_META = {
   other:             'Other',
 };
 const DISCIPLINARY_STEP_ORDER = ['verbal', 'written', 'final_written', 'termination'];
+const DISCIPLINARY_STEP_SHORT = { verbal:'Verbal', written:'Written', final_written:'Final', termination:'Termination' };
+
+// A compact 4-segment progress bar (Verbal → Written → Final → Termination)
+// for one staff member's entries — every step up to and including their
+// current standing (the most recent still-ACTIVE entry) reads as "reached"
+// in that step's own color; anything past it stays muted. Used both on the
+// per-staff Disciplinary tab and on the company-wide Disciplinary record
+// dashboard, where it replaces repeating that person's name under every
+// date their entries happen to fall on — one bar says "where they stand"
+// at a glance instead of making you read every row.
+function disciplinaryStatusBarHtml(entries){
+  const activeEntries = (entries||[]).filter(isDisciplinaryActionActive);
+  const current = activeEntries[0]; // entries are assumed sorted newest-first
+  const currentIdx = current ? DISCIPLINARY_STEP_ORDER.indexOf(current.step) : -1;
+  const segs = DISCIPLINARY_STEP_ORDER.map((s,i)=>{
+    const meta = DISCIPLINARY_STEP_META[s];
+    const reached = i<=currentIdx;
+    return '<div style="flex:1;text-align:center;padding:5px 4px;font-size:10.5px;font-weight:700;border-radius:6px;background:'+(reached?meta.bg:'var(--pm-surface-alt,#F2F2F7)')+';color:'+(reached?meta.fg:'var(--pm-text-muted,#AEAEB2)')+';white-space:nowrap;">'+escapeHtml(DISCIPLINARY_STEP_SHORT[s])+'</div>';
+  }).join('');
+  return '<div style="display:flex;gap:4px;">'+segs+'</div>';
+}
 
 // Simple progressive-discipline ladder: how many of this staff member's
 // entries are still "active" (within the flat 12-month rolling window
@@ -8951,12 +8972,20 @@ function renderDisciplinaryReportModal(m){
     else if(e.ack_status==='declined') acc.declined++;
     else acc.unacknowledged++;
     if(isDisciplinaryActionActive(e)) acc.active++;
+    acc.bystep[e.step] = (acc.bystep[e.step]||0)+1;
     return acc;
-  }, {total:0, acknowledged:0, declined:0, unacknowledged:0, active:0});
+  }, {total:0, acknowledged:0, declined:0, unacknowledged:0, active:0, bystep:{verbal:0, written:0, final_written:0, termination:0}});
 
+  // Grouped by staff member, not by date — the same person showing up
+  // under three different dates read as three unrelated rows repeating
+  // their name; one header with a status bar (where they stand right now)
+  // plus their own entries underneath reads as one track record instead.
+  // `filtered` is already newest-first (the fetch orders by incident_date
+  // desc), so each group's own array and the group order itself both come
+  // out newest-first for free.
   const grouped = {};
-  filtered.forEach(e=>{ if(!grouped[e.incident_date]) grouped[e.incident_date]=[]; grouped[e.incident_date].push(e); });
-  const dates = Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+  filtered.forEach(e=>{ if(!grouped[e.staff_id]) grouped[e.staff_id]=[]; grouped[e.staff_id].push(e); });
+  const staffIds = Object.keys(grouped);
 
   return `
   <div class="modal pm-scope" style="max-width:640px;max-height:90vh;">
@@ -8988,6 +9017,10 @@ function renderDisciplinaryReportModal(m){
         <div class="team-dash-stat"><span class="team-dash-stat-label">Unack'd</span><span class="ar-stat-num">${totals.unacknowledged}</span></div>
       </div>
 
+      <div class="team-dash-summary">
+        ${DISCIPLINARY_STEP_ORDER.map(s=>`<div class="team-dash-stat"><span class="team-dash-stat-label">${escapeHtml(DISCIPLINARY_STEP_META[s].label)}</span><span class="ar-stat-num">${totals.bystep[s]||0}</span></div>`).join('')}
+      </div>
+
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
         <input type="text" id="disc-report-search" class="team-dash-search" style="flex:2;min-width:140px;margin-bottom:0;" placeholder="Search by staff name…" value="${escapeHtml(m.search||'')}"/>
         <select id="disc-supervisor-filter" style="flex:1;min-width:140px;border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:0 10px;font-family:inherit;font-size:14px;background:var(--c-surface,#fff);">
@@ -8997,12 +9030,27 @@ function renderDisciplinaryReportModal(m){
         </select>
       </div>
 
-      ${dates.length===0
+      ${staffIds.length===0
         ? `<div class="small-muted" style="padding:16px 0;">No disciplinary entries for this period${q?' matching "'+escapeHtml(m.search)+'"':''}.</div>`
-        : dates.map(d=>`
-          <p class="pm-section-label" style="margin-top:18px;">${escapeHtml(new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</p>
-          ${grouped[d].map(e=>disciplinaryEntryRowHtml(e, {showStaffName:true})).join('')}
-        `).join('')}
+        : staffIds.map(staffId=>{
+          const staffEntries = grouped[staffId];
+          const staffName = staffEntries[0]?.staff?.name || 'Unknown';
+          const activeEntries = staffEntries.filter(isDisciplinaryActionActive);
+          const current = activeEntries[0];
+          const statusLine = current
+            ? `Currently: <strong>${escapeHtml(DISCIPLINARY_STEP_META[current.step].label)}</strong> — ${activeEntries.length} active entr${activeEntries.length===1?'y':'ies'}`
+            : `No active entries — all expired or removed from count`;
+          return `
+          <div style="margin-top:20px;padding-bottom:4px;border-bottom:2px solid var(--pm-border,rgba(60,60,67,.12));margin-bottom:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+              <span style="font-weight:700;font-size:15px;cursor:pointer;" data-disc-open-profile="${staffId}">${escapeHtml(staffName)}</span>
+              <span class="small-muted" style="font-size:12px;">${staffEntries.length} entr${staffEntries.length===1?'y':'ies'} this period</span>
+            </div>
+            ${disciplinaryStatusBarHtml(staffEntries)}
+            <div class="small-muted" style="font-size:12px;margin-top:4px;">${statusLine}</div>
+          </div>
+          ${staffEntries.map(e=>disciplinaryEntryRowHtml(e, {showStaffName:false})).join('')}
+        `}).join('')}
     </div>
   </div>`;
 }
@@ -13754,18 +13802,19 @@ function renderStaffManagerModal(m){
     const mostRecentActive = activeEntries[0];
 
     const logBtn = '<button class="pm-btn pm-btn-primary" id="btn-log-disciplinary" type="button" style="white-space:nowrap;flex:none;">+ Log disciplinary action</button>';
-    const standingHtml = '<div class="pm-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">'
-      +(mostRecentActive ? (()=>{
-          const meta = DISCIPLINARY_STEP_META[mostRecentActive.step];
-          return '<div style="display:flex;align-items:center;gap:12px;">'
-            +'<div style="width:10px;height:10px;border-radius:999px;background:'+meta.fg+';flex:none;"></div>'
-            +'<div><div style="font-weight:700;font-size:14.5px;">Current standing: '+escapeHtml(meta.label)+'</div>'
-            +'<div class="small-muted" style="margin-top:2px;">'+activeCount+' active entr'+(activeCount===1?'y':'ies')+' in the last 12 months'
-            +(nextStep!==mostRecentActive.step?' · next step if another occurs: '+escapeHtml(DISCIPLINARY_STEP_META[nextStep].label):'')+'</div></div>'
-          +'</div>';
-        })()
-        : '<div class="small-muted">'+(hist.length?'No active disciplinary entries in the last 12 months.':'No disciplinary history.')+'</div>')
-      +logBtn+'</div>';
+    const standingHtml = '<div class="pm-card">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px;">'
+        +(mostRecentActive ? (()=>{
+            const meta = DISCIPLINARY_STEP_META[mostRecentActive.step];
+            return '<div><div style="font-weight:700;font-size:14.5px;">Current standing: '+escapeHtml(meta.label)+'</div>'
+              +'<div class="small-muted" style="margin-top:2px;">'+activeCount+' active entr'+(activeCount===1?'y':'ies')+' in the last 12 months'
+              +(nextStep!==mostRecentActive.step?' · next step if another occurs: '+escapeHtml(DISCIPLINARY_STEP_META[nextStep].label):'')+'</div></div>';
+          })()
+          : '<div class="small-muted">'+(hist.length?'No active disciplinary entries in the last 12 months.':'No disciplinary history.')+'</div>')
+        +logBtn
+      +'</div>'
+      +(hist.length ? disciplinaryStatusBarHtml(hist) : '')
+    +'</div>';
 
     if(hist.length===0) return standingHtml;
 
