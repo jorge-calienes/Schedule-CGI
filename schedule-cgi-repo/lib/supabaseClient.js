@@ -1679,6 +1679,53 @@ export async function fetchStaffEvaluationHistory(staffId) {
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Disciplinary tracker — unlike evaluations, there's no submit/review split:
+// acknowledgment is captured in person, in the same sitting the entry is
+// created, so the row is only ever inserted once already fully resolved
+// (see 0061_disciplinary_actions.sql). RLS scopes both read and write to
+// admins and the staff member's own supervisor chain, so these just
+// select/insert and let the database enforce that rather than re-checking it here
+// — the client-side gating in index.html (canViewDisciplinary) only decides
+// whether to show the tab at all, never the actual access boundary.
+// ---------------------------------------------------------------------------
+
+export async function fetchDisciplinaryHistory(staffId) {
+  const { data, error } = await supabase
+    .from('disciplinary_actions')
+    .select('*, creator:created_by(name), witness:witness_supervisor_id(name)')
+    .eq('staff_id', staffId)
+    .order('incident_date', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function submitDisciplinaryAction({
+  staffId, createdBy, witnessSupervisorId, step, category, incidentDate,
+  description, correctiveAction, ackStatus,
+}) {
+  const { data, error } = await supabase.from('disciplinary_actions').insert({
+    staff_id: staffId,
+    created_by: createdBy,
+    witness_supervisor_id: witnessSupervisorId || null,
+    step, category, incident_date: incidentDate,
+    description, corrective_action: correctiveAction,
+    ack_status: ackStatus,
+    acknowledged_at: ackStatus === 'unacknowledged' ? null : new Date().toISOString(),
+  }).select().single();
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: createdBy,
+    action: 'disciplinary_action',
+    description: `logged a disciplinary action (${step.replace('_', ' ')}) — ${category.replace('_', ' ')}`,
+    staff_id: staffId,
+    metadata: { step, category, ackStatus },
+  });
+
+  return data;
+}
+
 export async function fetchTeamPerformanceOverview() {
   const { data, error } = await supabase
     .from('evaluations')
@@ -2071,6 +2118,8 @@ window.RC = {
   createTempMove,
   clearTempMove,
   fetchStaffEvaluationHistory,
+  fetchDisciplinaryHistory,
+  submitDisciplinaryAction,
   fetchTeamPerformanceOverview,
   fetchTimeReviewWeekByStart,
   fetchLatestTimeReviewWeek,
