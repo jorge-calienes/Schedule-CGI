@@ -3222,7 +3222,7 @@ label{font-size:12px;font-weight:600;color:var(--c-text-2);display:block;margin-
     font-family:inherit;font-size:11px;font-weight:700;
     letter-spacing:.08em;text-transform:uppercase;
     color:var(--c-text-3,#AEAEB2);
-    padding:20px 14px 4px;
+    padding:10px 14px 4px;
     margin:0;
   }
 
@@ -3381,7 +3381,7 @@ label{font-size:12px;font-weight:600;color:var(--c-text-2);display:block;margin-
   }
 .nav-scrim.visible{display:block;}
 /* M3 drawer section header: Label Large, on-surface-variant */
-.nav-drawer-section{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--c-text-3,#AEAEB2);padding:20px 14px 4px;}
+.nav-drawer-section{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--c-text-3,#AEAEB2);padding:10px 14px 4px;}
 /* M3 drawer nav item: 56dp tall, active indicator is full-width pill with secondary-container */
 .nav-item{
     display:flex;
@@ -10450,8 +10450,8 @@ const TOUR_STEPS = [
     before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; } },
   { title: 'Mark someone out',
     body: "Call in sick, running late, or leaving early — log it here. The app suggests the best-fit backup for whatever area they leave open.",
-    selector: '#nav-mark-callout',
-    before(){ activeModal=null; navDrawerOpen=true; viewMode='board'; } },
+    selector: '#btn-mark-callout',
+    before(){ activeModal=null; navDrawerOpen=false; viewMode='board'; } },
   { title: 'Roster',
     body: "The full staff list with contact info, certifications, languages, and status — filterable, and exportable to Excel for anything you need offline.",
     selector: '#nav-roster',
@@ -11311,7 +11311,6 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-manage-staff"><span class="nav-item-icon">👤</span>Add / Manage Staff</button>
       ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-import-data"><span class="nav-item-icon">📥</span>Import data (Excel)</button>` : ''}
       <button class="nav-item" id="nav-manage-supervisors"><span class="nav-item-icon">🏅</span>Supervisors</button>
-      <button class="nav-item" id="nav-org-diagram"><span class="nav-item-icon">🗂</span>Org diagram</button>
       <button class="nav-item" id="nav-manage-blocks"><span class="nav-item-icon">🚫</span>Blocked Pairs</button>
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Schedule</div>
@@ -11319,7 +11318,6 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-history"><span class="nav-item-icon">📜</span>History</button>
       <div class="nav-divider"></div>
       <div class="nav-drawer-section">Board</div>
-      <button class="nav-item" id="nav-mark-callout"><span class="nav-item-icon">⚠️</span>Mark someone out</button>
       <button class="nav-item" id="nav-add-area"><span class="nav-item-icon">➕</span>Add work area</button>
       <button class="nav-item" id="nav-reorder-depts"><span class="nav-item-icon">⠿</span>Reorder board layout</button>
       <div class="nav-divider"></div>
@@ -11365,7 +11363,6 @@ function renderNavDrawer(){
       <div class="nav-divider"></div>`;
       })()}
       <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
-      ${canOfferInstall()?'<button class="nav-item" id="nav-install-app"><span class="nav-item-icon">📲</span>Install app</button>':''}
       <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
       <div class="nav-rotate-footer">
@@ -21087,12 +21084,10 @@ function attachHandlers(){
   on('nav-manage-staff',        ()=>{ closeNav(); openModal({type:'staff-manager'}); });
   on('nav-import-data',         ()=>{ closeNav(); openModal({type:'import-picker'}); });
   on('nav-manage-supervisors',  ()=>{ closeNav(); openModal({type:'supervisor-manager'}); });
-  on('nav-org-diagram',         ()=>{ closeNav(); openModal({type:'org-diagram'}); });
   on('nav-manage-blocks',       ()=>{ closeNav(); openModal({type:'blocks-manager'}); });
   on('nav-manage-flows',        ()=>{ closeNav(); openModal({type:'flow-manager'}); });
   on('nav-history',             ()=>{ closeNav(); openModal({type:'history'}); });
   on('nav-my-evaluations',      ()=>{ closeNav(); openEvalQueue(); });
-  on('nav-mark-callout',        ()=>{ closeNav(); openModal({type:'mark-callout'}); });
   on('nav-request-coverage',    ()=>{ closeNav(); openModal({type:'callout-dash'}); });
   on('nav-add-area',            ()=>{ closeNav(); openModal({type:'area-editor'}); });
   on('nav-reorder-depts',       ()=>{ closeNav(); openModal({type:'dept-reorder'}); });
