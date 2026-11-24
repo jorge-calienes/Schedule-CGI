@@ -8892,13 +8892,29 @@ function wireDisciplinaryRowActions(entries, onChanged){
   }));
 }
 
+// Carries forward whatever period/filter the dashboard was already on
+// (e.g. when a row action refreshes it) rather than resetting to the
+// default every time; a fresh open gets the same defaults the Attendance
+// report uses (this month, your own team).
+function disciplinaryReportFilterState(){
+  const prior = activeModal?.type==='disciplinary-report' ? activeModal : null;
+  return {
+    search: prior?.search || '',
+    periodType: prior?.periodType || 'month',
+    anchorMonth: prior?.anchorMonth || todayLabel().slice(0,7),
+    customStart: prior?.customStart || todayLabel(),
+    customEnd: prior?.customEnd || prior?.customStart || todayLabel(),
+    supervisorFilter: prior ? prior.supervisorFilter : defaultAttendanceSupervisorFilter(),
+  };
+}
 async function openDisciplinaryReport(){
-  openModal({type:'disciplinary-report', loading:true, items:[], search:(activeModal?.type==='disciplinary-report'?activeModal.search:'')||''});
+  const filters = disciplinaryReportFilterState();
+  openModal({type:'disciplinary-report', loading:true, items:[], ...filters});
   try{
     const items = await window.RC.fetchAllDisciplinaryActions();
-    openModal({type:'disciplinary-report', loading:false, items: items||[], search:(activeModal?.type==='disciplinary-report'?activeModal.search:'')||''});
+    openModal({type:'disciplinary-report', loading:false, items: items||[], ...filters});
   }catch(e){
-    openModal({type:'disciplinary-report', loading:false, items:[], error:(e&&e.message)||'Could not load disciplinary records.', search:''});
+    openModal({type:'disciplinary-report', loading:false, items:[], error:(e&&e.message)||'Could not load disciplinary records.', ...filters});
   }
 }
 
@@ -8913,23 +8929,76 @@ function renderDisciplinaryReportModal(m){
   if(m.error){
     return `<div class="modal" style="max-width:640px;"><div class="modal-head"><div><h2>⚖️ Disciplinary record</h2><p>Could not load</p></div><button class="modal-close" id="modal-close-x">✕</button></div><div class="modal-body"><div class="small-muted">${escapeHtml(m.error)}</div></div></div>`;
   }
+  const periodType = m.periodType || 'month';
+  const anchorMonth = m.anchorMonth || todayLabel().slice(0,7);
+  const customStart = m.customStart || todayLabel();
+  const customEnd = m.customEnd || customStart;
+  const range = attendancePeriodRange(periodType, anchorMonth, {start:customStart, end:customEnd});
+  const supervisorFilter = m.supervisorFilter || '';
   const q = (m.search||'').toLowerCase();
-  const filtered = q ? m.items.filter(e=>(e.staff?.name||'').toLowerCase().includes(q)) : m.items;
+
+  let filtered = m.items.filter(e=>e.incident_date>=range.start && e.incident_date<=range.end);
+  if(q) filtered = filtered.filter(e=>(e.staff?.name||'').toLowerCase().includes(q));
+  if(supervisorFilter==='__unassigned__') filtered = filtered.filter(e=>!getStaffById(e.staff_id)?.supervisorId);
+  else if(supervisorFilter) filtered = filtered.filter(e=>getStaffById(e.staff_id)?.supervisorId===supervisorFilter);
+
+  // Status breakdown next to the total — "how many and status" — same
+  // stat-tile look the Attendance report uses, just with this feature's
+  // own categories (ack outcome) instead of callout/late/left-early.
+  const totals = filtered.reduce((acc,e)=>{
+    acc.total++;
+    if(e.ack_status==='acknowledged') acc.acknowledged++;
+    else if(e.ack_status==='declined') acc.declined++;
+    else acc.unacknowledged++;
+    if(isDisciplinaryActionActive(e)) acc.active++;
+    return acc;
+  }, {total:0, acknowledged:0, declined:0, unacknowledged:0, active:0});
+
   const grouped = {};
   filtered.forEach(e=>{ if(!grouped[e.incident_date]) grouped[e.incident_date]=[]; grouped[e.incident_date].push(e); });
   const dates = Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+
   return `
   <div class="modal pm-scope" style="max-width:640px;max-height:90vh;">
     <div class="modal-head">
-      <div><h2>⚖️ Disciplinary record</h2><p>${filtered.length} entr${filtered.length===1?'y':'ies'}${q?' matching "'+escapeHtml(m.search)+'"':''} — scoped to what you can see</p></div>
+      <div><h2>⚖️ Disciplinary record</h2><p>${escapeHtml(range.label)} — scoped to what you can see</p></div>
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="modal-body" style="padding-top:0;">
-      <div class="field" style="position:sticky;top:0;background:var(--c-surface,#fff);padding-top:12px;z-index:1;">
-        <input type="text" id="disc-report-search" placeholder="Search by staff name…" value="${escapeHtml(m.search||'')}"/>
+      <div class="ar-controls">
+        <div class="rp-view-tabs">
+          <button class="rp-view-tab ${periodType==='today'?'active':''}" id="disc-period-today">Today</button>
+          <button class="rp-view-tab ${periodType==='month'?'active':''}" id="disc-period-month">Month</button>
+          <button class="rp-view-tab ${periodType==='quarter'?'active':''}" id="disc-period-quarter">Quarter</button>
+          <button class="rp-view-tab ${periodType==='year'?'active':''}" id="disc-period-year">Year</button>
+          <button class="rp-view-tab ${periodType==='custom'?'active':''}" id="disc-period-custom">Custom</button>
+        </div>
+        ${periodType==='today' ? '' : periodType==='custom' ? `
+        <div style="display:flex;gap:8px;">
+          <input type="date" id="disc-custom-start" value="${escapeHtml(customStart)}" max="${escapeHtml(customEnd)}"/>
+          <input type="date" id="disc-custom-end" value="${escapeHtml(customEnd)}" min="${escapeHtml(customStart)}"/>
+        </div>` : `<input type="month" id="disc-anchor-month" value="${escapeHtml(anchorMonth)}"/>`}
       </div>
+
+      <div class="team-dash-summary">
+        <div class="team-dash-stat"><span class="team-dash-stat-label">Total</span><span class="ar-stat-num">${totals.total}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">Active</span><span class="ar-stat-num">${totals.active}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">Acknowledged</span><span class="ar-stat-num">${totals.acknowledged}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">Declined</span><span class="ar-stat-num">${totals.declined}</span></div>
+        <div class="team-dash-stat"><span class="team-dash-stat-label">Unack'd</span><span class="ar-stat-num">${totals.unacknowledged}</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <input type="text" id="disc-report-search" class="team-dash-search" style="flex:2;min-width:140px;margin-bottom:0;" placeholder="Search by staff name…" value="${escapeHtml(m.search||'')}"/>
+        <select id="disc-supervisor-filter" style="flex:1;min-width:140px;border:1px solid var(--md-sys-color-outline);border-radius:8px;padding:0 10px;font-family:inherit;font-size:14px;background:var(--c-surface,#fff);">
+          <option value="">All supervisors</option>
+          ${state.supervisors.map(sv=>`<option value="${sv.id}" ${supervisorFilter===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+          <option value="__unassigned__" ${supervisorFilter==='__unassigned__'?'selected':''}>Unassigned</option>
+        </select>
+      </div>
+
       ${dates.length===0
-        ? `<div class="small-muted" style="padding:16px 0;">No disciplinary entries${q?' matching "'+escapeHtml(m.search)+'"':''}.</div>`
+        ? `<div class="small-muted" style="padding:16px 0;">No disciplinary entries for this period${q?' matching "'+escapeHtml(m.search)+'"':''}.</div>`
         : dates.map(d=>`
           <p class="pm-section-label" style="margin-top:18px;">${escapeHtml(new Date(d+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</p>
           ${grouped[d].map(e=>disciplinaryEntryRowHtml(e, {showStaffName:true})).join('')}
@@ -21218,6 +21287,30 @@ function attachHandlers(){
   // --- disciplinary record dashboard (nav: "Disciplinary record") ---
   if(activeModal.type==='disciplinary-report'){
     wireDisciplinaryRowActions(activeModal.items, openDisciplinaryReport);
+    const m = activeModal;
+    on('disc-period-today',   ()=>openModal({...m, periodType:'today'}));
+    on('disc-period-month',   ()=>openModal({...m, periodType:'month'}));
+    on('disc-period-quarter', ()=>openModal({...m, periodType:'quarter'}));
+    on('disc-period-year',    ()=>openModal({...m, periodType:'year'}));
+    on('disc-period-custom',  ()=>openModal({...m, periodType:'custom', customStart:m.customStart||todayLabel(), customEnd:m.customEnd||m.customStart||todayLabel()}));
+    const discMonthInput = document.getElementById('disc-anchor-month');
+    if(discMonthInput) discMonthInput.addEventListener('change', ()=>{
+      if(discMonthInput.value) openModal({...m, anchorMonth:discMonthInput.value});
+    });
+    const discCustomStartInput = document.getElementById('disc-custom-start');
+    const discCustomEndInput = document.getElementById('disc-custom-end');
+    function applyDiscCustomRange(){
+      const startVal = discCustomStartInput?.value || m.customStart || todayLabel();
+      const endVal = discCustomEndInput?.value || startVal;
+      if(startVal > endVal){ showToast('Start date must be before end date', 'rust'); render(); return; }
+      openModal({...m, customStart:startVal, customEnd:endVal});
+    }
+    discCustomStartInput?.addEventListener('change', applyDiscCustomRange);
+    discCustomEndInput?.addEventListener('change', applyDiscCustomRange);
+    const discSupervisorFilterSel = document.getElementById('disc-supervisor-filter');
+    if(discSupervisorFilterSel) discSupervisorFilterSel.addEventListener('change', ()=>{
+      openModal({...m, supervisorFilter:discSupervisorFilterSel.value});
+    });
     const searchInput = document.getElementById('disc-report-search');
     if(searchInput) searchInput.addEventListener('input', e=>{
       const focused = document.activeElement===searchInput;
