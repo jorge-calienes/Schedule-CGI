@@ -5499,6 +5499,7 @@ button{font-family:var(--sans);cursor:pointer;}
     --pm-warn: var(--c-orange,#FF9500);
     --pm-warn-bg: color-mix(in srgb, var(--c-orange,#FF9500) 16%, var(--c-surface,#fff));
     --pm-danger: var(--c-red,#FF3B30);
+    --pm-danger-bg: color-mix(in srgb, var(--c-red,#FF3B30) 16%, var(--c-surface,#fff));
     --pm-radius-sm: var(--r-sm,9px);
     --pm-radius-md: var(--r-md,12px);
     --pm-gap: var(--sp-3,12px);
@@ -5554,6 +5555,7 @@ button{font-family:var(--sans);cursor:pointer;}
 .pm-badge.success{background:var(--pm-success-bg);color:var(--pm-success);}
 .pm-badge.accent{background:var(--pm-accent-bg);color:var(--pm-accent);}
 .pm-badge.warn{background:var(--pm-warn-bg);color:var(--pm-warn);}
+.pm-badge.danger{background:var(--pm-danger-bg);color:var(--pm-danger);}
 .pm-fit-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}
 .pm-fit-name{margin:0;font-size:18px;font-weight:700;color:var(--pm-text-primary);}
 .pm-fit-stats{display:flex;gap:20px;}
@@ -8734,6 +8736,66 @@ function staffUnderSupervisor(supervisorId){
   return state.staff.filter(s=>s.supervisorId===supervisorId);
 }
 
+// Walks UP from a staff member's direct supervisor through
+// supervisors.reportsToId, same traversal as wouldCreateSupervisorCycle()
+// above but in the opposite direction — used to decide whether a given
+// supervisor is anywhere in this staff member's chain of command, which
+// is the disciplinary tracker's visibility rule (mirrors
+// staff_in_supervisor_chain() in 0061_disciplinary_actions.sql; this
+// client-side copy only decides whether to show the tab at all, the RLS
+// function is the actual access boundary).
+function isSupervisorInStaffChain(staffMember, supervisorId){
+  if(!staffMember?.supervisorId || !supervisorId) return false;
+  const byId = Object.fromEntries(state.supervisors.map(sv=>[sv.id, sv]));
+  let cur = staffMember.supervisorId;
+  const seen = new Set();
+  while(cur){
+    if(cur===supervisorId) return true;
+    if(seen.has(cur)) return false;
+    seen.add(cur);
+    cur = byId[cur]?.reportsToId || null;
+  }
+  return false;
+}
+
+function canViewDisciplinary(staffMember){
+  const acct = authState.account;
+  if(!acct || !staffMember) return false;
+  if(acct.role==='admin') return true;
+  if(acct.role==='supervisor' && acct.linked_supervisor_id) return isSupervisorInStaffChain(staffMember, acct.linked_supervisor_id);
+  return false;
+}
+
+const DISCIPLINARY_STEP_META = {
+  verbal:         { label: 'Verbal warning',   bg: '#E5E5EA', fg: '#3A3A3C' },
+  written:        { label: 'Written warning',  bg: '#FFE8CC', fg: '#A85D00' },
+  final_written:  { label: 'Final written',    bg: '#FFD7D2', fg: '#C62F1D' },
+  termination:    { label: 'Termination',      bg: '#3A3A3C', fg: '#fff' },
+};
+const DISCIPLINARY_CATEGORY_META = {
+  attendance:        'Attendance',
+  conduct:           'Conduct',
+  policy_violation:  'Policy violation',
+  safety:            'Safety',
+  other:             'Other',
+};
+const DISCIPLINARY_STEP_ORDER = ['verbal', 'written', 'final_written', 'termination'];
+
+// Simple progressive-discipline ladder: how many of this staff member's
+// entries are still "active" (within the flat 12-month rolling window
+// the user set) decides the suggested next step — 0 active -> verbal,
+// 1 -> written, 2 -> final written, 3+ -> termination. Always
+// overridable in the form; this is a suggestion, not an enforced rule.
+function isDisciplinaryActionActive(entry){
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth()-12);
+  return new Date(entry.incident_date+'T00:00:00') >= cutoff;
+}
+function suggestNextDisciplinaryStep(activeCount){
+  const idx = Math.min(activeCount, DISCIPLINARY_STEP_ORDER.length-1);
+  return DISCIPLINARY_STEP_ORDER[idx];
+}
+
 // Team Dashboard already scopes a supervisor to their own linked team by
 // default (myReviewTeamStaff) — the Attendance Report's supervisor filter
 // should default the same way instead of opening on "All supervisors" and
@@ -10526,6 +10588,115 @@ function renderCapacityDayDetailModal(m){
   </div>`;
 }
 
+// Log a disciplinary action and capture its acknowledgment in one
+// continuous flow on the supervisor's own device — no separate "pending"
+// state is ever persisted; the row is only written once step 'ack' has
+// actually resolved to acknowledged/declined/unacknowledged (see
+// submitDisciplinaryAction() in lib/supabaseClient.js). m.step moves
+// 'form' -> 'ack' -> 'done', carrying the in-progress fields on the modal
+// object itself, same pattern renderTimeOffManagerModal uses for its own
+// multi-step add flow.
+function renderDisciplinaryLogModal(m){
+  const staff = getStaffById(m.staffId);
+  if(!staff) return '<div class="modal"><div class="modal-body">Staff member not found.</div></div>';
+
+  if(m.step==='ack'){
+    const stepMeta = DISCIPLINARY_STEP_META[m.disciplinaryStep];
+    const dateLabel = new Date(m.incidentDate+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    return `
+    <div class="modal pm-scope" style="max-width:480px;">
+      <div class="modal-body" style="padding-top:28px;">
+        <div style="text-align:center;margin-bottom:18px;">
+          <div class="small-muted" style="text-transform:uppercase;letter-spacing:.06em;font-size:11.5px;font-weight:700;">Hand this device to ${escapeHtml(staff.name.split(' ')[0])} to respond</div>
+          <div style="font-size:19px;font-weight:700;margin-top:8px;">Review this write-up</div>
+        </div>
+        <div style="background:var(--pm-surface-alt,#F2F2F7);border-radius:14px;padding:16px 18px;margin-bottom:18px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+            <span class="pm-badge" style="background:${stepMeta.bg};color:${stepMeta.fg};">${escapeHtml(stepMeta.label)}</span>
+            <span class="small-muted">${escapeHtml(DISCIPLINARY_CATEGORY_META[m.category]||m.category)} · ${escapeHtml(dateLabel)}</span>
+          </div>
+          <div style="font-size:13.5px;line-height:1.5;margin-bottom:8px;"><strong>What happened:</strong> ${escapeHtml(m.description)}</div>
+          <div style="font-size:13.5px;line-height:1.5;"><strong>Going forward:</strong> ${escapeHtml(m.correctiveAction)}</div>
+        </div>
+        <div class="small-muted" style="text-align:center;margin-bottom:16px;">Signing confirms you received and discussed this write-up with your supervisor — not that you agree with it.</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button class="pm-btn pm-btn-primary" id="disc-ack-btn" style="padding:14px;font-size:15.5px;">✓ I acknowledge</button>
+          <button class="pm-btn" id="disc-decline-btn" style="padding:14px;font-size:15.5px;background:var(--pm-surface,#fff);color:var(--pm-danger);border:2px solid var(--pm-danger-bg);">I decline to sign</button>
+          <button class="pm-btn pm-btn-light" id="disc-skip-btn" style="padding:12px;">Leave unacknowledged for now</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if(m.step==='done'){
+    const outcomeMeta = m.resolution==='ack' ? {title:'Acknowledged', note:'acknowledged in person by '+staff.name}
+      : m.resolution==='decline' ? {title:'Declined to sign', note:'declined to sign by '+staff.name+'. The write-up still stands.'}
+      : {title:'Left unacknowledged', note:'left with no response from '+staff.name+'. The write-up still stands; follow up at the next shift if needed.'};
+    return `
+    <div class="modal pm-scope" style="max-width:440px;">
+      <div class="modal-body" style="padding-top:28px;text-align:center;">
+        <div style="font-size:19px;font-weight:700;margin-bottom:6px;">${escapeHtml(outcomeMeta.title)}</div>
+        <div class="small-muted" style="margin-bottom:22px;">Recorded as ${escapeHtml(outcomeMeta.note)}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button class="pm-btn pm-btn-primary" id="disc-print-btn">🖨 Print record</button>
+          <button class="pm-btn pm-btn-light" id="modal-close-x">Close</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // step === 'form'
+  const activeCountForSuggestion = (m._returnModal?.discHistory||[]).filter(isDisciplinaryActionActive).length;
+  const suggested = DISCIPLINARY_STEP_META[suggestNextDisciplinaryStep(activeCountForSuggestion)];
+  return `
+  <div class="modal pm-scope" style="max-width:520px;">
+    <div class="modal-head">
+      <div><h2>Log disciplinary action</h2><p>${escapeHtml(staff.name)}</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Category</label>
+        <div class="to-type-picker">
+          ${Object.keys(DISCIPLINARY_CATEGORY_META).map(c=>`<button type="button" class="to-type-btn ${m.category===c?'active':''}" data-disc-category="${c}">${escapeHtml(DISCIPLINARY_CATEGORY_META[c])}</button>`).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label>Severity / step</label>
+        <div class="small-muted" style="background:var(--pm-accent-bg);color:var(--pm-accent);border-radius:8px;padding:8px 10px;margin-bottom:8px;">Suggested: <strong>${escapeHtml(suggested.label)}</strong> — based on ${activeCountForSuggestion} active entr${activeCountForSuggestion===1?'y':'ies'} in the last 12 months. Pick a different step if needed.</div>
+        <div class="to-type-picker">
+          ${DISCIPLINARY_STEP_ORDER.map(s=>`<button type="button" class="to-type-btn ${m.disciplinaryStep===s?'active':''}" data-disc-step="${s}">${escapeHtml(DISCIPLINARY_STEP_META[s].label)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="sm-grid-2">
+        <div class="field">
+          <label>Incident date</label>
+          <input type="date" id="disc-incident-date" value="${escapeHtml(m.incidentDate||todayLabel())}"/>
+        </div>
+        <div class="field">
+          <label>Witness <span class="small-muted">(optional)</span></label>
+          <select id="disc-witness">
+            <option value="">None</option>
+            ${state.supervisors.map(sv=>`<option value="${sv.id}" ${m.witnessSupervisorId===sv.id?'selected':''}>${escapeHtml(sv.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="disc-description" placeholder="What happened, and when — be specific and factual.">${escapeHtml(m.description||'')}</textarea>
+      </div>
+      <div class="field">
+        <label>Corrective action</label>
+        <textarea id="disc-corrective-action" placeholder="What's expected going forward, and what happens if it recurs.">${escapeHtml(m.correctiveAction||'')}</textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-light" id="modal-close-x">Cancel</button>
+      <button class="btn btn-primary" id="disc-continue-btn">Continue to acknowledgment →</button>
+    </div>
+  </div>`;
+}
+
 function renderTimeOffView(){
   const today     = todayLabel();
   const monthStr  = timeOffMonth || today.slice(0,7);
@@ -12210,6 +12381,7 @@ function renderModal(){
   else if(m.type==='pending-leave-requests') inner = renderPendingLeaveRequestsModal(m);
   else if(m.type==='pending-same-day-requests') inner = renderPendingSameDayRequestsModal(m);
   else if(m.type==='capacity-day-detail') inner = renderCapacityDayDetailModal(m);
+  else if(m.type==='disciplinary-log') inner = renderDisciplinaryLogModal(m);
   else if(m.type==='leave-policy') inner = renderLeavePolicyModal(m);
   else if(m.type==='reset-confirm') inner = renderResetConfirmModal(m);
   else if(m.type==='daily-changes-email') inner = renderDailyChangesEmailModal(m);
@@ -13349,7 +13521,65 @@ function renderStaffManagerModal(m){
     );
   })();
 
+  // ── Disciplinary tracker tab ── gated entirely on canViewDisciplinary()
+  // below (not just hidden-but-fetchable) — RLS already restricts the
+  // actual rows a supervisor outside this staff member's chain can read to
+  // none, but showing an always-empty tab to them would misleadingly read
+  // as "clean record" rather than "no access", so the tab itself doesn't
+  // exist for them at all (see canViewDisciplinary() above).
+  const disciplinaryTab = (() => {
+    if(!editing) return '<div class="small-muted">Save first.</div>';
+    const hist = m.discHistory;
+    const err = m.discHistoryError;
+    if(err) return '<div class="small-muted" style="padding:8px 0;">Could not load disciplinary history — '+escapeHtml(err)+'</div>';
+    if(hist===undefined || m._discHistoryLoading) return '<div class="small-muted" style="padding:8px 0;">Loading…</div>';
+
+    const activeEntries = hist.filter(isDisciplinaryActionActive);
+    const activeCount = activeEntries.length;
+    const nextStep = suggestNextDisciplinaryStep(activeCount);
+    const mostRecentActive = activeEntries[0];
+
+    const logBtn = '<button class="pm-btn pm-btn-primary" id="btn-log-disciplinary" type="button" style="white-space:nowrap;flex:none;">+ Log disciplinary action</button>';
+    const standingHtml = '<div class="pm-card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">'
+      +(mostRecentActive ? (()=>{
+          const meta = DISCIPLINARY_STEP_META[mostRecentActive.step];
+          return '<div style="display:flex;align-items:center;gap:12px;">'
+            +'<div style="width:10px;height:10px;border-radius:999px;background:'+meta.fg+';flex:none;"></div>'
+            +'<div><div style="font-weight:700;font-size:14.5px;">Current standing: '+escapeHtml(meta.label)+'</div>'
+            +'<div class="small-muted" style="margin-top:2px;">'+activeCount+' active entr'+(activeCount===1?'y':'ies')+' in the last 12 months'
+            +(nextStep!==mostRecentActive.step?' · next step if another occurs: '+escapeHtml(DISCIPLINARY_STEP_META[nextStep].label):'')+'</div></div>'
+          +'</div>';
+        })()
+        : '<div class="small-muted">'+(hist.length?'No active disciplinary entries in the last 12 months.':'No disciplinary history.')+'</div>')
+      +logBtn+'</div>';
+
+    if(hist.length===0) return standingHtml;
+
+    const rows = hist.map(entry=>{
+      const meta = DISCIPLINARY_STEP_META[entry.step];
+      const active = isDisciplinaryActionActive(entry);
+      const ackMeta = entry.ack_status==='acknowledged' ? {label:'Acknowledged', cls:'success'}
+        : entry.ack_status==='declined' ? {label:'Declined to sign', cls:'danger'}
+        : {label:'Left unacknowledged', cls:'warn'};
+      const dateLabel = new Date(entry.incident_date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      return '<div class="pm-card" style="margin-bottom:10px;">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">'
+          +'<span class="pm-badge" style="background:'+meta.bg+';color:'+meta.fg+';">'+escapeHtml(meta.label)+'</span>'
+          +'<span class="small-muted">'+escapeHtml(DISCIPLINARY_CATEGORY_META[entry.category]||entry.category)+' · '+escapeHtml(dateLabel)+'</span>'
+          +'<span class="pm-badge '+ackMeta.cls+'" style="margin-left:auto;">'+escapeHtml(ackMeta.label)+'</span>'
+          +'<span class="small-muted" style="font-weight:600;color:'+(active?'var(--pm-accent)':'var(--pm-text-muted)')+';">'+(active?'Active':'Expired')+'</span>'
+        +'</div>'
+        +'<div style="font-size:13.5px;line-height:1.5;margin-bottom:4px;"><strong>What happened:</strong> '+escapeHtml(entry.description)+'</div>'
+        +'<div style="font-size:13.5px;line-height:1.5;margin-bottom:6px;"><strong>Corrective action:</strong> '+escapeHtml(entry.corrective_action)+'</div>'
+        +'<div class="small-muted" style="font-size:12px;">Logged by '+escapeHtml(entry.creator?.name||'Unknown')+(entry.witness?.name?' · witnessed by '+escapeHtml(entry.witness.name):'')+'</div>'
+      +'</div>';
+    }).join('');
+
+    return standingHtml+'<p class="pm-section-label" style="margin-top:20px;">History</p>'+rows;
+  })();
+
   const tabs=[{id:'profile',icon:'👤',label:'Profile'},{id:'rotation',icon:'🔄',label:'Rotation'},{id:'time',icon:'📅',label:'Time'},{id:'stats',icon:'📊',label:'Stats'}];
+  if(editing && canViewDisciplinary(editing)) tabs.push({id:'disciplinary',icon:'⚖️',label:'Disciplinary'});
   const initialsOf = name => (name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
   return `
   <div class="modal pm-scope">
@@ -13366,14 +13596,14 @@ function renderStaffManagerModal(m){
     </div>
     <div class="modal-body">
       <div class="sm-tab-panel ${tabChanged?'sm-tab-panel-anim':''}" style="--tab-dir:${tabDir};">
-        ${tab==='profile'?profileTab:tab==='rotation'?rotationTab:tab==='time'?timeTab:statsTab}
+        ${tab==='profile'?profileTab:tab==='rotation'?rotationTab:tab==='time'?timeTab:tab==='disciplinary'?disciplinaryTab:statsTab}
       </div>
     </div>
     <div class="modal-foot pm-footer">
-      ${tab!=='stats'
-        ?`<button class="pm-btn pm-btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
-          ${editing?'<button class="pm-btn pm-btn-ghost" id="staff-delete-btn">Remove</button>':''}`
-        :`${editing?'<button class="pm-btn pm-btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="pm-btn pm-btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`}
+      ${tab==='stats'||tab==='disciplinary'
+        ?`${editing?'<button class="pm-btn pm-btn-primary" id="modal-edit-from-stats">Edit details</button>':''}${editing&&tab==='stats'&&(authState.account?.role==='admin'||authState.account?.role==='supervisor')?'<button class="pm-btn pm-btn-light" id="staff-evaluate-btn">📝 Evaluate</button>':''}`
+        :`<button class="pm-btn pm-btn-primary" id="staff-save-btn">${editing?'Save changes':'Add staff'}</button>
+          ${editing?'<button class="pm-btn pm-btn-ghost" id="staff-delete-btn">Remove</button>':''}`}
     </div>
     ${tab==='profile'&&!editing?`
     <div style="border-top:1px solid var(--line);padding:16px;">
@@ -14222,6 +14452,68 @@ function renderOrgDiagramModal(m){
       <button class="btn btn-light" id="btn-org-diagram-download" style="margin-left:auto;">🖨 Print / Save as PDF</button>
     </div>
   </div>`;
+}
+
+// Standalone printable version of a disciplinary write-up, generated once
+// its acknowledgment step has resolved (m.resolution set) — same
+// window.open()+window.print() pattern as buildOrgDiagramHTML() below, so
+// a supervisor can print or save it as a PDF to hand or send to the
+// employee, per "send a copy" from the original request.
+function buildDisciplinaryRecordHTML(m){
+  const staff = getStaffById(m.staffId);
+  const area = staff ? getAreaById(state.assignments[staff.id]) : null;
+  const witness = m.witnessSupervisorId ? getSupervisorById(m.witnessSupervisorId) : null;
+  const creatorName = authState.account?.name || 'Supervisor';
+  const stepMeta = DISCIPLINARY_STEP_META[m.disciplinaryStep];
+  const now = new Date();
+  const timeLabel = now.toLocaleString('en-US', { month:'long', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+  const ackLine = m.resolution==='ack'
+    ? `<strong>Status:</strong> Acknowledged in person — the employee reviewed this record and confirmed receipt on the supervisor's device.`
+    : m.resolution==='decline'
+    ? `<strong>Status:</strong> Declined to sign — the employee reviewed this record in person but declined to acknowledge it. The write-up stands as issued.`
+    : `<strong>Status:</strong> Left unacknowledged — no response was given by the employee at the time. The write-up stands as issued.`;
+  const signatureBlock = m.resolution==='ack'
+    ? `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;">
+        <div><div style="border-bottom:1px solid #1a1a1a;padding-bottom:4px;margin-bottom:4px;font-size:15px;font-style:italic;">${escapeHtml(staff?.name||'')}</div><div style="font-size:11px;color:#636366;">Employee — acknowledged ${escapeHtml(timeLabel)}</div></div>
+        <div><div style="border-bottom:1px solid #1a1a1a;padding-bottom:4px;margin-bottom:4px;font-size:15px;font-style:italic;">${escapeHtml(creatorName)}</div><div style="font-size:11px;color:#636366;">Supervisor${witness?' / witness':''} — ${escapeHtml(timeLabel)}</div></div>
+      </div>`
+    : `<div><div style="border-bottom:1px solid #1a1a1a;padding-bottom:4px;margin-bottom:4px;font-size:15px;font-style:italic;">${escapeHtml(creatorName)}${witness?' · witnessed by '+escapeHtml(witness.name):''}</div><div style="font-size:11px;color:#636366;">Supervisor — ${escapeHtml(timeLabel)}</div></div>`;
+
+  const css = `
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:48px 56px;color:#1a1a1a;}
+    .disc-print-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:16px;margin-bottom:24px;}
+    .disc-print-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 32px;margin-bottom:26px;}
+    .disc-print-label{font-size:11px;font-weight:700;color:#636366;text-transform:uppercase;letter-spacing:.04em;}
+    @page{margin:16mm;}
+  `;
+  const body = `
+    <div class="disc-print-head">
+      <div>
+        <div class="disc-print-label">Schedule CGI</div>
+        <div style="font-size:22px;font-weight:700;margin-top:4px;">Disciplinary Action Record</div>
+      </div>
+      <div style="text-align:right;font-size:12px;color:#636366;">Generated ${escapeHtml(timeLabel)}</div>
+    </div>
+    <div class="disc-print-grid">
+      <div><div class="disc-print-label">Employee</div><div style="font-size:14.5px;margin-top:2px;">${escapeHtml(staff?.name||'')}${staff?.tdisNumber?' — TDIS '+escapeHtml(staff.tdisNumber):''}</div></div>
+      <div><div class="disc-print-label">Area</div><div style="font-size:14.5px;margin-top:2px;">${escapeHtml(area?.name||'Unassigned')}</div></div>
+      <div><div class="disc-print-label">Supervisor</div><div style="font-size:14.5px;margin-top:2px;">${escapeHtml(creatorName)}</div></div>
+      <div><div class="disc-print-label">Incident date</div><div style="font-size:14.5px;margin-top:2px;">${escapeHtml(new Date(m.incidentDate+'T00:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}))}</div></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:24px;">
+      <span style="font-size:12px;font-weight:800;padding:5px 12px;border-radius:999px;background:${stepMeta.bg};color:${stepMeta.fg};">${escapeHtml(stepMeta.label)}</span>
+      <span style="font-size:12px;font-weight:700;padding:5px 12px;border-radius:999px;background:#E5E5EA;color:#3A3A3C;">${escapeHtml(DISCIPLINARY_CATEGORY_META[m.category]||m.category)}</span>
+    </div>
+    <div style="margin-bottom:22px;"><div class="disc-print-label" style="margin-bottom:6px;">Description of incident</div><div style="font-size:14px;line-height:1.6;">${escapeHtml(m.description)}</div></div>
+    <div style="margin-bottom:30px;"><div class="disc-print-label" style="margin-bottom:6px;">Corrective action / expectation going forward</div><div style="font-size:14px;line-height:1.6;">${escapeHtml(m.correctiveAction)}</div></div>
+    <div style="border-top:1px solid #d0d0d0;padding-top:20px;">
+      <div class="disc-print-label" style="margin-bottom:10px;">Acknowledgment</div>
+      <div style="font-size:14px;line-height:1.6;margin-bottom:16px;">${ackLine}</div>
+      ${signatureBlock}
+    </div>
+    <div style="font-size:10.5px;color:#AEAEB2;border-top:1px solid #e5e5e5;padding-top:12px;margin-top:30px;">This record was generated electronically by Schedule CGI and reflects an in-person acknowledgment captured on a supervisor device. Retain per company record-retention policy.</div>
+  `;
+  return { css, body };
 }
 
 // Standalone printable version of the org diagram — a card per supervisor,
@@ -20721,6 +21013,67 @@ function attachHandlers(){
     on('modal-close-cap-day', closeModal);
   }
 
+  // --- disciplinary log/acknowledge/print flow ---
+  if(activeModal.type==='disciplinary-log'){
+    const m = activeModal;
+    const back = ()=>{
+      if(m._returnModal){
+        // Drop the cached history key so the Disciplinary tab re-fetches
+        // and picks up the entry just written, instead of showing the
+        // stale list it had before this flow opened.
+        const rm = {...m._returnModal};
+        delete rm._discHistoryStaffId;
+        openModal(rm);
+      } else closeModal();
+    };
+    on('modal-close-x', back);
+
+    if(m.step==='form'){
+      document.querySelectorAll('[data-disc-category]').forEach(el=>el.addEventListener('click', ()=>{
+        openModal({...m, category:el.dataset.discCategory});
+      }));
+      document.querySelectorAll('[data-disc-step]').forEach(el=>el.addEventListener('click', ()=>{
+        openModal({...m, disciplinaryStep:el.dataset.discStep});
+      }));
+      on('disc-continue-btn', ()=>{
+        const incidentDate = document.getElementById('disc-incident-date')?.value;
+        const witnessSupervisorId = document.getElementById('disc-witness')?.value || '';
+        const description = document.getElementById('disc-description')?.value?.trim()||'';
+        const correctiveAction = document.getElementById('disc-corrective-action')?.value?.trim()||'';
+        if(!incidentDate){ showToast('Pick the incident date','rust'); return; }
+        if(!description){ showToast('Describe what happened','rust'); return; }
+        if(!correctiveAction){ showToast('Describe the corrective action','rust'); return; }
+        openModal({...m, step:'ack', incidentDate, witnessSupervisorId, description, correctiveAction});
+      });
+    }
+
+    if(m.step==='ack'){
+      const resolve = async (ackStatus, resolution) => {
+        const sync = await syncCrudWrite(()=>window.RC.submitDisciplinaryAction({
+          staffId: m.staffId, createdBy: authState.account.id,
+          witnessSupervisorId: m.witnessSupervisorId || null,
+          step: m.disciplinaryStep, category: m.category, incidentDate: m.incidentDate,
+          description: m.description, correctiveAction: m.correctiveAction, ackStatus,
+        }));
+        if(!sync.ok){ showToast(`Could not save — ${sync.error?.message||'try again'}`, 'rust'); return; }
+        openModal({...m, step:'done', resolution});
+      };
+      on('disc-ack-btn', ()=>resolve('acknowledged','ack'));
+      on('disc-decline-btn', ()=>resolve('declined','decline'));
+      on('disc-skip-btn', ()=>resolve('unacknowledged','skip'));
+    }
+
+    if(m.step==='done'){
+      on('disc-print-btn', ()=>{
+        const { css, body } = buildDisciplinaryRecordHTML(m);
+        const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Disciplinary record — '+escapeHtml(getStaffById(m.staffId)?.name||'')+'</title><style>'+css+'</style></head><body>'+body+'</body></html>';
+        const win = window.open('','_blank','width=900,height=1000');
+        if(win){ win.document.write(html); win.document.close(); win.onload=()=>{ win.focus(); win.print(); }; }
+        else showToast('Please allow pop-ups to print the record','rust');
+      });
+    }
+  }
+
   // --- staff manager modal ---
   // --- staff experience stats modal (read-only, except the team-lead lunch quick-editor below) ---
   if(activeModal.type==='staff-stats'){
@@ -20861,6 +21214,37 @@ function attachHandlers(){
         }
       });
     }
+
+    // Same lazy-load pattern for the Disciplinary tab — only fires when
+    // that tab is open AND canViewDisciplinary() already decided this
+    // account may see it (the tab button itself doesn't exist otherwise,
+    // so staffTab can't reach 'disciplinary' for an unauthorized viewer).
+    if(activeModal.staffTab==='disciplinary' && editing && canViewDisciplinary(editing) && window.RC
+        && typeof window.RC.fetchDisciplinaryHistory==='function'
+        && activeModal._discHistoryStaffId!==editing.id && !activeModal._discHistoryLoading){
+      const forDiscStaffId = editing.id;
+      activeModal._discHistoryLoading = true;
+      window.RC.fetchDisciplinaryHistory(forDiscStaffId).then(rows=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forDiscStaffId){
+          openModal({...activeModal, discHistory:rows||[], discHistoryError:undefined, _discHistoryStaffId:forDiscStaffId, _discHistoryLoading:false});
+        }
+      }).catch(e=>{
+        if(activeModal.type==='staff-manager' && activeModal.editId===forDiscStaffId){
+          openModal({...activeModal, discHistoryError:(e&&e.message)||'try again', _discHistoryStaffId:forDiscStaffId, _discHistoryLoading:false});
+        }
+      });
+    }
+
+    on('btn-log-disciplinary', ()=>{
+      if(!editing) return;
+      const activeCount = (activeModal.discHistory||[]).filter(isDisciplinaryActionActive).length;
+      openModal({
+        type:'disciplinary-log', step:'form', staffId:editing.id,
+        category:'attendance', disciplinaryStep:suggestNextDisciplinaryStep(activeCount),
+        incidentDate:todayLabel(), witnessSupervisorId:'', description:'', correctiveAction:'',
+        _returnModal:{...activeModal},
+      });
+    });
 
     const tdisInput = document.getElementById('staff-tdis-input');
     if(tdisInput) tdisInput.addEventListener('input', ()=>{
