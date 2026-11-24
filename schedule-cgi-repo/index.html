@@ -10283,6 +10283,13 @@ function render(){
   const _toListScroll = _toListOld?.scrollTop || 0;
   const _toCalOld = document.querySelector('.cal-grid-wrap');
   const _toCalScroll = _toCalOld?.scrollTop || 0;
+  // Same class of bug, the nav drawer: badge-count refreshes (eval queue,
+  // reassignments, position/leave/same-day requests) call render() on a
+  // timer/event completely independent of the drawer being open, so without
+  // this, scrolling down the "Administration" list got yanked back to the
+  // top every few seconds whenever a background refresh landed.
+  const _navOld = document.querySelector('.nav-drawer');
+  const _navScroll = _navOld?.scrollTop || 0;
 
   // Only play the view-switch fade when viewMode actually changed since the
   // last render — board/overview/etc re-render constantly for unrelated
@@ -10385,6 +10392,16 @@ function render(){
       requestAnimationFrame(()=>{
         const toCal2 = document.querySelector('.cal-grid-wrap');
         if(toCal2) toCal2.scrollTop = _toCalScroll;
+      });
+    }
+  }
+  if(_navScroll){
+    const nav = document.querySelector('.nav-drawer');
+    if(nav){
+      nav.scrollTop = _navScroll;
+      requestAnimationFrame(()=>{
+        const nav2 = document.querySelector('.nav-drawer');
+        if(nav2) nav2.scrollTop = _navScroll;
       });
     }
   }
