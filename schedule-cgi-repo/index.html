@@ -8951,8 +8951,9 @@ function renderDisciplinaryReportModal(m){
     else if(e.ack_status==='declined') acc.declined++;
     else acc.unacknowledged++;
     if(isDisciplinaryActionActive(e)) acc.active++;
+    acc.bystep[e.step] = (acc.bystep[e.step]||0)+1;
     return acc;
-  }, {total:0, acknowledged:0, declined:0, unacknowledged:0, active:0});
+  }, {total:0, acknowledged:0, declined:0, unacknowledged:0, active:0, bystep:{verbal:0, written:0, final_written:0, termination:0}});
 
   const grouped = {};
   filtered.forEach(e=>{ if(!grouped[e.incident_date]) grouped[e.incident_date]=[]; grouped[e.incident_date].push(e); });
@@ -8986,6 +8987,10 @@ function renderDisciplinaryReportModal(m){
         <div class="team-dash-stat"><span class="team-dash-stat-label">Acknowledged</span><span class="ar-stat-num">${totals.acknowledged}</span></div>
         <div class="team-dash-stat"><span class="team-dash-stat-label">Declined</span><span class="ar-stat-num">${totals.declined}</span></div>
         <div class="team-dash-stat"><span class="team-dash-stat-label">Unack'd</span><span class="ar-stat-num">${totals.unacknowledged}</span></div>
+      </div>
+
+      <div class="team-dash-summary">
+        ${DISCIPLINARY_STEP_ORDER.map(s=>`<div class="team-dash-stat"><span class="team-dash-stat-label">${escapeHtml(DISCIPLINARY_STEP_META[s].label)}</span><span class="ar-stat-num">${totals.bystep[s]||0}</span></div>`).join('')}
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
