@@ -11306,38 +11306,48 @@ function renderNavDrawer(){
       <button class="nav-item" id="nav-add-area"><span class="nav-item-icon">➕</span>Add work area</button>
       <button class="nav-item" id="nav-reorder-depts"><span class="nav-item-icon">⠿</span>Reorder board layout</button>
       <div class="nav-divider"></div>
-      <div class="nav-drawer-section">Administration</div>
+      ${(()=>{
+        const isManager = authState.account?.role==='admin' || authState.account?.role==='supervisor';
+        // Everything that used to sit flat under one "Administration"
+        // label, split into the groups people actually think in: read-only
+        // insight, things waiting on a decision, one-off config, and ways
+        // to get today's board out of the app. The five separate "Review
+        // ___" queues collapse into one Approvals entry with a combined
+        // badge (see renderApprovalsHubModal) — they were the single
+        // biggest chunk of the old flat list and are all structurally the
+        // same "pending queue" thing.
+        const approvalsBadgeTotal = evalBadgeCounts.pending + reassignBadgeCounts.pending
+          + positionReqBadgeCounts.pending + leaveReqBadgeCounts.pending + sameDayReqBadgeCounts.pending;
+        const readyCount = isManager ? staffReadyForNewPath().length : 0;
+        const gapsCount = isManager ? staffWithExperienceGaps().length : 0;
+        return `
+      <div class="nav-drawer-section">Reports</div>
+      ${isManager ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-disciplinary-report"><span class="nav-item-icon">⚖️</span>Disciplinary record</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-ready-for-path"><span class="nav-item-icon">🏆</span>Ready for a new path${readyCount>0?`<span class="nav-item-badge">${readyCount}</span>`:''}</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-experience-gaps"><span class="nav-item-icon">🧭</span>Experience gaps${gapsCount>0?`<span class="nav-item-badge">${gapsCount}</span>`:''}</button>` : ''}
+      <div class="nav-divider"></div>
+      <div class="nav-drawer-section">Approvals</div>
+      ${isManager ? `<button class="nav-item" id="nav-approvals-hub"><span class="nav-item-icon">📥</span>Approvals${approvalsBadgeTotal>0?`<span class="nav-item-badge">${approvalsBadgeTotal}</span>`:''}</button>` : ''}
+      ${isManager ? `<button class="nav-item" id="nav-weekly-time-review"><span class="nav-item-icon">⏱</span>Weekly Time Review</button>` : ''}
+      <div class="nav-divider"></div>
+      <div class="nav-drawer-section">Settings</div>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-manage-accounts"><span class="nav-item-icon">🔑</span>Manage accounts</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-audit-log"><span class="nav-item-icon">📖</span>Audit log</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-team-dashboard"><span class="nav-item-icon">📊</span>Team dashboard</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-attendance-report"><span class="nav-item-icon">🗓</span>Attendance report</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-disciplinary-report"><span class="nav-item-icon">⚖️</span>Disciplinary record</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-weekly-time-review"><span class="nav-item-icon">⏱</span>Weekly Time Review</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-evals"><span class="nav-item-icon">📝</span>Review evaluations${evalBadgeCounts.pending>0?`<span class="nav-item-badge">${evalBadgeCounts.pending}</span>`:''}</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-reassigns"><span class="nav-item-icon">🙋</span>Review reassignments${reassignBadgeCounts.pending>0?`<span class="nav-item-badge">${reassignBadgeCounts.pending}</span>`:''}</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-position-requests"><span class="nav-item-icon">🏷</span>Review position requests${positionReqBadgeCounts.pending>0?`<span class="nav-item-badge">${positionReqBadgeCounts.pending}</span>`:''}</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-leave-requests"><span class="nav-item-icon">🏖</span>Review leave requests${leaveReqBadgeCounts.pending>0?`<span class="nav-item-badge">${leaveReqBadgeCounts.pending}</span>`:''}</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-pending-same-day-requests"><span class="nav-item-icon">⏰</span>Review late/early notices${sameDayReqBadgeCounts.pending>0?`<span class="nav-item-badge">${sameDayReqBadgeCounts.pending}</span>`:''}</button>` : ''}
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-leave-policy"><span class="nav-item-icon">⚙️</span>Leave policy</button>` : ''}
-      ${(()=>{
-        if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
-        const readyCount = staffReadyForNewPath().length;
-        return `<button class="nav-item" id="nav-ready-for-path"><span class="nav-item-icon">🏆</span>Ready for a new path${readyCount>0?`<span class="nav-item-badge">${readyCount}</span>`:''}</button>`;
-      })()}
-      ${(()=>{
-        if(authState.account?.role!=='admin' && authState.account?.role!=='supervisor') return '';
-        const gapsCount = staffWithExperienceGaps().length;
-        return `<button class="nav-item" id="nav-experience-gaps"><span class="nav-item-icon">🧭</span>Experience gaps${gapsCount>0?`<span class="nav-item-badge">${gapsCount}</span>`:''}</button>`;
-      })()}
-      <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
-      ${(authState.account?.role==='admin'||authState.account?.role==='supervisor') ? `<button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>` : ''}
-      <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
+      ${isManager ? `<button class="nav-item" id="nav-leave-policy"><span class="nav-item-icon">⚙️</span>Leave policy</button>` : ''}
       <button class="nav-item" id="nav-time-management"><span class="nav-item-icon">🕐</span>Time management</button>
       <button class="nav-item" id="nav-manage-languages"><span class="nav-item-icon">🌐</span>Language certifications</button>
       <button class="nav-item" id="nav-manage-positions"><span class="nav-item-icon">🏷</span>Positions</button>
-      <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${authState.account?.role==='admin' ? `<button class="nav-item" id="nav-reset-areas" style="color:var(--md-sys-color-error);"><span class="nav-item-icon">🗑</span>Reset areas &amp; departments</button>` : ''}
       <div class="nav-divider"></div>
+      <div class="nav-drawer-section">Exports</div>
+      <button class="nav-item" id="nav-email-changes"><span class="nav-item-icon">📧</span>Email today's changes</button>
+      ${isManager ? `<button class="nav-item" id="nav-print-board"><span class="nav-item-icon">🖨</span>Print / Export report</button>` : ''}
+      <button class="nav-item" id="nav-export-outlook"><span class="nav-item-icon">📅</span>Export today to Outlook</button>
+      <div class="nav-divider"></div>`;
+      })()}
+      <button class="nav-item" id="nav-keyboard-shortcuts"><span class="nav-item-icon">⌨</span>Keyboard shortcuts</button>
       ${canOfferInstall()?'<button class="nav-item" id="nav-install-app"><span class="nav-item-icon">📲</span>Install app</button>':''}
       <button class="nav-item" id="nav-change-pin"><span class="nav-item-icon">🔒</span>Change my PIN</button>
       <button class="nav-item" id="nav-sign-out"><span class="nav-item-icon">🚪</span>Sign out</button>
@@ -12641,6 +12651,7 @@ function renderModal(){
   else if(m.type==='pending-position-requests') inner = renderPendingPositionRequestsModal(m);
   else if(m.type==='pending-leave-requests') inner = renderPendingLeaveRequestsModal(m);
   else if(m.type==='pending-same-day-requests') inner = renderPendingSameDayRequestsModal(m);
+  else if(m.type==='approvals-hub') inner = renderApprovalsHubModal(m);
   else if(m.type==='capacity-day-detail') inner = renderCapacityDayDetailModal(m);
   else if(m.type==='disciplinary-log') inner = renderDisciplinaryLogModal(m);
   else if(m.type==='disciplinary-report') inner = renderDisciplinaryReportModal(m);
@@ -16788,6 +16799,40 @@ function renderAttendanceReportModal(m){
     </div>
     <div class="modal-foot">
       <button class="btn btn-light" id="ar-export-ics" style="margin-left:auto;">📅 Export to Outlook (.ics)</button>
+    </div>
+  </div>`;
+}
+
+// --- Approvals hub — one nav entry (one combined badge) in place of the
+// five separate "Review ___" items the drawer used to list flat, one per
+// pending-queue feature. This is a picker, not a merged list: each row
+// just opens the exact same dedicated modal/opener those nav items always
+// did (openPendingEvals() etc.), so none of those five modals needed any
+// change at all. ---
+function renderApprovalsHubModal(){
+  const rows = [
+    { id:'evals', icon:'📝', label:'Evaluations', count:evalBadgeCounts.pending, open:openPendingEvals },
+    { id:'reassigns', icon:'🙋', label:'Reassignments', count:reassignBadgeCounts.pending, open:openPendingReassigns },
+    { id:'position-requests', icon:'🏷', label:'Position requests', count:positionReqBadgeCounts.pending, open:openPendingPositionRequests },
+    { id:'leave-requests', icon:'🏖', label:'Leave requests', count:leaveReqBadgeCounts.pending, open:openPendingLeaveRequests },
+    { id:'same-day-requests', icon:'⏰', label:'Late/early notices', count:sameDayReqBadgeCounts.pending, open:openPendingSameDayRequests },
+  ];
+  return `
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div><h2>📥 Approvals</h2><p>Everything waiting on your review</p></div>
+      <button class="modal-close" id="modal-close-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="option-list">
+        ${rows.map(r=>`
+          <div class="option-card" data-open-approval="${r.id}" style="cursor:pointer;">
+            <div class="oc-left">
+              <span class="oc-name">${r.icon} ${escapeHtml(r.label)}</span>
+            </div>
+            ${r.count>0?`<span class="nav-item-badge" style="position:static;">${r.count}</span>`:`<span class="small-muted" style="margin-left:auto;">None pending</span>`}
+          </div>`).join('')}
+      </div>
     </div>
   </div>`;
 }
@@ -21046,11 +21091,7 @@ function attachHandlers(){
     closeNav();
     await openWeeklyTimeReviewTeam('');
   });
-  on('nav-pending-evals',       ()=>{ closeNav(); openPendingEvals(); });
-  on('nav-pending-reassigns',   ()=>{ closeNav(); openPendingReassigns(); });
-  on('nav-pending-position-requests', ()=>{ closeNav(); openPendingPositionRequests(); });
-  on('nav-pending-leave-requests', ()=>{ closeNav(); openPendingLeaveRequests(); });
-  on('nav-pending-same-day-requests', ()=>{ closeNav(); openPendingSameDayRequests(); });
+  on('nav-approvals-hub', ()=>{ closeNav(); openModal({type:'approvals-hub'}); });
   on('btn-banner-open-leave-requests', ()=>openPendingLeaveRequests());
   on('btn-banner-open-same-day-requests', ()=>openPendingSameDayRequests());
   on('nav-leave-policy', ()=>{ closeNav(); openLeavePolicy(); });
@@ -21257,6 +21298,19 @@ function attachHandlers(){
 
   if(activeModal.type==='capacity-day-detail'){
     on('modal-close-cap-day', closeModal);
+  }
+
+  // --- approvals hub (nav: "Approvals") ---
+  if(activeModal.type==='approvals-hub'){
+    const APPROVAL_OPENERS = {
+      evals: openPendingEvals, reassigns: openPendingReassigns,
+      'position-requests': openPendingPositionRequests, 'leave-requests': openPendingLeaveRequests,
+      'same-day-requests': openPendingSameDayRequests,
+    };
+    document.querySelectorAll('[data-open-approval]').forEach(el=>el.addEventListener('click', ()=>{
+      const opener = APPROVAL_OPENERS[el.dataset.openApproval];
+      if(opener) opener();
+    }));
   }
 
   // --- disciplinary log/acknowledge/print flow ---
