@@ -5623,6 +5623,15 @@ button{font-family:var(--sans);cursor:pointer;}
     border-bottom-color:var(--c-accent,#2F5FA8);
     font-weight:600;
   }
+/* Icon-only on phone/tablet — 5 labeled tabs (now including Disciplinary)
+   don't fit a narrow width without wrapping or clipping (nowrap + flex:1
+   just overflows); the icon alone stays tappable at a sane width, with
+   title/aria-label on the button carrying the name screen readers and a
+   long-press tooltip still need. */
+@media(max-width:899px){
+  .sm-tab-label{display:none;}
+  .sm-tab{padding:12px 4px 11px;font-size:16px;}
+}
 
 /* Profile 2-col grid */
 .sm-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -13592,7 +13601,7 @@ function renderStaffManagerModal(m){
       <button class="modal-close" id="modal-close-x">✕</button>
     </div>
     <div class="sm-tab-bar">
-      ${tabs.map(t=>`<button class="sm-tab ${tab===t.id?'active':''}" data-staff-tab="${t.id}">${t.icon} ${t.label}</button>`).join('')}
+      ${tabs.map(t=>`<button class="sm-tab ${tab===t.id?'active':''}" data-staff-tab="${t.id}" title="${escapeHtml(t.label)}" aria-label="${escapeHtml(t.label)}">${t.icon}<span class="sm-tab-label"> ${escapeHtml(t.label)}</span></button>`).join('')}
     </div>
     <div class="modal-body">
       <div class="sm-tab-panel ${tabChanged?'sm-tab-panel-anim':''}" style="--tab-dir:${tabDir};">
