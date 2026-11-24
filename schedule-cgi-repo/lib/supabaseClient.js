@@ -1726,6 +1726,83 @@ export async function submitDisciplinaryAction({
   return data;
 }
 
+// Corrects an already-logged entry's details — never touches ack_status
+// or acknowledged_at, since an edit is a factual correction (wrong date,
+// typo'd description), not a redo of the in-person acknowledgment.
+export async function updateDisciplinaryAction({
+  id, actingAccountId, witnessSupervisorId, step, category, incidentDate, description, correctiveAction,
+}) {
+  const { error } = await supabase.from('disciplinary_actions').update({
+    witness_supervisor_id: witnessSupervisorId || null,
+    step, category, incident_date: incidentDate,
+    description, corrective_action: correctiveAction,
+  }).eq('id', id);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId, action: 'disciplinary_action',
+    description: `edited a disciplinary action (${step.replace('_', ' ')}) — ${category.replace('_', ' ')}`,
+    metadata: { disciplinaryActionId: id, step, category },
+  });
+}
+
+// Pulls an entry out of the progressive-discipline count (it stops
+// suggesting a harsher next step and stops showing as "Active") while
+// leaving it fully visible in history — the "keep it in history, just
+// stop counting it" request. Reversible via restoreDisciplinaryActionToCount.
+export async function removeDisciplinaryActionFromCount({ id, actingAccountId }) {
+  const { error } = await supabase.from('disciplinary_actions').update({
+    removed_from_count_at: new Date().toISOString(), removed_by: actingAccountId,
+  }).eq('id', id);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId, action: 'disciplinary_action',
+    description: 'removed a disciplinary action from the active count',
+    metadata: { disciplinaryActionId: id },
+  });
+}
+
+export async function restoreDisciplinaryActionToCount({ id, actingAccountId }) {
+  const { error } = await supabase.from('disciplinary_actions').update({
+    removed_from_count_at: null, removed_by: null,
+  }).eq('id', id);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId, action: 'disciplinary_action',
+    description: 'restored a disciplinary action to the active count',
+    metadata: { disciplinaryActionId: id },
+  });
+}
+
+// Permanent, hard delete — no soft-delete/undo. Kept available (not just
+// admin-gated) because the same chain-of-trust that lets a supervisor log
+// an entry for their own team lets them remove one they logged in error.
+export async function deleteDisciplinaryAction({ id, actingAccountId, staffId, step, category }) {
+  const { error } = await supabase.from('disciplinary_actions').delete().eq('id', id);
+  if (error) throw error;
+
+  await supabase.from('audit_log').insert({
+    actor_id: actingAccountId, action: 'disciplinary_action',
+    description: `permanently deleted a disciplinary action (${(step||'').replace('_', ' ')}) — ${(category||'').replace('_', ' ')}`,
+    staff_id: staffId || null,
+    metadata: { disciplinaryActionId: id },
+  });
+}
+
+// Company-wide (RLS-scoped) feed for the "Disciplinary record" dashboard —
+// every entry an admin or supervisor can see across their whole chain, not
+// just one staff member's own tab.
+export async function fetchAllDisciplinaryActions() {
+  const { data, error } = await supabase
+    .from('disciplinary_actions')
+    .select('*, staff:staff_id(name), creator:created_by(name), witness:witness_supervisor_id(name)')
+    .order('incident_date', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchTeamPerformanceOverview() {
   const { data, error } = await supabase
     .from('evaluations')
@@ -2120,6 +2197,11 @@ window.RC = {
   fetchStaffEvaluationHistory,
   fetchDisciplinaryHistory,
   submitDisciplinaryAction,
+  updateDisciplinaryAction,
+  removeDisciplinaryActionFromCount,
+  restoreDisciplinaryActionToCount,
+  deleteDisciplinaryAction,
+  fetchAllDisciplinaryActions,
   fetchTeamPerformanceOverview,
   fetchTimeReviewWeekByStart,
   fetchLatestTimeReviewWeek,
